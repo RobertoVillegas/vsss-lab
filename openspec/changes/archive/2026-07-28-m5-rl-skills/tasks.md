@@ -19,4 +19,4 @@
 
 - [x] 4.1 Add deterministic smoke, checkpoint equivalence, metrics, and threshold tests
 - [x] 4.2 Run OpenSpec, doctor, lint, build, test, and M5 skill gates
-- [ ] 4.3 Record evidence and limitations, sign small commits, and push
+- [x] 4.3 Record evidence and limitations, sign small commits, and push
