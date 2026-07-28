@@ -73,6 +73,10 @@ class MarlMatchEnv:
         teammate_congestion_coefficient: float = 0.0,
         defensive_coverage_coefficient: float = 0.0,
         defensive_activation_x: float = 0.15,
+        draw_penalty: float = 0.0,
+        stagnation_penalty: float = 0.0,
+        stagnation_seconds: float = 5.0,
+        stagnation_ball_distance: float = 0.02,
     ) -> None:
         if stage not in (7, 8):
             raise ValueError("stage must be C7 or C8")
@@ -89,6 +93,11 @@ class MarlMatchEnv:
         self.teammate_congestion_coefficient = teammate_congestion_coefficient
         self.defensive_coverage_coefficient = defensive_coverage_coefficient
         self.defensive_activation_x = defensive_activation_x
+        self.draw_penalty = draw_penalty
+        self.stagnation_penalty = stagnation_penalty
+        self._decision_period = float(self._config["timestep"]) * action_repeat
+        self.stagnation_limit = max(1, round(stagnation_seconds / self._decision_period))
+        self.stagnation_ball_distance = stagnation_ball_distance
         self.steps = 0
         self.state = np.zeros(BatchSimulator.state_width(), dtype=np.float32)
         self._ball_x = 0.0
@@ -98,6 +107,8 @@ class MarlMatchEnv:
         self._previous_blue_actions = np.zeros((3, 2), dtype=np.float32)
         self._goal_grace_remaining: int | None = None
         self._defensive_distance = 0.0
+        self._stagnation_anchor = np.zeros(2, dtype=np.float32)
+        self._stagnation_steps = 0
 
     def reset(self, seed: int) -> TeamBatch:
         snapshot = _seeded_snapshot(self._template, seed)
@@ -109,6 +120,8 @@ class MarlMatchEnv:
         self._previous_blue_actions.fill(0.0)
         self._goal_grace_remaining = None
         self._defensive_distance = _defensive_distance(self.state, self._config)
+        self._stagnation_anchor = self.state[5:7].copy()
+        self._stagnation_steps = 0
         return build_team_observation(self.state, team=0)
 
     def step(
@@ -133,18 +146,36 @@ class MarlMatchEnv:
         closest = self._closest_blue_distance()
         defensive_distance = _defensive_distance(self.state, self._config)
         threat = _defensive_threat(ball_x, self.defensive_activation_x)
+        ball_displacement = math.dist(
+            (ball_x, float(self.state[6])),
+            (float(self._stagnation_anchor[0]), float(self._stagnation_anchor[1])),
+        )
+        if ball_displacement >= self.stagnation_ball_distance:
+            self._stagnation_anchor = self.state[5:7].copy()
+            self._stagnation_steps = 0
+        else:
+            self._stagnation_steps += 1
         if events & 0b11 and self._goal_grace_remaining is None:
             self._goal_grace_remaining = round(
-                float(self._config["reset"]["goal_pause"]) / float(self._config["control_period"])
+                float(self._config["reset"]["goal_pause"]) / self._decision_period
             )
         goal_complete = False
         if self._goal_grace_remaining is not None:
             self._goal_grace_remaining -= 1
             goal_complete = self._goal_grace_remaining <= 0
+        stagnated = (
+            self._goal_grace_remaining is None and self._stagnation_steps >= self.stagnation_limit
+        )
+        draw = self.steps >= self.horizon and not goal_complete and not stagnated
         reward = TeamReward(
             ball_progress=4.0 * (ball_x - self._ball_x),
             approach_progress=2.0 * (self._closest - closest),
-            goal=10.0 * float(bool(events & 1)) - 10.0 * float(bool(events & 2)),
+            goal=(
+                10.0 * float(bool(events & 1))
+                - 10.0 * float(bool(events & 2))
+                - self.draw_penalty * float(draw)
+                - self.stagnation_penalty * float(stagnated)
+            ),
             action_delta=-self.action_delta_coefficient * float(np.square(action_delta).mean()),
             teammate_congestion=-self.teammate_congestion_coefficient
             * _teammate_congestion(self.state, self.teammate_spacing),
@@ -156,7 +187,10 @@ class MarlMatchEnv:
         self._ball_x = ball_x
         self._closest = closest
         self._defensive_distance = defensive_distance
-        done = self.steps >= self.horizon or goal_complete
+        done = draw or goal_complete or stagnated
+        terminal_reason = (
+            "goal" if goal_complete else "stagnation" if stagnated else "draw" if draw else None
+        )
         return (
             build_team_observation(self.state, team=0),
             reward,
@@ -164,6 +198,7 @@ class MarlMatchEnv:
             {
                 "events": events,
                 "goal_pending": self._goal_grace_remaining is not None,
+                "terminal_reason": terminal_reason,
                 "closest_ball_distance": closest,
                 "ball_x": ball_x,
                 "opponent_mode": (
@@ -215,6 +250,10 @@ class VectorMarlMatchEnv:
         teammate_congestion_coefficient: float,
         defensive_coverage_coefficient: float,
         defensive_activation_x: float,
+        draw_penalty: float,
+        stagnation_penalty: float,
+        stagnation_seconds: float,
+        stagnation_ball_distance: float,
     ) -> None:
         if stage not in (7, 8):
             raise ValueError("stage must be C7 or C8")
@@ -232,6 +271,11 @@ class VectorMarlMatchEnv:
         self.teammate_congestion_coefficient = teammate_congestion_coefficient
         self.defensive_coverage_coefficient = defensive_coverage_coefficient
         self.defensive_activation_x = defensive_activation_x
+        self.draw_penalty = draw_penalty
+        self.stagnation_penalty = stagnation_penalty
+        self._decision_period = float(self._config["timestep"]) * action_repeat
+        self.stagnation_limit = max(1, round(stagnation_seconds / self._decision_period))
+        self.stagnation_ball_distance = stagnation_ball_distance
         self.states = np.zeros((num_envs, BatchSimulator.state_width()), dtype=np.float32)
         self.steps = np.zeros(num_envs, dtype=np.int64)
         self._ball_x = np.zeros(num_envs, dtype=np.float32)
@@ -241,6 +285,9 @@ class VectorMarlMatchEnv:
         self._previous_blue_actions = np.zeros((num_envs, 3, 2), dtype=np.float32)
         self._goal_grace_remaining = np.full(num_envs, -1, dtype=np.int64)
         self._defensive_distance = np.zeros(num_envs, dtype=np.float32)
+        self._stagnation_anchor = np.zeros((num_envs, 2), dtype=np.float32)
+        self._stagnation_steps = np.zeros(num_envs, dtype=np.int64)
+        self.last_terminal_reasons = np.full(num_envs, "", dtype="<U10")
 
     def reset(self, world: int, seed: int) -> TeamBatch:
         snapshot = _seeded_snapshot(self._template, seed)
@@ -255,6 +302,9 @@ class VectorMarlMatchEnv:
         self._previous_blue_actions[world].fill(0.0)
         self._goal_grace_remaining[world] = -1
         self._defensive_distance[world] = _defensive_distance(self.states[world], self._config)
+        self._stagnation_anchor[world] = self.states[world, 5:7]
+        self._stagnation_steps[world] = 0
+        self.last_terminal_reasons[world] = ""
         return build_team_observation(self.states[world], team=0)
 
     def step(
@@ -302,17 +352,27 @@ class VectorMarlMatchEnv:
             [_defensive_threat(float(x), self.defensive_activation_x) for x in ball_x],
             dtype=np.float32,
         )
+        ball_positions = self.states[:, 5:7]
+        ball_displacement = np.linalg.norm(ball_positions - self._stagnation_anchor, axis=1)
+        moved = ball_displacement >= self.stagnation_ball_distance
+        self._stagnation_anchor[moved] = ball_positions[moved]
+        self._stagnation_steps[moved] = 0
+        self._stagnation_steps[~moved] += 1
         congestion = np.asarray(
             [_teammate_congestion(state, self.teammate_spacing) for state in self.states],
             dtype=np.float32,
         )
         newly_scored = ((events & 0b11) != 0) & (self._goal_grace_remaining < 0)
         self._goal_grace_remaining[newly_scored] = round(
-            float(self._config["reset"]["goal_pause"]) / float(self._config["control_period"])
+            float(self._config["reset"]["goal_pause"]) / self._decision_period
         )
         active_grace = self._goal_grace_remaining >= 0
         self._goal_grace_remaining[active_grace] -= 1
         goal_complete = active_grace & (self._goal_grace_remaining <= 0)
+        stagnated = (self._goal_grace_remaining < 0) & (
+            self._stagnation_steps >= self.stagnation_limit
+        )
+        draw = (self.steps >= self.horizon) & ~goal_complete & ~stagnated
         rewards = (
             4.0 * (ball_x - self._ball_x)
             + 2.0 * (self._closest - closest)
@@ -323,16 +383,22 @@ class VectorMarlMatchEnv:
             + self.defensive_coverage_coefficient
             * threat
             * (self._defensive_distance - defensive_distance)
+            - self.draw_penalty * draw
+            - self.stagnation_penalty * stagnated
         ).astype(np.float32)
         self._previous_blue_actions = normalized_blue.copy()
         self._ball_x = ball_x.copy()
         self._closest = closest
         self._defensive_distance = defensive_distance
-        done = (self.steps >= self.horizon) | goal_complete
+        done = draw | goal_complete | stagnated
+        self.last_terminal_reasons.fill("")
+        self.last_terminal_reasons[draw] = "draw"
+        self.last_terminal_reasons[stagnated] = "stagnation"
+        self.last_terminal_reasons[goal_complete] = "goal"
         observations = stack_team_batches(
             [build_team_observation(state, team=0) for state in self.states]
         )
-        return observations, rewards, done, events, goal_complete
+        return observations, rewards, done, events, done
 
     def mark_progress_origin(self) -> None:
         self._initial_closest = self._closest.copy()

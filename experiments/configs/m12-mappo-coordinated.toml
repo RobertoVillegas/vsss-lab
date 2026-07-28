@@ -23,3 +23,7 @@ teammate_spacing = 0.14
 teammate_congestion_coefficient = 0.002
 defensive_coverage_coefficient = 1.0
 defensive_activation_x = 0.15
+draw_penalty = 0.25
+stagnation_penalty = 0.10
+stagnation_seconds = 5.0
+stagnation_ball_distance = 0.02

@@ -104,6 +104,10 @@ class MarlConfig:
     teammate_congestion_coefficient: float = 0.002
     defensive_coverage_coefficient: float = 1.0
     defensive_activation_x: float = 0.15
+    draw_penalty: float = 0.25
+    stagnation_penalty: float = 0.10
+    stagnation_seconds: float = 5.0
+    stagnation_ball_distance: float = 0.02
 
     def __post_init__(self) -> None:
         if self.schema_version != 1:
@@ -122,11 +126,15 @@ class MarlConfig:
             self.action_delta_coefficient,
             self.teammate_congestion_coefficient,
             self.defensive_coverage_coefficient,
+            self.draw_penalty,
+            self.stagnation_penalty,
         )
         if any(value < 0.0 for value in non_negative):
             raise ValueError("MARL reward coefficients must be non-negative")
         if self.teammate_spacing <= 0.075:
             raise ValueError("teammate_spacing must exceed the robot body width")
+        if self.stagnation_seconds <= 0.0 or self.stagnation_ball_distance <= 0.0:
+            raise ValueError("stagnation thresholds must be positive")
 
     def fingerprint(self) -> str:
         payload = json.dumps(asdict(self), sort_keys=True, separators=(",", ":"))

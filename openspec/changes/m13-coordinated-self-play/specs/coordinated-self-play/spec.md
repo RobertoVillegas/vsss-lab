@@ -26,3 +26,26 @@ Reward coefficients SHALL participate in the training configuration fingerprint.
 - **WHEN** the coordinated reward differs from the baseline
 - **THEN** training starts a new run and checkpoint lineage
 - **AND** the baseline remains available for paired evaluation
+
+### Requirement: Unproductive episodes terminate explicitly
+
+Training SHALL distinguish goals, scoreless horizon draws, and stagnant-ball
+timeouts without assigning reward to passes merely for occurring.
+
+#### Scenario: Horizon expires without a goal
+
+- **WHEN** the configured match horizon expires without a completed goal
+- **THEN** the episode terminates with the configured bounded draw penalty
+
+#### Scenario: Ball remains stagnant
+
+- **WHEN** the ball fails to move the configured minimum distance for the
+  configured virtual duration
+- **THEN** the episode terminates early with the stagnation penalty
+- **AND** training records `stagnation` rather than `draw`
+
+#### Scenario: Goal enters its closing pause
+
+- **WHEN** a valid goal is detected
+- **THEN** goal closure takes priority over draw and stagnation timeouts
+- **AND** the episode terminates after the configured one-second closure

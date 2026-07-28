@@ -3,6 +3,9 @@
 - [x] Add versioned spacing and defensive-coverage configuration
 - [x] Implement scalar and vector environment reward parity
 - [x] Add unit tests for congestion and defensive threat
+- [x] End scoreless horizons with a bounded draw penalty
+- [x] End stagnant-ball episodes early with a distinct bounded penalty
+- [x] Record goal, draw, and stagnation termination counts in training metrics
 
 ## 2. Training delivery
 

@@ -233,6 +233,45 @@ def test_coordination_reward_detects_congestion_and_scales_defensive_threat() ->
     assert _defensive_threat(0.5, 0.15) == 0.0
 
 
+def test_scoreless_horizon_has_small_draw_penalty() -> None:
+    environment = MarlMatchEnv(
+        CONFIG,
+        STATE,
+        stage=7,
+        horizon=1,
+        action_repeat=4,
+        draw_penalty=0.25,
+    )
+    environment.reset(9)
+
+    _, reward, done, info = environment.step(np.zeros((3, 2), dtype=np.float32))
+
+    assert done
+    assert info["terminal_reason"] == "draw"
+    assert reward.goal == pytest.approx(-0.25)
+
+
+def test_stationary_ball_ends_episode_before_horizon() -> None:
+    environment = MarlMatchEnv(
+        CONFIG,
+        STATE,
+        stage=7,
+        horizon=100,
+        action_repeat=4,
+        stagnation_penalty=0.10,
+        stagnation_seconds=0.04,
+        stagnation_ball_distance=0.02,
+    )
+    environment.reset(9)
+
+    environment.step(np.zeros((3, 2), dtype=np.float32))
+    _, reward, done, info = environment.step(np.zeros((3, 2), dtype=np.float32))
+
+    assert done
+    assert info["terminal_reason"] == "stagnation"
+    assert reward.goal == pytest.approx(-0.10)
+
+
 def test_distilled_shared_policy_is_finite_under_physical_action_scaling() -> None:
     actor = SharedActor(hidden_size=32)
     loss = distill_dynamic_teacher(actor, CONFIG, STATE, seed=7, samples=512, epochs=10)

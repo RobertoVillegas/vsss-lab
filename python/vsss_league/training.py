@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import torch
@@ -33,6 +33,7 @@ class IterationResult:
     progress: float
     checkpoint: str | None
     losses: dict[str, float]
+    terminations: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -58,6 +59,10 @@ def create_rollout_session(config: MarlConfig, config_json: str, state_json: str
             teammate_congestion_coefficient=config.teammate_congestion_coefficient,
             defensive_coverage_coefficient=config.defensive_coverage_coefficient,
             defensive_activation_x=config.defensive_activation_x,
+            draw_penalty=config.draw_penalty,
+            stagnation_penalty=config.stagnation_penalty,
+            stagnation_seconds=config.stagnation_seconds,
+            stagnation_ball_distance=config.stagnation_ball_distance,
         ),
         [0] * config.num_envs,
     )
@@ -72,7 +77,7 @@ def collect_self_play_trajectory(
     seed: int,
     opponent_id: str,
     session: RolloutSession | None = None,
-) -> tuple[TeamTrajectory, float, float, int]:
+) -> tuple[TeamTrajectory, float, float, int, dict[str, int]]:
     """Collect fixed-horizon vector self-play on the learner device."""
     if opponent is not None:
         opponent = opponent.to(learner.device)
@@ -101,6 +106,7 @@ def collect_self_play_trajectory(
     returns = [0.0] * learner.config.num_envs
     completed_progress = [0.0] * learner.config.num_envs
     completed_matches = 0
+    termination_counts = {"goal": 0, "draw": 0, "stagnation": 0}
     for step in range(learner.config.rollout_steps):
         with torch.no_grad():
             mean, log_std = learner.actor(observation)
@@ -142,6 +148,9 @@ def collect_self_play_trajectory(
         reset_occurred = False
         for world, done in enumerate(step_done):
             if done:
+                reason = str(environment.last_terminal_reasons[world])
+                if reason in termination_counts:
+                    termination_counts[reason] += 1
                 completed_progress[world] += float(progress_scores[world])
                 session.episode_counts[world] += 1
                 completed_matches += 1
@@ -218,6 +227,7 @@ def collect_self_play_trajectory(
         sum(returns) / learner.config.num_envs,
         progress,
         completed_matches,
+        termination_counts,
     )
 
 
@@ -233,7 +243,13 @@ def train_iteration(
     checkpoint: Path | None,
     session: RolloutSession | None = None,
 ) -> IterationResult:
-    trajectory, total_return, progress, completed_matches = collect_self_play_trajectory(
+    (
+        trajectory,
+        total_return,
+        progress,
+        completed_matches,
+        termination_counts,
+    ) = collect_self_play_trajectory(
         learner,
         opponent,
         config_json,
@@ -256,4 +272,5 @@ def train_iteration(
         progress=progress,
         checkpoint=str(checkpoint.resolve()) if checkpoint is not None else None,
         losses=losses,
+        terminations=termination_counts,
     )
