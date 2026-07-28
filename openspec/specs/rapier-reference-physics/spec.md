@@ -27,4 +27,3 @@ canonical states and checksums on the same platform and locked version.
 #### Scenario: Repeat action sequence
 - **WHEN** the same 100-tick sequence runs twice
 - **THEN** every final scalar and checksum is identical
-
