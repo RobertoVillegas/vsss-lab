@@ -59,6 +59,23 @@ export interface ReplayIndex {
   latest_metric: TrainingMetric | null;
 }
 
+export interface ReplayAnalytics {
+  schema_version: number;
+  definition_version: string;
+  sampled_seconds: number;
+  teams: Record<"blue" | "yellow", {
+    possession_seconds: number;
+    passes: number;
+    assists: number;
+    shots: number;
+    saves: number;
+    clearances: number;
+    interceptions: number;
+    double_commit_seconds: number;
+    congestion_seconds: number;
+  }>;
+}
+
 export interface Pose {
   x: number;
   y: number;

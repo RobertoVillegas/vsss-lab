@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { FieldCanvas } from "./FieldCanvas";
 import { clampedFrame, frameLabel, parseReplay } from "./replay";
-import type { MetricHistory, Replay, ReplayIndex } from "./types";
+import type { MetricHistory, Replay, ReplayAnalytics, ReplayIndex } from "./types";
 
 const SPEEDS = [0.25, 0.5, 1, 2, 4, 8, 16, 32];
 const POLL_INTERVAL_MS = 2_000;
@@ -77,6 +77,19 @@ export default function App() {
     staleTime: Number.POSITIVE_INFINITY,
   });
   const replay = replayQuery.data ?? null;
+  const analyticsQuery = useQuery({
+    queryKey: ["replay-analytics", selected],
+    enabled: Boolean(selected) && activeView === "replay",
+    queryFn: async (): Promise<ReplayAnalytics> => {
+      const response = await fetch(
+        `/api/replays/${encodeURIComponent(selected)}/analytics`,
+      );
+      if (!response.ok) throw new Error(`Could not analyze ${selected}.`);
+      return response.json() as Promise<ReplayAnalytics>;
+    },
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  const analytics = analyticsQuery.data;
   const error = indexQuery.error ?? replayQuery.error;
   const loading = indexQuery.isPending || replayQuery.isFetching;
 
@@ -304,6 +317,16 @@ export default function App() {
             <div><dt>Σ reward</dt><dd>{reward.toFixed(4)}</dd></div>
             <div><dt>Train return</dt><dd>{index?.latest_metric?.return_total.toFixed(3) ?? "—"}</dd></div>
             <div><dt>Progress</dt><dd>{index?.latest_metric?.progress.toFixed(3) ?? "—"}</dd></div>
+          </dl>
+          <div className="section-rule" />
+          <p className="side-heading">MATCH ANALYTICS · {analytics?.definition_version ?? "LOADING"}</p>
+          <dl className="details">
+            <div><dt>Possession B/Y</dt><dd>{analytics ? `${analytics.teams.blue.possession_seconds.toFixed(1)}s / ${analytics.teams.yellow.possession_seconds.toFixed(1)}s` : "—"}</dd></div>
+            <div><dt>Passes B/Y</dt><dd>{analytics ? `${analytics.teams.blue.passes} / ${analytics.teams.yellow.passes}` : "—"}</dd></div>
+            <div><dt>Shots B/Y</dt><dd>{analytics ? `${analytics.teams.blue.shots} / ${analytics.teams.yellow.shots}` : "—"}</dd></div>
+            <div><dt>Saves B/Y</dt><dd>{analytics ? `${analytics.teams.blue.saves} / ${analytics.teams.yellow.saves}` : "—"}</dd></div>
+            <div><dt>Interceptions B/Y</dt><dd>{analytics ? `${analytics.teams.blue.interceptions} / ${analytics.teams.yellow.interceptions}` : "—"}</dd></div>
+            <div><dt>Congestion B/Y</dt><dd>{analytics ? `${analytics.teams.blue.congestion_seconds.toFixed(1)}s / ${analytics.teams.yellow.congestion_seconds.toFixed(1)}s` : "—"}</dd></div>
           </dl>
         </aside>
 
