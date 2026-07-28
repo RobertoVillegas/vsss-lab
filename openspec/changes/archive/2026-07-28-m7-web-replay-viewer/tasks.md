@@ -14,4 +14,4 @@
 - [x] 3.1 Add server, parser, geometry, and playback tests
 - [x] 3.2 Validate the built application with a real M7 run in a browser
 - [x] 3.3 Document operation, limitations, rollback, and run all local gates
-- [ ] 3.4 Create small signed Conventional Commits
+- [x] 3.4 Create small signed Conventional Commits
