@@ -40,7 +40,7 @@ updates consume 256 steps. Vector worlds persist across updates. Prefer a
 completed-match target when planning a run:
 
 ```sh
-just league-live-matches /home/rob/runs/vsss-100k 100000 25 60 25 auto 64
+just league-live-matches 100000 25 60 25 auto 64
 ```
 
 The terminal reports completed matches and matches/s. An iteration is an
@@ -49,8 +49,13 @@ optimizer update, not a match.
 For comparable RL budgets, target environment steps instead:
 
 ```sh
-just league-live-steps /home/rob/runs/vsss-20m 20000000 25 60 25 auto 64
+just league-live-steps 20000000 25 60 25 auto 64
 ```
+
+Los comandos de entrenamiento asignan automáticamente una carpeta compartida de la
+forma `/home/rob/runs/vsss-training-run-0001`. Usa las variantes `*-at` únicamente
+cuando necesites elegir una ruta explícita; para continuar una ejecución existente,
+usa `just league-live-resume`.
 
 One environment step is one 20 ms control decision in one world. With 64 worlds
 and 256-step rollouts, each PPO update collects 16,384 steps. Matches and

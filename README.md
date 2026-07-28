@@ -87,7 +87,7 @@ Long runs can be resumed without repeating bootstrap. The iteration count is
 additional work; checkpoints and 60-second captures can be spaced independently:
 
 ```bash
-just league-live-steps /home/rob/runs/vsss-20m 20000000 25 60 25 auto 64
+just league-live-steps 20000000 25 60 25 auto 64
 ```
 
 The trainer reports return, progress, throughput, ETA, and checkpoint writes.
@@ -102,7 +102,7 @@ just league-resume /home/rob/runs/vsss-long 2500 25 60 25 auto 64
 just league-web /home/rob/runs/vsss-long
 
 # Or target environment steps and launch the viewer together
-just league-live-steps /home/rob/runs/vsss-20m 20000000 25 60 25 auto 64
+just league-live-steps 20000000 25 60 25 auto 64
 ```
 
 The trailing values select `device` and vectorized environment count. `auto`
