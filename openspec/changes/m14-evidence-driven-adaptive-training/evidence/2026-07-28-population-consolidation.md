@@ -24,3 +24,18 @@ specialties into one scalar.
 Near-duplicate high-rated policies cannot crowd out behaviorally distinct
 specialists in a bounded archive. A positive point estimate with unresolved
 confidence must block distillation.
+
+## Executed consolidation decision
+
+The frozen M13 terminal comparison (`0-9-1`, ten color-paired games over five
+independent seeds) is retained as the incumbent reference. It is deliberately
+not relabelled a successful policy: “promoted baseline” here means the frozen
+registry incumbent that future candidates must beat.
+
+The bounded archive and paired-color evaluator found no confidence-resolved
+specialist advantage at this fidelity. The consolidation decision is
+`specialist_advantage_not_resolved`; therefore distillation was not attempted.
+This is the intended conditional outcome, not missing work. The executable
+gate now requires a positive paired result before training a student and,
+whenever it does train one, requires both non-regressed terminal confidence and
+no inference-latency increase before acceptance.

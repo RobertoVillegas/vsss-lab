@@ -4,7 +4,7 @@
       rejected directions
 - [x] Review Ballchasing, RLGym, RLGymPPO_CPP, and released Nexto deployment
       tooling
-- [ ] Freeze an M13 promoted baseline from a completed multi-seed comparison
+- [x] Freeze an M13 promoted baseline from a completed multi-seed comparison
 - [x] Define train, frontier, failure-replay, and immutable holdout suites
 - [x] Implement paired multi-seed evaluation with confidence intervals
 - [x] Add constrained promotion and machine-readable decision artifacts
@@ -45,10 +45,10 @@
 ## 5. Population consolidation
 
 - [x] Retain a bounded behaviorally diverse checkpoint league
-- [ ] Add an Elo-like historical rating with paired-color confidence reporting
-- [ ] Measure whether specialists outperform the best single policy
-- [ ] Distill complementary specialists only after a positive league result
-- [ ] Verify that the distilled policy preserves latency and terminal outcomes
+- [x] Add an Elo-like historical rating with paired-color confidence reporting
+- [x] Measure whether specialists outperform the best single policy
+- [x] Distill complementary specialists only after a positive league result
+- [x] Verify that the distilled policy preserves latency and terminal outcomes
 
 ## 6. Accelerator feasibility
 

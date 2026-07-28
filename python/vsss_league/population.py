@@ -5,6 +5,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+from vsss_league.evaluation import PairedEstimate
+
 
 @dataclass(frozen=True)
 class BehaviorCheckpoint:
@@ -28,6 +30,17 @@ class ConsolidationDecision:
     best_single_score: float
     lower_confidence_delta: float
     distill: bool
+    reason: str
+
+
+@dataclass(frozen=True)
+class DistillationVerification:
+    """Outcome of the positive-result gate and, when allowed, student checks."""
+
+    attempted: bool
+    preserved_terminal_outcomes: bool | None
+    latency_ratio: float | None
+    accepted: bool
     reason: str
 
 
@@ -91,6 +104,43 @@ def decide_consolidation(
         lower_confidence_delta,
         True,
         "positive_population_result",
+    )
+
+
+def verify_distillation(
+    decision: ConsolidationDecision,
+    *,
+    teacher: PairedEstimate | None = None,
+    student: PairedEstimate | None = None,
+    teacher_latency_ms: float | None = None,
+    student_latency_ms: float | None = None,
+    maximum_latency_ratio: float = 1.0,
+) -> DistillationVerification:
+    """Reject before training unless specialists won; otherwise check outcome and latency."""
+    if not decision.distill:
+        return DistillationVerification(False, None, None, False, decision.reason)
+    if (
+        teacher is None
+        or student is None
+        or teacher_latency_ms is None
+        or student_latency_ms is None
+    ):
+        raise ValueError("positive distillation requires teacher/student evidence and latency")
+    if teacher_latency_ms <= 0.0 or student_latency_ms <= 0.0:
+        raise ValueError("latencies must be positive")
+    latency_ratio = student_latency_ms / teacher_latency_ms
+    preserved = student.lower_confidence >= teacher.lower_confidence
+    accepted = preserved and latency_ratio <= maximum_latency_ratio
+    return DistillationVerification(
+        True,
+        preserved,
+        latency_ratio,
+        accepted,
+        "accepted"
+        if accepted
+        else "terminal_outcomes_regressed"
+        if not preserved
+        else "latency_gate_failed",
     )
 
 
