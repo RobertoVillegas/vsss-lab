@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { FieldCanvas } from "./FieldCanvas";
 import { clampedFrame, frameLabel, parseReplay } from "./replay";
 import type { Replay, ReplayIndex } from "./types";
 
-const SPEEDS = [0.25, 0.5, 1, 2, 4, 8];
+const SPEEDS = [0.25, 0.5, 1, 2, 4, 8, 16, 32];
+const POLL_INTERVAL_MS = 2_000;
 const ICONS = {
   back: "↶",
   previous: "‹",
@@ -15,48 +17,54 @@ const ICONS = {
 };
 
 export default function App() {
-  const [index, setIndex] = useState<ReplayIndex | null>(null);
-  const [selected, setSelected] = useState("");
-  const [replay, setReplay] = useState<Replay | null>(null);
+  const [historicalSelection, setHistoricalSelection] = useState("");
   const [frameIndex, setFrameIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const [speed, setSpeed] = useState(1);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [speed, setSpeed] = useState(4);
+  const [followLatest, setFollowLatest] = useState(true);
+  const [loop, setLoop] = useState(true);
+  const [filter, setFilter] = useState("all");
   const frameRef = useRef(0);
 
-  useEffect(() => {
-    fetch("/api/iterations")
-      .then((response) => {
-        if (!response.ok) throw new Error("Could not discover replay iterations.");
-        return response.json() as Promise<ReplayIndex>;
-      })
-      .then((value) => {
-        setIndex(value);
-        if (value.replays.length) setSelected(value.replays.at(-1)!.filename);
-        else setError("This run has no captured iteration replays.");
-      })
-      .catch((reason: unknown) => setError(String(reason)))
-      .finally(() => setLoading(false));
-  }, []);
+  const indexQuery = useQuery({
+    queryKey: ["training-run-index"],
+    queryFn: async (): Promise<ReplayIndex> => {
+      const response = await fetch("/api/iterations");
+      if (!response.ok) throw new Error("Could not discover training iterations.");
+      return response.json() as Promise<ReplayIndex>;
+    },
+    refetchInterval: POLL_INTERVAL_MS,
+  });
+  const index = indexQuery.data;
+  const visibleReplays = useMemo(
+    () => index?.replays.filter((item) => (
+      filter === "all"
+      || item.outcome === filter
+      || filter === "goals" && item.goals > 0
+    )) ?? [],
+    [filter, index?.replays],
+  );
+  const latestFilename = visibleReplays.at(-1)?.filename ?? "";
+  const selected = followLatest ? latestFilename : historicalSelection;
+  const replayQuery = useQuery({
+    queryKey: ["replay", selected],
+    enabled: Boolean(selected),
+    queryFn: async (): Promise<Replay> => {
+      const response = await fetch(`/api/replays/${encodeURIComponent(selected)}`);
+      if (!response.ok) throw new Error(`Could not load ${selected}.`);
+      return parseReplay(await response.text());
+    },
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  const replay = replayQuery.data ?? null;
+  const error = indexQuery.error ?? replayQuery.error;
+  const loading = indexQuery.isPending || replayQuery.isFetching;
 
   useEffect(() => {
-    if (!selected) return;
-    setLoading(true);
-    setPlaying(false);
-    fetch(`/api/replays/${encodeURIComponent(selected)}`)
-      .then((response) => {
-        if (!response.ok) throw new Error(`Could not load ${selected}.`);
-        return response.text();
-      })
-      .then((text) => {
-        setReplay(parseReplay(text));
-        setFrameIndex(0);
-        setError("");
-      })
-      .catch((reason: unknown) => setError(String(reason)))
-      .finally(() => setLoading(false));
-  }, [selected]);
+    if (!replay) return;
+    setFrameIndex(0);
+    setPlaying(followLatest);
+  }, [followLatest, replay]);
 
   useEffect(() => {
     frameRef.current = frameIndex;
@@ -74,15 +82,18 @@ export default function App() {
       const advance = Math.floor(accumulated / period);
       if (advance > 0) {
         accumulated -= advance * period;
-        const next = Math.min(replay.frames.length - 1, frameRef.current + advance);
+        const requested = frameRef.current + advance;
+        const next = loop
+          ? requested % replay.frames.length
+          : Math.min(replay.frames.length - 1, requested);
         setFrameIndex(next);
-        if (next === replay.frames.length - 1) setPlaying(false);
+        if (!loop && next === replay.frames.length - 1) setPlaying(false);
       }
       animation = requestAnimationFrame(animate);
     };
     animation = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(animation);
-  }, [playing, replay, speed]);
+  }, [loop, playing, replay, speed]);
 
   const move = useCallback(
     (delta: number) => {
@@ -110,6 +121,9 @@ export default function App() {
 
   const frame = replay?.frames[frameIndex];
   const iteration = index?.replays.find((item) => item.filename === selected)?.iteration;
+  const selectedInfo = index?.replays.find((item) => item.filename === selected);
+  const latestReplayIteration = index?.replays.at(-1)?.iteration;
+  const latestCheckpoint = index?.checkpoints.at(-1);
   const reward = useMemo(
     () => frame?.rewards.reduce((sum, value) => sum + value, 0) ?? 0,
     [frame],
@@ -125,7 +139,10 @@ export default function App() {
         </div>
         <div className="run-state">
           <span className="pulse" />
-          <div><small>LOCAL CAPTURE</small><strong>{index?.replays.length ?? 0} iterations</strong></div>
+          <div>
+            <small>{followLatest ? "LIVE · POLLING 2S" : "HISTORY MODE"}</small>
+            <strong>checkpoint {latestCheckpoint?.iteration ?? "—"} · replay {latestReplayIteration ?? "—"}</strong>
+          </div>
         </div>
       </header>
 
@@ -135,15 +152,38 @@ export default function App() {
           <select
             id="iteration"
             value={selected}
-            onChange={(event) => setSelected(event.target.value)}
+            onChange={(event) => {
+              setFollowLatest(false);
+              setHistoricalSelection(event.target.value);
+            }}
             disabled={!index?.replays.length}
           >
-            {index?.replays.map((item) => (
+            {visibleReplays.map((item) => (
               <option key={item.filename} value={item.filename}>
-                Iteration {item.iteration.toString().padStart(4, "0")}
+                {item.outcome.toUpperCase()} · {item.score_blue}–{item.score_yellow} · Iter {item.iteration.toString().padStart(4, "0")}
               </option>
             ))}
           </select>
+          <label htmlFor="result-filter">Replay filter</label>
+          <select
+            id="result-filter"
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+          >
+            <option value="all">All results</option>
+            <option value="win">Wins</option>
+            <option value="loss">Losses</option>
+            <option value="draw">Draws</option>
+            <option value="goals">Any goal</option>
+          </select>
+          <button
+            className={`follow-button ${followLatest ? "active" : ""}`}
+            onClick={() => {
+              setFollowLatest(true);
+            }}
+          >
+            {followLatest ? "● Following latest" : "Follow latest"}
+          </button>
 
           <div className="metric-grid">
             <Metric label="Tick" value={frame?.snapshot.tick ?? "—"} />
@@ -159,18 +199,28 @@ export default function App() {
           <div className="section-rule" />
           <dl className="details">
             <div><dt>Iteration</dt><dd>{iteration ?? "—"}</dd></div>
+            <div><dt>Result</dt><dd>{selectedInfo?.outcome.toUpperCase() ?? "—"} {selectedInfo ? `${selectedInfo.score_blue}–${selectedInfo.score_yellow}` : ""}</dd></div>
             <div><dt>Frames</dt><dd>{replay?.frames.length.toLocaleString() ?? "—"}</dd></div>
             <div><dt>Event mask</dt><dd>{frame?.events ?? "—"}</dd></div>
             <div><dt>Σ reward</dt><dd>{reward.toFixed(4)}</dd></div>
+            <div><dt>Train return</dt><dd>{index?.latest_metric?.return_total.toFixed(3) ?? "—"}</dd></div>
+            <div><dt>Progress</dt><dd>{index?.latest_metric?.progress.toFixed(3) ?? "—"}</dd></div>
           </dl>
         </aside>
 
         <section className="stage">
-          {error ? <div className="empty-state"><strong>Replay unavailable</strong><span>{error}</span></div> : null}
+          {error ? <div className="empty-state"><strong>Replay unavailable</strong><span>{String(error)}</span></div> : null}
           {loading ? <div className="loading">Loading recorded frames…</div> : null}
           {replay && frame && !error ? <FieldCanvas header={replay.header} frame={frame} /> : null}
-          <span className="recorded-badge">● RECORDED</span>
+          <span className="recorded-badge">{followLatest ? "● LIVE INSPECT" : "● RECORDED"}</span>
         </section>
+
+        <ActorTelemetry
+          actions={frame?.actions}
+          maxWheelSpeed={replay?.header.config.max_wheel_speed ?? 1}
+          wheelRadius={replay?.header.config.wheel?.radius ?? 0.025}
+          axleTrack={replay?.header.config.wheel?.axle_track ?? 0.06}
+        />
       </section>
 
       <footer className="transport">
@@ -208,12 +258,18 @@ export default function App() {
             <Control label="Next frame" icon={ICONS.next} onClick={() => move(1)} />
             <Control label="Forward 100 frames" icon={ICONS.forward} onClick={() => move(100)} />
           </div>
-          <label className="speed">
-            SPEED
-            <select value={speed} onChange={(event) => setSpeed(Number(event.target.value))}>
-              {SPEEDS.map((value) => <option key={value} value={value}>{value}×</option>)}
-            </select>
-          </label>
+          <div className="transport-options">
+            <label className="loop-toggle">
+              <input type="checkbox" checked={loop} onChange={(event) => setLoop(event.target.checked)} />
+              LOOP
+            </label>
+            <label className="speed">
+              SPEED
+              <select value={speed} onChange={(event) => setSpeed(Number(event.target.value))}>
+                {SPEEDS.map((value) => <option key={value} value={value}>{value}×</option>)}
+              </select>
+            </label>
+          </div>
         </div>
       </footer>
     </main>
@@ -230,4 +286,51 @@ function Policy({ team, value, yellow = false }: { team: string; value?: string;
 
 function Control({ label, icon, onClick }: { label: string; icon: string; onClick: () => void }) {
   return <button className="control-button" aria-label={label} onClick={onClick}>{icon}</button>;
+}
+
+function ActorTelemetry({
+  actions,
+  maxWheelSpeed,
+  wheelRadius,
+  axleTrack,
+}: {
+  actions?: number[][];
+  maxWheelSpeed: number;
+  wheelRadius: number;
+  axleTrack: number;
+}) {
+  return (
+    <aside className="telemetry">
+      <p className="side-heading">ACTOR CONTROL · LIVE FRAME</p>
+      <div className="actor-list">
+        {Array.from({ length: 6 }, (_, index) => {
+          const left = actions?.[index]?.[0] ?? 0;
+          const right = actions?.[index]?.[1] ?? 0;
+          const linear = wheelRadius * (left + right) / 2;
+          const angular = wheelRadius * (right - left) / axleTrack;
+          const intensity = Math.min(1, Math.max(Math.abs(left), Math.abs(right)) / maxWheelSpeed);
+          const direction = Math.abs(linear) < 0.03 && Math.abs(angular) > 0.2
+            ? angular > 0 ? "TURN LEFT" : "TURN RIGHT"
+            : linear > 0.03 ? "FORWARD"
+            : linear < -0.03 ? "REVERSE"
+            : "IDLE";
+          return (
+            <article className="actor-card" key={index}>
+              <div className="actor-title">
+                <span className={index >= 3 ? "dot yellow" : "dot"} />
+                <strong>{index >= 3 ? "Y" : "B"}{index % 3}</strong>
+                <em>{direction}</em>
+              </div>
+              <div className="throttle"><i style={{ width: `${intensity * 100}%` }} /></div>
+              <dl>
+                <div><dt>L / R</dt><dd>{left.toFixed(1)} / {right.toFixed(1)} rad/s</dd></div>
+                <div><dt>LINEAR</dt><dd>{linear.toFixed(2)} m/s</dd></div>
+                <div><dt>TURN</dt><dd>{angular.toFixed(2)} rad/s</dd></div>
+              </dl>
+            </article>
+          );
+        })}
+      </div>
+    </aside>
+  );
 }

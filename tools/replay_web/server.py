@@ -6,13 +6,15 @@ import argparse
 import json
 import re
 from dataclasses import asdict, dataclass
+from functools import lru_cache
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 from urllib.parse import unquote, urlparse
 
 REPLAY_NAME = re.compile(r"iteration-(\d+)\.jsonl")
+CHECKPOINT_NAME = re.compile(r"iteration-(\d+)\.pt")
 
 
 @dataclass(frozen=True)
@@ -22,6 +24,28 @@ class ReplayInfo:
     iteration: int
     filename: str
     bytes: int
+    outcome: str = "draw"
+    score_blue: int = 0
+    score_yellow: int = 0
+    goals: int = 0
+    simulation_seconds: float = 0.0
+
+
+@dataclass(frozen=True)
+class CheckpointInfo:
+    """Metadata for a checkpoint written by a running trainer."""
+
+    iteration: int
+    filename: str
+    bytes: int
+
+
+class ReplaySummary(TypedDict):
+    outcome: str
+    score_blue: int
+    score_yellow: int
+    goals: int
+    simulation_seconds: float
 
 
 def discover_replays(run_dir: Path) -> list[ReplayInfo]:
@@ -32,9 +56,69 @@ def discover_replays(run_dir: Path) -> list[ReplayInfo]:
         return found
     for path in replay_dir.iterdir():
         match = REPLAY_NAME.fullmatch(path.name)
-        if path.is_file() and match is not None:
-            found.append(ReplayInfo(int(match.group(1)), path.name, path.stat().st_size))
+        if not path.is_file() or match is None:
+            continue
+        stat = path.stat()
+        summary = _summarize_replay(str(path), stat.st_size, stat.st_mtime_ns)
+        found.append(ReplayInfo(int(match.group(1)), path.name, stat.st_size, **summary))
     return sorted(found, key=lambda replay: replay.iteration)
+
+
+@lru_cache(maxsize=2_048)
+def _summarize_replay(filename: str, _size: int, _modified_ns: int) -> ReplaySummary:
+    score_blue = 0
+    score_yellow = 0
+    simulation_seconds = 0.0
+    try:
+        with Path(filename).open(encoding="utf-8") as stream:
+            for line in stream:
+                record = json.loads(line)
+                if record.get("type") != "tick":
+                    continue
+                snapshot = record["snapshot"]
+                score_blue = int(snapshot["score_blue"])
+                score_yellow = int(snapshot["score_yellow"])
+                simulation_seconds = float(snapshot["simulation_time"])
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+        pass
+    return {
+        "outcome": (
+            "win" if score_blue > score_yellow else "loss" if score_blue < score_yellow else "draw"
+        ),
+        "score_blue": score_blue,
+        "score_yellow": score_yellow,
+        "goals": score_blue + score_yellow,
+        "simulation_seconds": simulation_seconds,
+    }
+
+
+def discover_checkpoints(run_dir: Path) -> list[CheckpointInfo]:
+    """Return checkpoint files in numeric order."""
+    checkpoint_dir = run_dir.resolve() / "checkpoints"
+    found: list[CheckpointInfo] = []
+    if not checkpoint_dir.is_dir():
+        return found
+    for path in checkpoint_dir.iterdir():
+        match = CHECKPOINT_NAME.fullmatch(path.name)
+        if path.is_file() and match is not None:
+            found.append(CheckpointInfo(int(match.group(1)), path.name, path.stat().st_size))
+    return sorted(found, key=lambda checkpoint: checkpoint.iteration)
+
+
+def latest_metric(run_dir: Path) -> dict[str, Any] | None:
+    """Read the last complete training metric, tolerating a concurrent append."""
+    metrics_path = run_dir.resolve() / "metrics.jsonl"
+    if not metrics_path.is_file():
+        return None
+    lines = metrics_path.read_text(encoding="utf-8").splitlines()
+    for line in reversed(lines):
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            return value
+    return None
 
 
 def resolve_replay(run_dir: Path, filename: str) -> Path | None:
@@ -61,6 +145,10 @@ def make_handler(run_dir: Path, static_dir: Path) -> type[SimpleHTTPRequestHandl
                     {
                         "run_dir": str(resolved_run),
                         "replays": [asdict(replay) for replay in discover_replays(resolved_run)],
+                        "checkpoints": [
+                            asdict(checkpoint) for checkpoint in discover_checkpoints(resolved_run)
+                        ],
+                        "latest_metric": latest_metric(resolved_run),
                     }
                 )
                 return

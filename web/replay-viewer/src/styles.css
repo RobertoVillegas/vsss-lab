@@ -44,11 +44,14 @@ h1 { margin: 2px 0 0; font-size: 18px; font-weight: 600; letter-spacing: -.02em;
 .run-state strong { margin-top: 3px; font-size: 12px; font-weight: 500; }
 .pulse { width: 8px; height: 8px; border-radius: 50%; background: #69e6aa; box-shadow: 0 0 16px #69e6aa; }
 
-.workspace { display: grid; grid-template-columns: 250px minmax(0, 1fr); min-height: 0; }
+.workspace { display: grid; grid-template-columns: 250px minmax(0, 1fr) 270px; min-height: 0; }
 .sidebar { padding: 22px; border-right: 1px solid #20332c; background: rgba(8, 20, 16, .8); overflow: auto; }
-.sidebar > label { display: block; margin-bottom: 8px; color: #789287; font: 10px "Cascadia Mono", "DM Mono", monospace; letter-spacing: .1em; text-transform: uppercase; }
+.sidebar > label { display: block; margin: 12px 0 8px; color: #789287; font: 10px "Cascadia Mono", "DM Mono", monospace; letter-spacing: .1em; text-transform: uppercase; }
+.sidebar > label:first-child { margin-top: 0; }
 select { appearance: none; border: 1px solid #315044; border-radius: 3px; background: #10241c url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='m1 1 4 4 4-4' fill='none' stroke='%2371e1ae'/%3E%3C/svg%3E") no-repeat right 12px center; padding: 10px 34px 10px 11px; }
 .sidebar > select { width: 100%; font: 12px "Cascadia Mono", "DM Mono", monospace; }
+.follow-button { width: 100%; margin-top: 8px; padding: 8px; color: #8aa297; font: 10px "Cascadia Mono", "DM Mono", monospace; letter-spacing: .06em; }
+.follow-button.active { border-color: #4faa80; color: #71e1ae; background: #102a20; }
 .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 22px; }
 .metric { padding: 11px; border: 1px solid #203c31; background: #0b1914; }
 .metric span { display: block; color: #678075; font: 9px "Cascadia Mono", "DM Mono", monospace; text-transform: uppercase; letter-spacing: .08em; }
@@ -66,6 +69,18 @@ select { appearance: none; border: 1px solid #315044; border-radius: 3px; backgr
 .details div { display: flex; justify-content: space-between; font: 11px "Cascadia Mono", "DM Mono", monospace; }
 .details dt { color: #6c857a; }
 .details dd { margin: 0; }
+.telemetry { padding: 18px; border-left: 1px solid #20332c; background: rgba(8, 20, 16, .8); overflow: auto; }
+.actor-list { display: grid; gap: 8px; margin-top: 14px; }
+.actor-card { padding: 9px 10px; border: 1px solid #203c31; background: #0b1914; }
+.actor-title { display: flex; align-items: center; gap: 7px; }
+.actor-title strong { font: 600 11px "Cascadia Mono", "DM Mono", monospace; }
+.actor-title em { margin-left: auto; color: #8db9a5; font: normal 9px "Cascadia Mono", "DM Mono", monospace; letter-spacing: .06em; }
+.throttle { height: 3px; margin: 8px 0; background: #182d24; }
+.throttle i { display: block; height: 100%; background: #71e1ae; box-shadow: 0 0 8px rgba(113,225,174,.5); }
+.actor-card dl { display: grid; gap: 3px; margin: 0; }
+.actor-card dl div { display: flex; justify-content: space-between; font: 9px "Cascadia Mono", "DM Mono", monospace; }
+.actor-card dt { color: #627c70; }
+.actor-card dd { margin: 0; color: #b5c8bf; }
 
 .stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
 .stage canvas { display: block; }
@@ -88,6 +103,9 @@ button:disabled { opacity: .4; cursor: default; }
 .play-button:hover { color: #07100d; background: #8aefbf; }
 .speed { display: flex; align-items: center; justify-self: end; gap: 10px; color: #718a7f; font: 9px "Cascadia Mono", "DM Mono", monospace; letter-spacing: .1em; }
 .speed select { padding-block: 7px; font: 11px "Cascadia Mono", "DM Mono", monospace; }
+.transport-options { display: flex; align-items: center; justify-self: end; gap: 16px; }
+.loop-toggle { display: flex; align-items: center; gap: 6px; color: #718a7f; font: 9px "Cascadia Mono", "DM Mono", monospace; letter-spacing: .1em; }
+.loop-toggle input { accent-color: #71e1ae; }
 .key-hint { color: #526b60; font: 9px "Cascadia Mono", "DM Mono", monospace; }
 kbd { display: inline-block; margin: 0 2px; padding: 2px 4px; border: 1px solid #294338; border-radius: 2px; color: #87a398; }
 
@@ -105,4 +123,10 @@ kbd { display: inline-block; margin: 0 2px; padding: 2px 4px; border: 1px solid 
   .topbar { padding: 0 16px; }
   .run-state small { display: none; }
   .transport { padding-inline: 16px; }
+  .telemetry { display: none; }
+}
+
+@media (min-width: 761px) and (max-width: 1080px) {
+  .workspace { grid-template-columns: 220px minmax(0, 1fr); }
+  .telemetry { display: none; }
 }
