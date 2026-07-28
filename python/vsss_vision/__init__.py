@@ -1,5 +1,6 @@
 """Causal camera-state estimation and prediction contracts."""
 
+from vsss_vision.adapter import PredictiveObservationAdapter
 from vsss_vision.camera import CameraFrame, CameraPerturbationProfile, SyntheticCamera
 from vsss_vision.contracts import (
     Association,
@@ -7,7 +8,9 @@ from vsss_vision.contracts import (
     BallMeasurement,
     EstimatorCalibration,
     Interception,
+    PolicyVisionRecord,
     Prediction,
+    PredictiveFeatures,
     RobotEstimate,
     RobotMeasurement,
 )
@@ -30,7 +33,10 @@ __all__ = [
     "EstimatorCalibration",
     "FieldPredictionModel",
     "Interception",
+    "PolicyVisionRecord",
     "Prediction",
+    "PredictiveFeatures",
+    "PredictiveObservationAdapter",
     "RobotEkf",
     "RobotEstimate",
     "RobotMeasurement",

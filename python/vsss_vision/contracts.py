@@ -94,6 +94,24 @@ class Interception:
 
 
 @dataclass(frozen=True)
+class PredictiveFeatures:
+    schema_version: int
+    adapter_id: str
+    available: bool
+    values: tuple[float, ...]
+
+
+@dataclass(frozen=True)
+class PolicyVisionRecord:
+    decision_time: float
+    estimate: BallEstimate | None
+    prediction: Prediction | None
+    interception: Interception | None
+    features: PredictiveFeatures
+    schema_version: int = SCHEMA_VERSION
+
+
+@dataclass(frozen=True)
 class EstimatorCalibration:
     calibration_id: str = "m12-reference-v1"
     ball_process_variance: float = 0.08
