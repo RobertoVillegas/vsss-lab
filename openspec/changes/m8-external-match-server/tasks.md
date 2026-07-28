@@ -24,7 +24,7 @@
 
 ## 4. Verification and handoff
 
-- [ ] 4.1 Add fake-clock deadline, malformed input, side-switch, and isolation tests
+- [x] 4.1 Add fake-clock deadline, malformed input, side-switch, and isolation tests
 - [x] 4.2 Add Rust-server/Python-controller end-to-end smoke and replay inspection
 - [ ] 4.3 Record performance, artifacts, evidence, limitations, and rollback
 - [ ] 4.4 Run doctor, build, test, lint, container gates, and signed commits

@@ -275,6 +275,19 @@ impl SessionRegistry {
         }
     }
 
+    /// Swap active team assignments without changing controller identities.
+    pub fn switch_sides(&mut self) {
+        for session in self.sessions.values_mut() {
+            if session.state == SessionState::Active {
+                session.slot = match session.slot {
+                    ControllerSlot::Blue => ControllerSlot::Yellow,
+                    ControllerSlot::Yellow => ControllerSlot::Blue,
+                    other => other,
+                };
+            }
+        }
+    }
+
     /// Return a session by opaque transport identity.
     #[must_use]
     pub fn get(&self, routing_id: &[u8]) -> Option<&ControllerSession> {

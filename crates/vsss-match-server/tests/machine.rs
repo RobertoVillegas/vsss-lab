@@ -134,3 +134,32 @@ fn sessions_enforce_slot_sequence_and_lease() {
         SessionState::Disconnected
     );
 }
+
+#[test]
+fn side_switch_preserves_transport_and_policy_identity() {
+    let mut sessions = SessionRegistry::default();
+    for (routing_id, name, slot) in [
+        (b"alpha".to_vec(), "policy-alpha", ControllerSlot::Blue),
+        (b"beta".to_vec(), "policy-beta", ControllerSlot::Yellow),
+    ] {
+        sessions
+            .register(
+                ControllerIdentity {
+                    routing_id,
+                    name: name.to_owned(),
+                },
+                slot,
+                0,
+            )
+            .expect("register");
+    }
+
+    sessions.switch_sides();
+
+    let alpha = sessions.get(b"alpha").expect("alpha");
+    let beta = sessions.get(b"beta").expect("beta");
+    assert_eq!(alpha.identity.name, "policy-alpha");
+    assert_eq!(alpha.slot, ControllerSlot::Yellow);
+    assert_eq!(beta.identity.name, "policy-beta");
+    assert_eq!(beta.slot, ControllerSlot::Blue);
+}
