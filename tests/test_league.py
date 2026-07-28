@@ -1,0 +1,122 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+from vsss_league.promotion import FixtureResult, decide_promotion
+from vsss_league.ratings import elo_update
+from vsss_league.registry import LeagueRegistry, PolicyCategory, PolicyEntry
+
+
+def checkpoint_entry(
+    tmp_path: Path,
+    *,
+    policy_id: str,
+    version: int,
+    category: str = "historical",
+    status: str = "historical",
+) -> PolicyEntry:
+    checkpoint = tmp_path / f"{policy_id}-{version}.pt"
+    checkpoint.write_bytes(f"{policy_id}:{version}".encode())
+    return PolicyEntry.from_checkpoint(
+        policy_id=policy_id,
+        version=version,
+        category=category,  # type: ignore[arg-type]
+        status=status,  # type: ignore[arg-type]
+        checkpoint=checkpoint,
+        algorithm="mappo",
+        rating=1_000.0,
+        parent=None,
+        created_at="2026-07-28T00:00:00Z",
+        training_iteration=version,
+    )
+
+
+def test_registry_is_canonical_atomic_and_rejects_duplicates(tmp_path: Path) -> None:
+    path = tmp_path / "registry.json"
+    registry = LeagueRegistry.load(path)
+    entry = checkpoint_entry(tmp_path, policy_id="main", version=0, category="main", status="main")
+    registry.register(entry)
+    expected = path.read_bytes()
+    assert LeagueRegistry.load(path).entries == (entry,)
+    with pytest.raises(ValueError, match="duplicate"):
+        registry.register(entry)
+    assert path.read_bytes() == expected
+    assert not tuple(tmp_path.glob(".registry.json.*"))
+
+
+def test_matchmaking_is_seeded_and_independent_of_registration_order(tmp_path: Path) -> None:
+    entries = (
+        checkpoint_entry(tmp_path, policy_id="a", version=0),
+        checkpoint_entry(tmp_path, policy_id="b", version=0),
+        checkpoint_entry(
+            tmp_path,
+            policy_id="main",
+            version=0,
+            category="main",
+            status="main",
+        ),
+    )
+    first = LeagueRegistry(tmp_path / "first.json", entries)
+    second = LeagueRegistry(tmp_path / "second.json", tuple(reversed(entries)))
+    weights: dict[PolicyCategory, float] = {"main": 0.35, "historical": 0.25}
+    assert (
+        first.select_opponent(seed=12, weights=weights).key
+        == second.select_opponent(seed=12, weights=weights).key
+    )
+
+
+def test_promotion_retains_previous_main_as_history(tmp_path: Path) -> None:
+    main = checkpoint_entry(tmp_path, policy_id="policy", version=0, category="main", status="main")
+    candidate = checkpoint_entry(
+        tmp_path, policy_id="policy", version=1, category="main", status="candidate"
+    )
+    registry = LeagueRegistry(tmp_path / "registry.json", (main, candidate))
+    registry.save()
+    registry.promote(candidate.key)
+    assert registry.current_main().key == candidate.key
+    assert registry.get(main.key).status == "historical"
+    assert registry.get(main.key).category == "historical"
+
+
+def test_elo_is_zero_sum_and_draw_is_stable_for_equal_ratings() -> None:
+    win = elo_update(1_000.0, 1_000.0, first_score=1.0)
+    assert win.first == 1_016.0
+    assert win.second == 984.0
+    assert (win.first - 1_000.0) == -(win.second - 1_000.0)
+    draw = elo_update(1_000.0, 1_000.0, first_score=0.5)
+    assert draw.first == draw.second == 1_000.0
+
+
+def fixtures(margin: float) -> tuple[FixtureResult, ...]:
+    return tuple(
+        FixtureResult(category, category, margin, 0.0, (1, 2))
+        for category in ("main", "historical", "heuristic")
+    )
+
+
+def test_promotion_is_reproducible_and_blocks_regression() -> None:
+    passed = decide_promotion(
+        candidate="candidate@1",
+        current_main="main@0",
+        identity_gate=True,
+        fixtures=fixtures(0.2),
+        required_margin=0.1,
+    )
+    repeated = decide_promotion(
+        candidate="candidate@1",
+        current_main="main@0",
+        identity_gate=True,
+        fixtures=fixtures(0.2),
+        required_margin=0.1,
+    )
+    assert passed.promoted
+    assert passed.canonical_json() == repeated.canonical_json()
+    regressive = (*fixtures(0.2)[:2], FixtureResult("heuristic", "heuristic", -0.1, 0.0, (1, 2)))
+    assert not decide_promotion(
+        candidate="candidate@1",
+        current_main="main@0",
+        identity_gate=True,
+        fixtures=regressive,
+        required_margin=0.0,
+    ).promoted

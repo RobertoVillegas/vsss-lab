@@ -5,9 +5,9 @@
 
 ## 2. Registry and ratings
 
-- [ ] 2.1 Implement atomic versioned registry and immutable checkpoint entries
-- [ ] 2.2 Implement seeded weighted matchmaking and historical transitions
-- [ ] 2.3 Implement Elo and canonical tournament reports
+- [x] 2.1 Implement atomic versioned registry and immutable checkpoint entries
+- [x] 2.2 Implement seeded weighted matchmaking and historical transitions
+- [x] 2.3 Implement Elo and canonical tournament reports
 
 ## 3. Self-play and visualization
 
