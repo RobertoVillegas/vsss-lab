@@ -1,5 +1,6 @@
 """Scripted evaluation and replay utilities."""
 
+from vsss_eval.analytics import ReplayAnalytics, analyze_replay
 from vsss_eval.match import MatchSummary, run_scripted_match
 from vsss_eval.render import render_svg
 from vsss_eval.replay import inspect_replay, replay_frames
@@ -18,8 +19,10 @@ __all__ = [
     "MatchSummary",
     "MetricsSink",
     "NullSink",
+    "ReplayAnalytics",
     "UdpFrameSink",
     "VisualFrame",
+    "analyze_replay",
     "inspect_replay",
     "render_svg",
     "replay_frames",
