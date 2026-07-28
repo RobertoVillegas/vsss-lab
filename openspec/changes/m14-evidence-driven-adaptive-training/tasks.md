@@ -40,7 +40,7 @@
       action abstraction at matched control frequency
 - [x] Implement a bounded exact-simulator planner for one atomic skill
 - [ ] Compare scratch, verified imitation warm start, and MAPPO fine-tuning
-- [ ] Keep KAN and learned world models deferred unless their entry gates pass
+- [x] Keep KAN and learned world models deferred unless their entry gates pass
 
 ## 5. Population consolidation
 
@@ -66,4 +66,4 @@
 - [x] Add contract, determinism, resume, and failure-injection tests
 - [ ] Record CPU/CUDA throughput and total compute for every promoted study
 - [x] Run doctor, build, test, lint, CUDA smoke, and strict OpenSpec validation
-- [ ] Commit signed Conventional Commits and push
+- [x] Commit signed Conventional Commits and push
