@@ -34,3 +34,7 @@ stagnation_penalty = 1.0
 stagnation_seconds = 5.0
 stagnation_ball_distance = 0.02
 curriculum_heuristic_iterations = 250
+league_self_play_weight = 0.50
+league_historical_weight = 0.35
+league_heuristic_weight = 0.15
+league_history_window = 16

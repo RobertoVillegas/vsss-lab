@@ -14,6 +14,7 @@ from typing import Literal
 REGISTRY_SCHEMA = 1
 PolicyCategory = Literal["main", "historical", "heuristic", "random", "exploiter", "friend"]
 PolicyStatus = Literal["candidate", "main", "historical", "fixture"]
+TrainingOpponentKind = Literal["self", "historical", "heuristic"]
 
 
 @dataclass(frozen=True)
@@ -62,6 +63,22 @@ class PolicyEntry:
             created_at=created_at,
             training_iteration=training_iteration,
         )
+
+
+@dataclass(frozen=True)
+class TrainingOpponent:
+    kind: TrainingOpponentKind
+    entry: PolicyEntry | None = None
+
+    @property
+    def key(self) -> str:
+        if self.kind == "self":
+            return "self-play-current"
+        if self.kind == "heuristic":
+            return "heuristic-dynamic"
+        if self.entry is None:
+            raise ValueError("historical opponent requires a policy entry")
+        return self.entry.key
 
 
 class LeagueRegistry:
@@ -155,6 +172,45 @@ class LeagueRegistry:
             raise ValueError("no eligible league opponents")
         realized_weights = [weights[entry.category] for entry in eligible]
         return random.Random(seed).choices(eligible, weights=realized_weights, k=1)[0]
+
+    def select_training_opponent(
+        self,
+        *,
+        seed: int,
+        self_play_weight: float,
+        historical_weight: float,
+        heuristic_weight: float,
+        history_window: int,
+        exclude: frozenset[str] = frozenset(),
+    ) -> TrainingOpponent:
+        """Select a deterministic population mode, then one bounded historical policy."""
+        history = sorted(
+            (
+                entry
+                for entry in self.entries
+                if entry.checkpoint is not None
+                and entry.key not in exclude
+                and entry.status in ("main", "candidate", "historical")
+            ),
+            key=lambda entry: (entry.training_iteration, entry.key),
+        )[-history_window:]
+        weighted_modes: list[tuple[TrainingOpponentKind, float]] = [
+            ("self", self_play_weight),
+            ("heuristic", heuristic_weight),
+        ]
+        if history:
+            weighted_modes.append(("historical", historical_weight))
+        eligible = [(kind, weight) for kind, weight in weighted_modes if weight > 0.0]
+        if not eligible:
+            raise ValueError("no eligible training opponents")
+        generator = random.Random(seed)
+        kind = generator.choices(
+            [item[0] for item in eligible],
+            weights=[item[1] for item in eligible],
+            k=1,
+        )[0]
+        entry = generator.choice(history) if kind == "historical" else None
+        return TrainingOpponent(kind, entry)
 
 
 def _sha256(path: Path) -> str:

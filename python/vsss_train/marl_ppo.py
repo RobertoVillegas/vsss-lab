@@ -27,6 +27,10 @@ LEGACY_NEUTRAL_CONFIG = {
     "time_penalty_coefficient": 0.0,
     "movement_speed_threshold": 0.03,
     "curriculum_heuristic_iterations": 0,
+    "league_self_play_weight": 1.0,
+    "league_historical_weight": 0.0,
+    "league_heuristic_weight": 0.0,
+    "league_history_window": 16,
 }
 
 
@@ -219,13 +223,7 @@ class MarlLearner:
         )
 
     def load(self, path: Path) -> None:
-        payload = torch.load(path, map_location="cpu", weights_only=True)
-        if payload.get("schema_version") != MARL_CHECKPOINT_SCHEMA:
-            raise ValueError("incompatible MARL checkpoint schema")
-        if payload.get("algorithm") != self.config.algorithm:
-            raise ValueError("MARL checkpoint algorithm mismatch")
-        if not _checkpoint_config_compatible(payload, self.config):
-            raise ValueError("MARL checkpoint configuration fingerprint mismatch")
+        payload = _load_checkpoint_payload(path, self.config)
         self.actor.load_state_dict(payload["actor"])
         self.critic.load_state_dict(payload["critic"])
         self.optimizer.load_state_dict(payload["optimizer"])
@@ -242,6 +240,33 @@ class MarlLearner:
         torch.set_rng_state(payload["torch_rng"])
         if self.device.type == "cuda" and payload.get("torch_cuda_rng") is not None:
             torch.cuda.set_rng_state_all(payload["torch_cuda_rng"])
+
+
+def load_policy_actor(
+    path: Path,
+    config: MarlConfig,
+    device: torch.device,
+) -> tuple[SharedActor, int]:
+    """Load an inference-only historical actor without mutating trainer RNG state."""
+    payload = _load_checkpoint_payload(path, config)
+    with torch.random.fork_rng():
+        actor = SharedActor(config.hidden_size).to(device)
+    actor.load_state_dict(payload["actor"])
+    return actor.eval(), int(payload["policy_version"])
+
+
+def _load_checkpoint_payload(path: Path, config: MarlConfig) -> dict[str, Any]:
+    payload = cast(
+        dict[str, Any],
+        torch.load(path, map_location="cpu", weights_only=True),
+    )
+    if payload.get("schema_version") != MARL_CHECKPOINT_SCHEMA:
+        raise ValueError("incompatible MARL checkpoint schema")
+    if payload.get("algorithm") != config.algorithm:
+        raise ValueError("MARL checkpoint algorithm mismatch")
+    if not _checkpoint_config_compatible(payload, config):
+        raise ValueError("MARL checkpoint configuration fingerprint mismatch")
+    return payload
 
 
 def _checkpoint_config_compatible(payload: dict[str, Any], config: MarlConfig) -> bool:

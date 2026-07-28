@@ -115,6 +115,10 @@ class MarlConfig:
     stagnation_seconds: float = 5.0
     stagnation_ball_distance: float = 0.02
     curriculum_heuristic_iterations: int = 0
+    league_self_play_weight: float = 1.0
+    league_historical_weight: float = 0.0
+    league_heuristic_weight: float = 0.0
+    league_history_window: int = 16
 
     def __post_init__(self) -> None:
         if self.schema_version != 1:
@@ -139,6 +143,9 @@ class MarlConfig:
             self.defensive_coverage_coefficient,
             self.draw_penalty,
             self.stagnation_penalty,
+            self.league_self_play_weight,
+            self.league_historical_weight,
+            self.league_heuristic_weight,
         )
         if any(value < 0.0 for value in non_negative):
             raise ValueError("MARL reward coefficients must be non-negative")
@@ -154,6 +161,15 @@ class MarlConfig:
             raise ValueError("minimum_log_std must not be positive")
         if self.curriculum_heuristic_iterations < 0:
             raise ValueError("curriculum_heuristic_iterations must be non-negative")
+        if (
+            self.league_self_play_weight
+            + self.league_historical_weight
+            + self.league_heuristic_weight
+            <= 0.0
+        ):
+            raise ValueError("at least one league opponent weight must be positive")
+        if self.league_history_window <= 0:
+            raise ValueError("league_history_window must be positive")
 
     def fingerprint(self) -> str:
         payload = json.dumps(asdict(self), sort_keys=True, separators=(",", ":"))

@@ -13,8 +13,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from vsss_train.config import MarlConfig, load_marl_config
+from vsss_train.marl import SharedActor
 from vsss_train.marl_env import distill_dynamic_teacher
-from vsss_train.marl_ppo import MarlLearner
+from vsss_train.marl_ppo import MarlLearner, load_policy_actor
 
 from vsss_league.progress import TrainingDashboard
 from vsss_league.promotion import FixtureResult, decide_promotion
@@ -192,6 +193,7 @@ def _run(arguments: argparse.Namespace) -> None:
     total_matches = 0
     started_at = time.monotonic()
     rollout_session = create_rollout_session(config, config_json, state_json)
+    opponent_cache: dict[str, SharedActor] = {}
     telemetry = TrainingTelemetry.create(
         run_dir,
         config,
@@ -224,9 +226,14 @@ def _run(arguments: argparse.Namespace) -> None:
     previous_sigterm = signal.signal(signal.SIGTERM, request_stop)
     try:
         for iteration in range(start_iteration, final_iteration + 1):
-            in_heuristic_curriculum = iteration <= config.curriculum_heuristic_iterations
-            opponent = None if in_heuristic_curriculum else copy.deepcopy(learner.actor).eval()
-            opponent_id = "heuristic-dynamic" if in_heuristic_curriculum else parent_key
+            opponent, opponent_id = _select_training_opponent(
+                registry,
+                learner,
+                config,
+                iteration=iteration,
+                latest_checkpoint=parent_key,
+                cache=opponent_cache,
+            )
             save_checkpoint = (
                 iteration % arguments.checkpoint_every == 0 or iteration == final_iteration
             )
@@ -316,7 +323,7 @@ def _run(arguments: argparse.Namespace) -> None:
                     ticks=capture_frames,
                     replay_path=replay_dir / f"iteration-{iteration:06d}.jsonl",
                     blue_policy=f"{config.policy_id}@{result.policy_version}",
-                    yellow_policy=f"{config.policy_id}@{result.policy_version - 1}",
+                    yellow_policy=opponent_id,
                 )
             if interrupt.stop_requested:
                 break
@@ -349,6 +356,49 @@ def _run(arguments: argparse.Namespace) -> None:
             sort_keys=True,
         )
     )
+
+
+def _select_training_opponent(
+    registry: LeagueRegistry,
+    learner: MarlLearner,
+    config: MarlConfig,
+    *,
+    iteration: int,
+    latest_checkpoint: str,
+    cache: dict[str, SharedActor],
+) -> tuple[SharedActor | None, str]:
+    if iteration <= config.curriculum_heuristic_iterations:
+        return None, "heuristic-dynamic"
+    selection = registry.select_training_opponent(
+        seed=config.seed + 100_000 + iteration,
+        self_play_weight=config.league_self_play_weight,
+        historical_weight=config.league_historical_weight,
+        heuristic_weight=config.league_heuristic_weight,
+        history_window=config.league_history_window,
+        exclude=frozenset({latest_checkpoint}),
+    )
+    if selection.kind == "heuristic":
+        return None, selection.key
+    if selection.kind == "self":
+        return (
+            copy.deepcopy(learner.actor).eval(),
+            f"{config.policy_id}@{learner.policy_version}",
+        )
+    if selection.entry is None or selection.entry.checkpoint is None:
+        raise ValueError("selected historical opponent has no checkpoint")
+    opponent = cache.get(selection.entry.key)
+    if opponent is None:
+        opponent, loaded_version = load_policy_actor(
+            Path(selection.entry.checkpoint),
+            config,
+            learner.device,
+        )
+        if loaded_version != selection.entry.version:
+            raise ValueError("historical opponent version does not match registry")
+        if len(cache) >= config.league_history_window:
+            cache.pop(next(iter(cache)))
+        cache[selection.entry.key] = opponent
+    return opponent, selection.entry.key
 
 
 def _register_candidate(

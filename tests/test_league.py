@@ -7,6 +7,7 @@ import pytest
 import torch
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from vsss_eval import inspect_replay
+from vsss_league.cli import _select_training_opponent
 from vsss_league.promotion import FixtureResult, decide_promotion
 from vsss_league.ratings import elo_update
 from vsss_league.registry import LeagueRegistry, PolicyCategory, PolicyEntry
@@ -83,6 +84,86 @@ def test_matchmaking_is_seeded_and_independent_of_registration_order(tmp_path: P
         first.select_opponent(seed=12, weights=weights).key
         == second.select_opponent(seed=12, weights=weights).key
     )
+
+
+def test_training_population_is_seeded_bounded_and_excludes_latest(tmp_path: Path) -> None:
+    entries = tuple(
+        checkpoint_entry(
+            tmp_path,
+            policy_id="policy",
+            version=version,
+            category="main",
+            status="main" if version == 0 else "candidate",
+        )
+        for version in range(5)
+    )
+    registry = LeagueRegistry(tmp_path / "registry.json", entries)
+    selections = [
+        registry.select_training_opponent(
+            seed=seed,
+            self_play_weight=1.0,
+            historical_weight=1.0,
+            heuristic_weight=1.0,
+            history_window=2,
+            exclude=frozenset({"policy@4"}),
+        )
+        for seed in range(100)
+    ]
+    assert {selection.kind for selection in selections} == {"self", "historical", "heuristic"}
+    historical = {
+        selection.entry.key
+        for selection in selections
+        if selection.kind == "historical" and selection.entry is not None
+    }
+    assert historical <= {"policy@2", "policy@3"}
+    assert "policy@4" not in historical
+
+
+def test_training_population_loads_historical_actor_without_changing_rng(tmp_path: Path) -> None:
+    config = MarlConfig(
+        device="cpu",
+        num_envs=1,
+        hidden_size=8,
+        epochs=1,
+        minibatch_size=6,
+        rollout_steps=2,
+        curriculum_heuristic_iterations=0,
+        league_self_play_weight=0.0,
+        league_historical_weight=1.0,
+        league_heuristic_weight=0.0,
+    )
+    learner = MarlLearner(config)
+    old_checkpoint = tmp_path / "iteration-000000.pt"
+    learner.save(old_checkpoint)
+    registry = LeagueRegistry(tmp_path / "registry.json")
+    registry.register(
+        PolicyEntry.from_checkpoint(
+            policy_id=config.policy_id,
+            version=0,
+            category="main",
+            status="main",
+            checkpoint=old_checkpoint,
+            algorithm=config.algorithm,
+            rating=1_000.0,
+            parent=None,
+            created_at="2026-07-28T00:00:00Z",
+            training_iteration=0,
+        )
+    )
+    before = torch.get_rng_state().clone()
+
+    opponent, opponent_id = _select_training_opponent(
+        registry,
+        learner,
+        config,
+        iteration=1,
+        latest_checkpoint="not-registered@1",
+        cache={},
+    )
+
+    assert opponent is not None
+    assert opponent_id == f"{config.policy_id}@0"
+    assert torch.equal(before, torch.get_rng_state())
 
 
 def test_promotion_retains_previous_main_as_history(tmp_path: Path) -> None:

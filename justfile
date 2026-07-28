@@ -138,6 +138,9 @@ vision-metrics replay:
 league-rank-checkpoints run_dir iterations config="experiments/configs/m13-mappo-directional.toml" seeds="10" output="reports/checkpoint-ranking.json":
   uv run --group train python -m tools.rank_checkpoints --run-dir "{{run_dir}}" --config "{{config}}" --iterations "{{iterations}}" --seeds {{seeds}} --output "{{output}}"
 
+league-compare-runs baseline candidate output="reports/m13/run-comparison.json" replay_samples="8" baseline_fps="3973":
+  uv run --group train python -m tools.compare_training_runs --baseline "{{baseline}}" --candidate "{{candidate}}" --output "{{output}}" --replay-samples {{replay_samples}} --baseline-frames-per-second {{baseline_fps}}
+
 league-tournament checkpoint run_dir="/home/rob/runs/vsss-lab-tournament" config="experiments/configs/m6-mappo.toml" seeds="5":
   uv run --group train python -m vsss_league.cli tournament --config "{{config}}" --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --checkpoint "{{checkpoint}}" --output-dir "{{run_dir}}" --seeds {{seeds}}
 
