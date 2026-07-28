@@ -1,30 +1,30 @@
 ## 1. Contract and baseline
 
-- [ ] Record the frozen M14 configuration, checkpoint/evaluation identity, and
+- [x] Record the frozen M14 configuration, checkpoint/evaluation identity, and
       current per-family behavior
-- [ ] Define versioned skill scenario parameters, difficulty axes, outcomes,
+- [x] Define versioned skill scenario parameters, difficulty axes, outcomes,
       and reason codes
-- [ ] Add an ADR for scenario compilation and semantic termination boundaries
-- [ ] Preserve loading of legacy static M14 scenarios
+- [x] Add an ADR for scenario compilation and semantic termination boundaries
+- [x] Preserve loading of legacy static M14 scenarios
 
 ## 2. Deterministic scenario families
 
-- [ ] Implement deterministic parameter-to-canonical-state compilation
-- [ ] Implement mirror-safe approach, interception, save/deflection, clearance,
+- [x] Implement deterministic parameter-to-canonical-state compilation
+- [x] Implement mirror-safe approach, interception, save/deflection, clearance,
       shot, and pass/receive families
-- [ ] Randomize bounded ball speed/angle, robot spawn/heading, target geometry,
+- [x] Randomize bounded ball speed/angle, robot spawn/heading, target geometry,
       and opponent pressure
-- [ ] Reject non-finite, outside-field, overlapping, unreachable, and
+- [x] Reject non-finite, outside-field, overlapping, unreachable, and
       already-terminal initial states
 - [ ] Add property tests over seeds, mirrors, difficulty bounds, and neighbor
       world isolation
 
 ## 3. Semantic predicates and termination
 
-- [ ] Implement typed running, success, failure, and unresolved outcomes
-- [ ] Implement causal approach and interception predicates
-- [ ] Implement goal-bound save/deflection and clearance predicates
-- [ ] Implement shot and pass/receive contact-chain predicates
+- [x] Implement typed running, success, failure, and unresolved outcomes
+- [x] Implement causal approach and interception predicates
+- [x] Implement goal-bound save/deflection and clearance predicates
+- [x] Implement shot and pass/receive contact-chain predicates
 - [ ] Add short confirmation windows and semantic early termination
 - [ ] Add golden near-miss, opponent-touch, rebound, own-goal, timeout, and
       repeated-contact anti-farming traces
