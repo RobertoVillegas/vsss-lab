@@ -129,7 +129,6 @@ def evaluate_candidate_vs_heuristic(
     seeds: tuple[int, ...],
     ticks: int,
     replay_dir: Path,
-    outcome_margin: float = 0.05,
 ) -> TournamentReport:
     import hashlib
 
@@ -154,8 +153,10 @@ def evaluate_candidate_vs_heuristic(
                 yellow_policy="heuristic",
             )
             progress = float(result["progress"])
+            score_blue = int(result["score_blue"])
+            score_yellow = int(result["score_yellow"])
             first_score = (
-                1.0 if progress > outcome_margin else 0.0 if progress < -outcome_margin else 0.5
+                1.0 if score_blue > score_yellow else 0.0 if score_blue < score_yellow else 0.5
             )
             outcome = "win" if first_score == 1.0 else "loss" if first_score == 0.0 else "draw"
             rating = elo_update(
@@ -170,8 +171,8 @@ def evaluate_candidate_vs_heuristic(
                     opponent="heuristic",
                     side=side,
                     seed=seed,
-                    score_blue=int(result["score_blue"]),
-                    score_yellow=int(result["score_yellow"]),
+                    score_blue=score_blue,
+                    score_yellow=score_yellow,
                     progress=progress,
                     outcome=outcome,
                     duration_ticks=int(result["ticks"]),
