@@ -104,6 +104,12 @@ protocol-generate:
 protocol-check:
   bash tools/protocol/check.sh
 
+external-tournament output="reports/m8/external-match.jsonl" ticks="50":
+  uv run python -m tools.external_tournament --output "{{output}}" --ticks {{ticks}}
+
+external-container-smoke:
+  docker compose --profile competition up --build --abort-on-container-exit --exit-code-from match-server match-server controller-rust controller-python
+
 league-promote candidate manifest run_dir="/home/rob/runs/vsss-lab-demo":
   uv run --group train python -m vsss_league.cli promote --run-dir "{{run_dir}}" --candidate "{{candidate}}" --manifest "{{manifest}}"
 

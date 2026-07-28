@@ -1,6 +1,6 @@
 //! Injectable monotonic clocks.
 
-use std::time::Instant;
+use std::{sync::Arc, time::Instant};
 
 /// Monotonic time source used for deadlines and leases.
 pub trait Clock {
@@ -9,15 +9,15 @@ pub trait Clock {
 }
 
 /// Process-local production monotonic clock.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct SystemClock {
-    origin: Instant,
+    origin: Arc<Instant>,
 }
 
 impl Default for SystemClock {
     fn default() -> Self {
         Self {
-            origin: Instant::now(),
+            origin: Arc::new(Instant::now()),
         }
     }
 }

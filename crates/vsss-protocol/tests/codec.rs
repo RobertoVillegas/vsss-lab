@@ -2,7 +2,7 @@
 
 use vsss_protocol::{
     DecodeError, EnvelopeMeta, ROBOTS_PER_TEAM, RobotCommand, decode_envelope, encode_action,
-    encode_hello, wire,
+    encode_capabilities, encode_hello, encode_match_result, encode_observation, encode_reset, wire,
 };
 
 const META: EnvelopeMeta = EnvelopeMeta {
@@ -105,5 +105,52 @@ fn rust_decodes_committed_golden_buffers() {
             .robots()
             .len(),
         ROBOTS_PER_TEAM
+    );
+}
+
+#[test]
+fn server_payloads_round_trip() {
+    let digest = [7_u8; 32];
+    let capabilities = encode_capabilities(META, wire::ControllerSlot::Blue, 20_000_000, 4096);
+    let reset = encode_reset(META, "{}", &digest, "{}", 42);
+    let observation = encode_observation(META, "{}", &digest);
+    let result = encode_match_result(META, 2, 1, &digest, "completed");
+
+    assert_eq!(
+        decode_envelope(&capabilities)
+            .expect("capabilities")
+            .wire()
+            .payload_as_capabilities()
+            .expect("payload")
+            .max_message_bytes(),
+        4096
+    );
+    assert_eq!(
+        decode_envelope(&reset)
+            .expect("reset")
+            .wire()
+            .payload_as_reset()
+            .expect("payload")
+            .seed(),
+        42
+    );
+    assert_eq!(
+        decode_envelope(&observation)
+            .expect("observation")
+            .wire()
+            .payload_as_observation()
+            .expect("payload")
+            .state_sha256()
+            .len(),
+        32
+    );
+    assert_eq!(
+        decode_envelope(&result)
+            .expect("result")
+            .wire()
+            .payload_as_match_result()
+            .expect("payload")
+            .score_blue(),
+        2
     );
 }

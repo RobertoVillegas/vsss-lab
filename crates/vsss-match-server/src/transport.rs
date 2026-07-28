@@ -57,6 +57,29 @@ impl RouterTransport {
         if !endpoint.starts_with("tcp://127.0.0.1:") {
             return Err(TransportError::NonLoopbackEndpoint);
         }
+        Self::bind_allowed(endpoint, max_message_bytes).await
+    }
+
+    /// Bind inside a container-only private network.
+    ///
+    /// # Errors
+    ///
+    /// Only an all-interfaces TCP bind is accepted; publication is controlled
+    /// by the container network, which must not expose a host port.
+    pub async fn bind_private(
+        endpoint: &str,
+        max_message_bytes: usize,
+    ) -> Result<Self, TransportError> {
+        if !endpoint.starts_with("tcp://0.0.0.0:") {
+            return Err(TransportError::NonLoopbackEndpoint);
+        }
+        Self::bind_allowed(endpoint, max_message_bytes).await
+    }
+
+    async fn bind_allowed(
+        endpoint: &str,
+        max_message_bytes: usize,
+    ) -> Result<Self, TransportError> {
         let mut socket = RouterSocket::new();
         let endpoint = socket.bind(endpoint).await?;
         Ok(Self {

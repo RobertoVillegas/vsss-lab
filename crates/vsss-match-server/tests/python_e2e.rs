@@ -21,6 +21,7 @@ async fn rust_server_exchanges_verified_message_with_python_sdk() {
             "vsss_controller.sample",
             "--endpoint",
             &router.endpoint(),
+            "--exchange-only",
         ])
         .env("PYTHONPATH", root.join("python"))
         .spawn()

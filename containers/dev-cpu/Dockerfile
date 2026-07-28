@@ -26,4 +26,5 @@ WORKDIR /workspace
 COPY --chown=vsss:vsss . .
 USER vsss
 RUN mise trust mise.toml && mise install && mise run bootstrap
+RUN mise run build
 CMD ["mise", "run", "test"]

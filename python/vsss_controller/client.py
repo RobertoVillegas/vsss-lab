@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import zmq
 import zmq.asyncio
 
@@ -12,7 +14,8 @@ class DealerClient:
     """Own one isolated DEALER connection to the authoritative server."""
 
     def __init__(self, endpoint: str, identity: bytes) -> None:
-        if not endpoint.startswith("tcp://127.0.0.1:"):
+        private_network = os.environ.get("VSSS_PRIVATE_NETWORK") == "1"
+        if not endpoint.startswith("tcp://127.0.0.1:") and not private_network:
             raise ValueError("controller endpoint must be loopback")
         if not identity:
             raise ValueError("identity must not be empty")

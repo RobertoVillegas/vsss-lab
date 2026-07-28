@@ -206,6 +206,117 @@ pub fn encode_action(meta: EnvelopeMeta, commands: [RobotCommand; ROBOTS_PER_TEA
     )
 }
 
+/// Encode negotiated server capabilities.
+#[must_use]
+pub fn encode_capabilities(
+    meta: EnvelopeMeta,
+    assigned_slot: wire::ControllerSlot,
+    control_period_ns: u64,
+    max_message_bytes: u32,
+) -> Vec<u8> {
+    let mut builder = FlatBufferBuilder::new();
+    let capabilities = wire::Capabilities::create(
+        &mut builder,
+        &wire::CapabilitiesArgs {
+            accepted_protocol_version: PROTOCOL_VERSION,
+            assigned_slot,
+            control_period_ns,
+            max_message_bytes,
+        },
+    );
+    finish_envelope(
+        builder,
+        meta,
+        wire::Payload::Capabilities,
+        capabilities.as_union_value(),
+    )
+}
+
+/// Encode canonical reset configuration and initial state JSON.
+#[must_use]
+pub fn encode_reset(
+    meta: EnvelopeMeta,
+    config_json: &str,
+    config_sha256: &[u8; 32],
+    initial_state_json: &str,
+    seed: u64,
+) -> Vec<u8> {
+    let mut builder = FlatBufferBuilder::new();
+    let canonical_json = builder.create_string(config_json);
+    let sha256 = builder.create_vector(config_sha256);
+    let config = wire::MatchConfigJson::create(
+        &mut builder,
+        &wire::MatchConfigJsonArgs {
+            canonical_json: Some(canonical_json),
+            sha256: Some(sha256),
+        },
+    );
+    let initial_state_json = builder.create_string(initial_state_json);
+    let reset = wire::Reset::create(
+        &mut builder,
+        &wire::ResetArgs {
+            config: Some(config),
+            initial_state_json: Some(initial_state_json),
+            seed,
+        },
+    );
+    finish_envelope(builder, meta, wire::Payload::Reset, reset.as_union_value())
+}
+
+/// Encode one canonical state observation.
+#[must_use]
+pub fn encode_observation(
+    meta: EnvelopeMeta,
+    canonical_state_json: &str,
+    state_sha256: &[u8; 32],
+) -> Vec<u8> {
+    let mut builder = FlatBufferBuilder::new();
+    let canonical_state_json = builder.create_string(canonical_state_json);
+    let state_sha256 = builder.create_vector(state_sha256);
+    let observation = wire::Observation::create(
+        &mut builder,
+        &wire::ObservationArgs {
+            canonical_state_json: Some(canonical_state_json),
+            state_sha256: Some(state_sha256),
+        },
+    );
+    finish_envelope(
+        builder,
+        meta,
+        wire::Payload::Observation,
+        observation.as_union_value(),
+    )
+}
+
+/// Encode an immutable terminal match result.
+#[must_use]
+pub fn encode_match_result(
+    meta: EnvelopeMeta,
+    score_blue: u16,
+    score_yellow: u16,
+    replay_sha256: &[u8; 32],
+    reason: &str,
+) -> Vec<u8> {
+    let mut builder = FlatBufferBuilder::new();
+    let replay_sha256 = builder.create_vector(replay_sha256);
+    let reason = builder.create_string(reason);
+    let result = wire::MatchResult::create(
+        &mut builder,
+        &wire::MatchResultArgs {
+            score_blue,
+            score_yellow,
+            replay_sha256: Some(replay_sha256),
+            reason: Some(reason),
+        },
+    );
+    finish_envelope(
+        builder,
+        meta,
+        wire::Payload::MatchResult,
+        result.as_union_value(),
+    )
+}
+
 fn finish_envelope(
     mut builder: FlatBufferBuilder<'static>,
     meta: EnvelopeMeta,

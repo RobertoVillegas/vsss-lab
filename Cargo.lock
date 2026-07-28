@@ -4215,8 +4215,10 @@ name = "vsss-controller"
 version = "0.0.0"
 dependencies = [
  "thiserror 2.0.19",
+ "tokio",
  "vsss-protocol",
  "vsss-spec",
+ "zeromq",
 ]
 
 [[package]]

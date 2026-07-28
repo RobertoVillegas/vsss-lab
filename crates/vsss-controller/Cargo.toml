@@ -9,8 +9,10 @@ repository.workspace = true
 
 [dependencies]
 thiserror = "2.0"
+tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread"] }
 vsss-protocol = { path = "../vsss-protocol" }
 vsss-spec = { path = "../vsss-spec" }
+zeromq = { version = "0.6.0", default-features = false, features = ["tokio-runtime", "tcp-transport"] }
 
 [lints]
 workspace = true

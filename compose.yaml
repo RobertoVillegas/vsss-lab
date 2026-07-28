@@ -17,3 +17,68 @@ services:
     working_dir: /workspace
     security_opt:
       - no-new-privileges:true
+
+  match-server:
+    profiles: ["competition"]
+    build:
+      context: .
+      dockerfile: containers/dev-cpu/Dockerfile
+    image: vsss-lab/dev-cpu:m8
+    command:
+      - /workspace/target/debug/vsss-match-server
+      - tcp://0.0.0.0:42043
+      - tests/golden/m1_match_config.json
+      - tests/golden/m1_match_state.json
+      - /tmp/external-match.jsonl
+      - "50"
+    networks: [competition]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
+    pids_limit: 256
+
+  controller-rust:
+    profiles: ["competition"]
+    build:
+      context: .
+      dockerfile: containers/dev-cpu/Dockerfile
+    image: vsss-lab/dev-cpu:m8
+    command:
+      - /workspace/target/debug/vsss-controller
+      - tcp://match-server:42043
+    depends_on: [match-server]
+    networks: [competition]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
+    pids_limit: 128
+
+  controller-python:
+    profiles: ["competition"]
+    build:
+      context: .
+      dockerfile: containers/dev-cpu/Dockerfile
+    image: vsss-lab/dev-cpu:m8
+    command:
+      - /workspace/.venv/bin/python
+      - -m
+      - vsss_controller.sample
+      - --endpoint
+      - tcp://match-server:42043
+    environment:
+      PYTHONPATH: /workspace/python
+      PYTHONDONTWRITEBYTECODE: "1"
+      VSSS_PRIVATE_NETWORK: "1"
+    depends_on: [match-server]
+    networks: [competition]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
+    pids_limit: 128
+
+networks:
+  competition:
+    internal: true
