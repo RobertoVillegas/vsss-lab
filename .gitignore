@@ -11,4 +11,7 @@ target/
 coverage.xml
 htmlcov/
 reports/
+web/*/dist/
+web/*/node_modules/
+web/*/*.tsbuildinfo
 .DS_Store

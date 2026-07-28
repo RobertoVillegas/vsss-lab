@@ -39,3 +39,22 @@ under `/home/rob/src`, `/home/rob/work`, `/home/rob/data`, `/home/rob/runs`,
 
 See `AGENTS.md`, `CONTRIBUTING.md`, and `platform/manifest.json` before changing the
 workspace.
+
+## Inspect a training run
+
+`league-run` remains headless so rendering never slows the learner. After it
+captures iterations, launch the run-wide browser viewer:
+
+```bash
+just league-web /home/rob/runs/vsss-first
+```
+
+Open <http://127.0.0.1:8765> in Windows. The viewer can switch iterations,
+play/pause, change speed, seek, step one recorded frame, or skip 100 frames in
+either direction. It binds to WSL loopback and does not expose the run publicly.
+
+The native WSLg viewer remains available for a single iteration:
+
+```bash
+just league-view /home/rob/runs/vsss-first 0010
+```
