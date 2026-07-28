@@ -29,7 +29,7 @@ class IterationResult:
     frames: int
     return_total: float
     progress: float
-    checkpoint: str
+    checkpoint: str | None
     losses: dict[str, float]
 
 
@@ -131,7 +131,7 @@ def train_iteration(
     iteration: int,
     seed: int,
     opponent_id: str,
-    checkpoint: Path,
+    checkpoint: Path | None,
 ) -> IterationResult:
     trajectory, total_return, progress = collect_self_play_trajectory(
         learner,
@@ -142,7 +142,8 @@ def train_iteration(
         opponent_id=opponent_id,
     )
     losses = learner.optimize(trajectory)
-    learner.save(checkpoint)
+    if checkpoint is not None:
+        learner.save(checkpoint)
     return IterationResult(
         iteration=iteration,
         policy_version=learner.policy_version,
@@ -151,6 +152,6 @@ def train_iteration(
         frames=len(trajectory.data),
         return_total=total_return,
         progress=progress,
-        checkpoint=str(checkpoint.resolve()),
+        checkpoint=str(checkpoint.resolve()) if checkpoint is not None else None,
         losses=losses,
     )

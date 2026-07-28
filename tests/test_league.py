@@ -177,6 +177,8 @@ def test_learned_policy_replay_is_viewer_compatible(tmp_path: Path) -> None:
     )
     inspected = inspect_replay(replay)
     assert inspected["ticks"] == result["ticks"] == 4
+    assert result["simulation_seconds"] == pytest.approx(0.08)
+    assert result["outcome"] in {"win", "loss", "draw"}
     assert inspected["final_checksum"] == result["final_checksum"]
     header = replay.read_text().splitlines()[0]
     assert '"blue":"candidate@1"' in header

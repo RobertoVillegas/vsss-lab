@@ -46,9 +46,11 @@ def run_policy_replay(
                 "policies": {"blue": blue_policy, "yellow": yellow_policy},
             },
         )
-        done = False
         index = 0
-        while not done:
+        goals_blue = 0
+        goals_yellow = 0
+        episode = 0
+        while index < ticks:
             with torch.inference_mode():
                 blue_action = blue.deterministic_action(observation).numpy()
                 yellow_action = (
@@ -60,6 +62,14 @@ def run_policy_replay(
                 )
             observation, reward, done, info = environment.step(blue_action, yellow_action)
             snapshot = environment.snapshot()
+            if int(info["events"]) & 1:
+                goals_blue += 1
+            if int(info["events"]) & 2:
+                goals_yellow += 1
+            snapshot["score_blue"] = goals_blue
+            snapshot["score_yellow"] = goals_yellow
+            snapshot["tick"] = (index + 1) * environment.action_repeat
+            snapshot["simulation_time"] = (index + 1) * float(config["control_period"])
             canonical = json.dumps(snapshot, sort_keys=True, separators=(",", ":"))
             final_checksum = hashlib.sha256(canonical.encode()).hexdigest()
             index += 1
@@ -76,10 +86,18 @@ def run_policy_replay(
                     "rewards": [reward.total] * 3 + [-reward.total] * 3,
                 },
             )
+            if done and index < ticks:
+                episode += 1
+                observation = environment.reset(seed + episode)
     return {
         "ticks": index,
-        "score_blue": int(environment.state[3]),
-        "score_yellow": int(environment.state[4]),
+        "score_blue": goals_blue,
+        "score_yellow": goals_yellow,
+        "outcome": (
+            "win" if goals_blue > goals_yellow else "loss" if goals_blue < goals_yellow else "draw"
+        ),
+        "goals": goals_blue + goals_yellow,
+        "simulation_seconds": ticks * float(config["control_period"]),
         "progress": environment.progress_score(),
         "final_checksum": final_checksum,
         "replay": str(replay_path.resolve()),
