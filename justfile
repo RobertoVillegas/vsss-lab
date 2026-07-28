@@ -75,6 +75,9 @@ m6-smoke:
 benchmark-marl iterations="2000":
   uv run --group train python -m tools.benchmark_marl --iterations {{iterations}}
 
+profile-m14 steps="200" output="reports/m14/profile.json":
+  uv run --group train python -m tools.profile_m14 --steps {{steps}} --output "{{output}}"
+
 league-run run_dir="/home/rob/runs/vsss-lab-demo" iterations="3" capture_every="1" capture_seconds="60" checkpoint_every="100" device="auto" num_envs="64" config="experiments/configs/m13-mappo-directional.toml":
   mise run train-env
   uv run --group train python -m vsss_league.cli run --config "{{config}}" --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --run-dir "{{run_dir}}" --iterations {{iterations}} --capture-every {{capture_every}} --capture-seconds {{capture_seconds}} --checkpoint-every {{checkpoint_every}} --device "{{device}}" --num-envs {{num_envs}}
