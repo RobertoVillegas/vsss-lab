@@ -4,9 +4,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_platform_manifest_is_m0_and_digest_pinned() -> None:
+def test_platform_manifest_tracks_current_milestone_and_digest_pins() -> None:
     manifest = json.loads((ROOT / "platform" / "manifest.json").read_text())
-    assert manifest["milestone"] == "M0"
+    assert manifest["milestone"] == "M11"
     assert all("@sha256:" in image for image in manifest["images"].values())
 
 
