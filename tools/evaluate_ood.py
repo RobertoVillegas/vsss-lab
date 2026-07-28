@@ -23,8 +23,7 @@ def main() -> None:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     summary = {
-        key: report[key]
-        for key in ("nominal_progress", "robust_progress", "margin", "passed")
+        key: report[key] for key in ("nominal_progress", "robust_progress", "margin", "passed")
     }
     print(json.dumps(summary, sort_keys=True))
     if not report["passed"]:

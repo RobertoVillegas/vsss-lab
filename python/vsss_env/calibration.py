@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+
 from vsss_env._native import BatchSimulator
 
 ROOT = Path(__file__).resolve().parents[2]

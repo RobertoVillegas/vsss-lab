@@ -110,6 +110,21 @@ external-tournament output="reports/m8/external-match.jsonl" ticks="50":
 external-container-smoke:
   docker compose --profile competition up --build --abort-on-container-exit --exit-code-from match-server match-server controller-rust controller-python
 
+calibrate-reference output="reports/m9/calibration.json":
+  mise run bindings
+  uv run python -m tools.calibrate_reference --output "{{output}}"
+
+backend-bridge-smoke:
+  mise run bindings
+  uv run pytest -q tests/test_backend_bridge.py
+
+ros-gazebo-smoke:
+  docker compose --profile gazebo run --rm --build ros-gazebo
+
+ood-evaluate output="reports/m11/ood.json":
+  mise run bindings
+  uv run python -m tools.evaluate_ood --output "{{output}}"
+
 league-promote candidate manifest run_dir="/home/rob/runs/vsss-lab-demo":
   uv run --group train python -m vsss_league.cli promote --run-dir "{{run_dir}}" --candidate "{{candidate}}" --manifest "{{manifest}}"
 

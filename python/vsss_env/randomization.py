@@ -71,9 +71,10 @@ class RandomizedBackend:
         return self._observe()
 
     def step(self, actions: FloatArray) -> FloatArray:
-        scaled = np.asarray(actions, dtype=np.float32) * np.asarray(
-            self.domain.motor_strength, dtype=np.float32
-        )[:, None]
+        scaled = (
+            np.asarray(actions, dtype=np.float32)
+            * np.asarray(self.domain.motor_strength, dtype=np.float32)[:, None]
+        )
         self._queue.append(scaled)
         if len(self._queue) > self.domain.latency_steps:
             candidate = self._queue.popleft()

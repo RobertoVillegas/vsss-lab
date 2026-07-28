@@ -3,8 +3,11 @@
 A modular platform for high-throughput Very Small Size Soccer simulation,
 multi-agent reinforcement learning, self-play, and reproducible competition.
 
-M0 establishes the reproducible monorepo only. It intentionally contains no physics,
-training loop, ROS, Gazebo, ZeroMQ, or definitive FlatBuffers schemas.
+The implemented M0–M11 path includes canonical contracts, deterministic Rapier
+physics, Python batch environments, scripted and RL baselines, MAPPO, league
+self-play, replay viewers, an external FlatBuffers/ZeroMQ match server, reference
+calibration, an opt-in ROS 2/Gazebo validation backend, and seeded domain
+randomization. Vision and hardware integration remain M12 work.
 
 ## Quick start
 
@@ -25,10 +28,30 @@ the uv-managed `.venv` using `python.uv_venv_auto = "source"`.
 ```bash
 just container-cpu
 just cuda-smoke
+just ros-gazebo-smoke
 ```
 
 Docker Desktop with its WSL2 backend is the only supported daemon on devbox-gpu.
 Container bases are pinned by digest and run as a non-root user.
+
+## Validation milestones
+
+```bash
+# Independent Rust and Python controllers
+just external-tournament reports/m8/external-match.jsonl 50
+just external-container-smoke
+
+# Reference physics and backend portability
+just calibrate-reference reports/m9/calibration.json
+just backend-bridge-smoke
+
+# Paired held-out robustness suite
+just ood-evaluate reports/m11/ood.json
+```
+
+The ROS/Gazebo profile is a higher-fidelity validation target, not the training
+hot loop. Evidence and limitations for each milestone live under
+`docs/evidence/` and `docs/calibration/`.
 
 ## Persistent paths
 
