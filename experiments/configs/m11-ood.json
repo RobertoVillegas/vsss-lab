@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "friction": [0.25, 0.9],
+  "restitution": [0.1, 0.6],
+  "motor_strength": [0.55, 1.25],
+  "latency_steps": [0, 5],
+  "action_drop_probability": [0.05, 0.35],
+  "position_noise_std": [0.005, 0.045],
+  "heading_noise_std": [0.01, 0.18],
+  "seeds": 20,
+  "ticks": 160,
+  "required_margin": 0.03
+}
