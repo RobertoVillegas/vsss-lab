@@ -62,8 +62,8 @@
 ## 7. Delivery
 
 - [x] Record a current comparative evidence note before every major block
-- [ ] Document commands, study artifacts, dashboards, and rollback
+- [x] Document commands, study artifacts, dashboards, and rollback
 - [x] Add contract, determinism, resume, and failure-injection tests
-- [ ] Record CPU/CUDA throughput and total compute for every promoted study
+- [x] Record CPU/CUDA throughput and total compute for every promoted study
 - [x] Run doctor, build, test, lint, CUDA smoke, and strict OpenSpec validation
 - [x] Commit signed Conventional Commits and push

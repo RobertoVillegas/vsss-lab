@@ -306,6 +306,10 @@ just replay-analyze \
 just profile-m14 200 reports/m14/profile.json
 ```
 
+The complete adaptive-study command matrix, artifact locations, interruption
+semantics, and rollback procedure are in
+[the M14 experiment runbook](docs/m14-experiment-runbook.md).
+
 ## Train and inspect a run
 
 Start a 50-million-environment-step training run with automatic run naming,

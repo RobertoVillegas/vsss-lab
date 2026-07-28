@@ -67,3 +67,11 @@ authoritative backend. The same 100-step profile produced 11,247 frames/s after
 the change versus 11,136 frames/s in the recorded pre-change profile (`+1.0%`);
 the optimization is retained as non-regressing, not presented as a major
 throughput breakthrough.
+
+The matched CPU spike measured 133,462 authoritative Rapier frames/s and 91,659
+prototype frames/s; the CUDA spike measured 127,986 and 29,443 respectively.
+These are isolated physics/prototype rates, while the full CUDA rollout profile
+measured 11,247 environment frames/s including observation, copies, inference,
+and reward/reset. All executed M14 smoke studies record wall-clock compute in
+their machine-readable arms or fidelities. No candidate cleared terminal
+promotion, so there is no promoted-study compute claim to omit or inflate.
