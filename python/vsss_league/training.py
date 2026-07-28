@@ -54,6 +54,10 @@ def create_rollout_session(config: MarlConfig, config_json: str, state_json: str
             horizon=config.horizon,
             action_repeat=config.action_repeat,
             action_delta_coefficient=config.action_delta_coefficient,
+            teammate_spacing=config.teammate_spacing,
+            teammate_congestion_coefficient=config.teammate_congestion_coefficient,
+            defensive_coverage_coefficient=config.defensive_coverage_coefficient,
+            defensive_activation_x=config.defensive_activation_x,
         ),
         [0] * config.num_envs,
     )

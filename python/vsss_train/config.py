@@ -100,6 +100,10 @@ class MarlConfig:
     rollout_steps: int = 256
     action_repeat: int = 4
     action_delta_coefficient: float = 0.01
+    teammate_spacing: float = 0.14
+    teammate_congestion_coefficient: float = 0.002
+    defensive_coverage_coefficient: float = 1.0
+    defensive_activation_x: float = 0.15
 
     def __post_init__(self) -> None:
         if self.schema_version != 1:
@@ -114,8 +118,15 @@ class MarlConfig:
             raise ValueError("num_envs must be positive")
         if self.horizon <= 0 or self.rollout_steps <= 0:
             raise ValueError("horizon and rollout_steps must be positive")
-        if self.action_delta_coefficient < 0.0:
-            raise ValueError("action_delta_coefficient must be non-negative")
+        non_negative = (
+            self.action_delta_coefficient,
+            self.teammate_congestion_coefficient,
+            self.defensive_coverage_coefficient,
+        )
+        if any(value < 0.0 for value in non_negative):
+            raise ValueError("MARL reward coefficients must be non-negative")
+        if self.teammate_spacing <= 0.075:
+            raise ValueError("teammate_spacing must exceed the robot body width")
 
     def fingerprint(self) -> str:
         payload = json.dumps(asdict(self), sort_keys=True, separators=(",", ":"))

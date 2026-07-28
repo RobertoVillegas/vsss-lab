@@ -16,7 +16,13 @@ from vsss_train.marl import (
     TeamBatch,
     build_team_observation,
 )
-from vsss_train.marl_env import MarlMatchEnv, distill_dynamic_teacher, evaluate_against_random
+from vsss_train.marl_env import (
+    MarlMatchEnv,
+    _defensive_threat,
+    _teammate_congestion,
+    distill_dynamic_teacher,
+    evaluate_against_random,
+)
 from vsss_train.marl_ppo import (
     TRAJECTORY_SCHEMA,
     MarlLearner,
@@ -185,6 +191,9 @@ def test_marl_checkpoint_round_trip_and_algorithm_guard(tmp_path: Path) -> None:
 def test_versioned_marl_configs() -> None:
     assert load_marl_config(ROOT / "experiments/configs/m6-ippo.toml").algorithm == "ippo"
     assert load_marl_config(ROOT / "experiments/configs/m6-mappo.toml").algorithm == "mappo"
+    coordinated = load_marl_config(ROOT / "experiments/configs/m12-mappo-coordinated.toml")
+    assert coordinated.teammate_congestion_coefficient > 0.0
+    assert coordinated.defensive_coverage_coefficient > 0.0
 
 
 def test_c7_and_c8_have_explicit_opponent_modes_and_team_rewards() -> None:
@@ -210,6 +219,18 @@ def test_action_delta_regularization_penalizes_abrupt_commands() -> None:
     environment.reset(9)
     _, reward, _, _ = environment.step(np.ones((3, 2), dtype=np.float32))
     assert reward.action_delta == pytest.approx(-0.25)
+
+
+def test_coordination_reward_detects_congestion_and_scales_defensive_threat() -> None:
+    state = initial_state()
+    separated = _teammate_congestion(state, spacing=0.14)
+    state[21 + 2] = state[10 + 2] + 0.075
+    state[21 + 3] = state[10 + 3]
+    contacting = _teammate_congestion(state, spacing=0.14)
+
+    assert contacting > separated
+    assert _defensive_threat(-0.6, 0.15) > _defensive_threat(0.5, 0.15)
+    assert _defensive_threat(0.5, 0.15) == 0.0
 
 
 def test_distilled_shared_policy_is_finite_under_physical_action_scaling() -> None:

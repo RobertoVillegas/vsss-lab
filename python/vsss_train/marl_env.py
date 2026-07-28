@@ -33,10 +33,19 @@ class TeamReward:
     approach_progress: float
     goal: float
     action_delta: float = 0.0
+    teammate_congestion: float = 0.0
+    defensive_coverage: float = 0.0
 
     @property
     def total(self) -> float:
-        return self.ball_progress + self.approach_progress + self.goal + self.action_delta
+        return (
+            self.ball_progress
+            + self.approach_progress
+            + self.goal
+            + self.action_delta
+            + self.teammate_congestion
+            + self.defensive_coverage
+        )
 
 
 @dataclass(frozen=True)
@@ -60,6 +69,10 @@ class MarlMatchEnv:
         horizon: int = 1_000,
         action_repeat: int = 4,
         action_delta_coefficient: float = 0.0,
+        teammate_spacing: float = 0.14,
+        teammate_congestion_coefficient: float = 0.0,
+        defensive_coverage_coefficient: float = 0.0,
+        defensive_activation_x: float = 0.15,
     ) -> None:
         if stage not in (7, 8):
             raise ValueError("stage must be C7 or C8")
@@ -72,6 +85,10 @@ class MarlMatchEnv:
         self.horizon = horizon
         self.action_repeat = action_repeat
         self.action_delta_coefficient = action_delta_coefficient
+        self.teammate_spacing = teammate_spacing
+        self.teammate_congestion_coefficient = teammate_congestion_coefficient
+        self.defensive_coverage_coefficient = defensive_coverage_coefficient
+        self.defensive_activation_x = defensive_activation_x
         self.steps = 0
         self.state = np.zeros(BatchSimulator.state_width(), dtype=np.float32)
         self._ball_x = 0.0
@@ -80,6 +97,7 @@ class MarlMatchEnv:
         self._initial_closest = 0.0
         self._previous_blue_actions = np.zeros((3, 2), dtype=np.float32)
         self._goal_grace_remaining: int | None = None
+        self._defensive_distance = 0.0
 
     def reset(self, seed: int) -> TeamBatch:
         snapshot = _seeded_snapshot(self._template, seed)
@@ -90,6 +108,7 @@ class MarlMatchEnv:
         self._closest = self._closest_blue_distance()
         self._previous_blue_actions.fill(0.0)
         self._goal_grace_remaining = None
+        self._defensive_distance = _defensive_distance(self.state, self._config)
         return build_team_observation(self.state, team=0)
 
     def step(
@@ -112,6 +131,8 @@ class MarlMatchEnv:
         self.steps += 1
         ball_x = float(self.state[5])
         closest = self._closest_blue_distance()
+        defensive_distance = _defensive_distance(self.state, self._config)
+        threat = _defensive_threat(ball_x, self.defensive_activation_x)
         if events & 0b11 and self._goal_grace_remaining is None:
             self._goal_grace_remaining = round(
                 float(self._config["reset"]["goal_pause"]) / float(self._config["control_period"])
@@ -125,10 +146,16 @@ class MarlMatchEnv:
             approach_progress=2.0 * (self._closest - closest),
             goal=10.0 * float(bool(events & 1)) - 10.0 * float(bool(events & 2)),
             action_delta=-self.action_delta_coefficient * float(np.square(action_delta).mean()),
+            teammate_congestion=-self.teammate_congestion_coefficient
+            * _teammate_congestion(self.state, self.teammate_spacing),
+            defensive_coverage=self.defensive_coverage_coefficient
+            * threat
+            * (self._defensive_distance - defensive_distance),
         )
         self._previous_blue_actions = normalized_blue.copy()
         self._ball_x = ball_x
         self._closest = closest
+        self._defensive_distance = defensive_distance
         done = self.steps >= self.horizon or goal_complete
         return (
             build_team_observation(self.state, team=0),
@@ -184,6 +211,10 @@ class VectorMarlMatchEnv:
         horizon: int,
         action_repeat: int,
         action_delta_coefficient: float,
+        teammate_spacing: float,
+        teammate_congestion_coefficient: float,
+        defensive_coverage_coefficient: float,
+        defensive_activation_x: float,
     ) -> None:
         if stage not in (7, 8):
             raise ValueError("stage must be C7 or C8")
@@ -197,6 +228,10 @@ class VectorMarlMatchEnv:
         self.horizon = horizon
         self.action_repeat = action_repeat
         self.action_delta_coefficient = action_delta_coefficient
+        self.teammate_spacing = teammate_spacing
+        self.teammate_congestion_coefficient = teammate_congestion_coefficient
+        self.defensive_coverage_coefficient = defensive_coverage_coefficient
+        self.defensive_activation_x = defensive_activation_x
         self.states = np.zeros((num_envs, BatchSimulator.state_width()), dtype=np.float32)
         self.steps = np.zeros(num_envs, dtype=np.int64)
         self._ball_x = np.zeros(num_envs, dtype=np.float32)
@@ -205,6 +240,7 @@ class VectorMarlMatchEnv:
         self._initial_closest = np.zeros(num_envs, dtype=np.float32)
         self._previous_blue_actions = np.zeros((num_envs, 3, 2), dtype=np.float32)
         self._goal_grace_remaining = np.full(num_envs, -1, dtype=np.int64)
+        self._defensive_distance = np.zeros(num_envs, dtype=np.float32)
 
     def reset(self, world: int, seed: int) -> TeamBatch:
         snapshot = _seeded_snapshot(self._template, seed)
@@ -218,6 +254,7 @@ class VectorMarlMatchEnv:
         self._initial_closest[world] = self._closest[world]
         self._previous_blue_actions[world].fill(0.0)
         self._goal_grace_remaining[world] = -1
+        self._defensive_distance[world] = _defensive_distance(self.states[world], self._config)
         return build_team_observation(self.states[world], team=0)
 
     def step(
@@ -257,6 +294,18 @@ class VectorMarlMatchEnv:
             [_closest_blue_distance(state) for state in self.states],
             dtype=np.float32,
         )
+        defensive_distance = np.asarray(
+            [_defensive_distance(state, self._config) for state in self.states],
+            dtype=np.float32,
+        )
+        threat = np.asarray(
+            [_defensive_threat(float(x), self.defensive_activation_x) for x in ball_x],
+            dtype=np.float32,
+        )
+        congestion = np.asarray(
+            [_teammate_congestion(state, self.teammate_spacing) for state in self.states],
+            dtype=np.float32,
+        )
         newly_scored = ((events & 0b11) != 0) & (self._goal_grace_remaining < 0)
         self._goal_grace_remaining[newly_scored] = round(
             float(self._config["reset"]["goal_pause"]) / float(self._config["control_period"])
@@ -270,10 +319,15 @@ class VectorMarlMatchEnv:
             + 10.0 * ((events & 1) != 0)
             - 10.0 * ((events & 2) != 0)
             - self.action_delta_coefficient * np.square(action_delta).mean(axis=(1, 2))
+            - self.teammate_congestion_coefficient * congestion
+            + self.defensive_coverage_coefficient
+            * threat
+            * (self._defensive_distance - defensive_distance)
         ).astype(np.float32)
         self._previous_blue_actions = normalized_blue.copy()
         self._ball_x = ball_x.copy()
         self._closest = closest
+        self._defensive_distance = defensive_distance
         done = (self.steps >= self.horizon) | goal_complete
         observations = stack_team_batches(
             [build_team_observation(state, team=0) for state in self.states]
@@ -331,6 +385,39 @@ def _closest_blue_distance(state: FloatArray) -> float:
         )
         for slot in range(3)
     )
+
+
+def _teammate_congestion(state: FloatArray, spacing: float) -> float:
+    positions = [
+        (
+            float(state[ROBOT_BASE + slot * ROBOT_WIDTH + 2]),
+            float(state[ROBOT_BASE + slot * ROBOT_WIDTH + 3]),
+        )
+        for slot in range(3)
+    ]
+    penalties = [
+        max(0.0, (spacing - math.dist(positions[first], positions[second])) / spacing) ** 2
+        for first, second in ((0, 1), (0, 2), (1, 2))
+    ]
+    return sum(penalties) / len(penalties)
+
+
+def _defensive_distance(state: FloatArray, config: dict[str, Any]) -> float:
+    field = config["field"]
+    target_x = -float(field["length"]) / 2.0 + 0.12
+    half_goal = float(field["goal_width"]) / 2.0
+    target_y = float(np.clip(state[6], -half_goal, half_goal))
+    return min(
+        math.hypot(
+            target_x - float(state[ROBOT_BASE + slot * ROBOT_WIDTH + 2]),
+            target_y - float(state[ROBOT_BASE + slot * ROBOT_WIDTH + 3]),
+        )
+        for slot in range(3)
+    )
+
+
+def _defensive_threat(ball_x: float, activation_x: float) -> float:
+    return float(np.clip((activation_x - ball_x) / 0.75, 0.0, 1.0))
 
 
 def distill_dynamic_teacher(

@@ -75,18 +75,18 @@ m6-smoke:
 benchmark-marl iterations="2000":
   uv run --group train python -m tools.benchmark_marl --iterations {{iterations}}
 
-league-run run_dir="/home/rob/runs/vsss-lab-demo" iterations="3" capture_every="1" capture_seconds="60" checkpoint_every="100" device="auto" num_envs="64" config="experiments/configs/m6-mappo.toml":
+league-run run_dir="/home/rob/runs/vsss-lab-demo" iterations="3" capture_every="1" capture_seconds="60" checkpoint_every="100" device="auto" num_envs="64" config="experiments/configs/m12-mappo-coordinated.toml":
   mise run train-env
   uv run --group train python -m vsss_league.cli run --config "{{config}}" --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --run-dir "{{run_dir}}" --iterations {{iterations}} --capture-every {{capture_every}} --capture-seconds {{capture_seconds}} --checkpoint-every {{checkpoint_every}} --device "{{device}}" --num-envs {{num_envs}}
 
-league-matches-at run_dir matches="100000" capture_every="25" capture_seconds="60" checkpoint_every="25" device="auto" num_envs="64" config="experiments/configs/m6-mappo.toml":
+league-matches-at run_dir matches="100000" capture_every="25" capture_seconds="60" checkpoint_every="25" device="auto" num_envs="64" config="experiments/configs/m12-mappo-coordinated.toml":
   mise run train-env
   uv run --group train python -m vsss_league.cli run --config "{{config}}" --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --run-dir "{{run_dir}}" --matches {{matches}} --capture-every {{capture_every}} --capture-seconds {{capture_seconds}} --checkpoint-every {{checkpoint_every}} --device "{{device}}" --num-envs {{num_envs}}
 
 league-matches matches="100000" capture_every="25" capture_seconds="60" checkpoint_every="25" device="auto" num_envs="64":
   run_dir=$(uv run python tools/next_run_dir.py vsss-training-run); echo "Allocated training run: $run_dir"; just league-matches-at "$run_dir" "{{matches}}" "{{capture_every}}" "{{capture_seconds}}" "{{checkpoint_every}}" "{{device}}" "{{num_envs}}"
 
-league-steps-at run_dir steps="20000000" capture_every="25" capture_seconds="60" checkpoint_every="25" device="auto" num_envs="64" config="experiments/configs/m6-mappo.toml":
+league-steps-at run_dir steps="20000000" capture_every="25" capture_seconds="60" checkpoint_every="25" device="auto" num_envs="64" config="experiments/configs/m12-mappo-coordinated.toml":
   mise run train-env
   uv run --group train python -m vsss_league.cli run --config "{{config}}" --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --run-dir "{{run_dir}}" --steps {{steps}} --capture-every {{capture_every}} --capture-seconds {{capture_seconds}} --checkpoint-every {{checkpoint_every}} --device "{{device}}" --num-envs {{num_envs}}
 
