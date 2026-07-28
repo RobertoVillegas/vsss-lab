@@ -87,7 +87,7 @@ Long runs can be resumed without repeating bootstrap. The iteration count is
 additional work; checkpoints and 60-second captures can be spaced independently:
 
 ```bash
-just league-live-matches /home/rob/runs/vsss-100k 100000 25 60 25 auto 64
+just league-live-steps /home/rob/runs/vsss-20m 20000000 25 60 25 auto 64
 ```
 
 The trainer reports return, progress, throughput, ETA, and checkpoint writes.
@@ -101,8 +101,8 @@ just league-resume /home/rob/runs/vsss-long 2500 25 60 25 auto 64
 # Terminal 2: optional read-only viewer
 just league-web /home/rob/runs/vsss-long
 
-# Or target completed matches and launch the viewer together
-just league-live-matches /home/rob/runs/vsss-100k 100000 25 60 25 auto 64
+# Or target environment steps and launch the viewer together
+just league-live-steps /home/rob/runs/vsss-20m 20000000 25 60 25 auto 64
 ```
 
 The trailing values select `device` and vectorized environment count. `auto`
@@ -115,6 +115,10 @@ The CUDA/Rapier default is 64 worlds. A match ends on a goal or after 30
 simulated seconds; PPO updates consume 256 control steps and persistent matches
 span updates. Independent Rapier worlds are stepped inside one native batch and
 use adaptive Rayon parallelism at 32 or more worlds.
+
+Environment steps are the primary training-budget unit. The 20M preset is about
+1,221 PPO updates, while the dashboard also reports completed matches and
+matches/s for sporting interpretation.
 
 Training uses Rich on an interactive terminal: a stable progress bar remains at
 the bottom while current/rolling return, progress, PPO losses, device, vector

@@ -83,6 +83,10 @@ league-matches run_dir="/home/rob/runs/vsss-lab-matches" matches="100000" captur
   mise run train-env
   uv run --group train python -m vsss_league.cli run --config "{{config}}" --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --run-dir "{{run_dir}}" --matches {{matches}} --capture-every {{capture_every}} --capture-seconds {{capture_seconds}} --checkpoint-every {{checkpoint_every}} --device "{{device}}" --num-envs {{num_envs}}
 
+league-steps run_dir="/home/rob/runs/vsss-lab-20m" steps="20000000" capture_every="25" capture_seconds="60" checkpoint_every="25" device="auto" num_envs="64" config="experiments/configs/m6-mappo.toml":
+  mise run train-env
+  uv run --group train python -m vsss_league.cli run --config "{{config}}" --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --run-dir "{{run_dir}}" --steps {{steps}} --capture-every {{capture_every}} --capture-seconds {{capture_seconds}} --checkpoint-every {{checkpoint_every}} --device "{{device}}" --num-envs {{num_envs}}
+
 league-resume run_dir="/home/rob/runs/vsss-lab-demo" iterations="1000" capture_every="100" capture_seconds="60" checkpoint_every="100" device="auto" num_envs="64" config="experiments/configs/m6-mappo.toml":
   mise run train-env
   uv run --group train python -m vsss_league.cli run --resume --config "{{config}}" --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --run-dir "{{run_dir}}" --iterations {{iterations}} --capture-every {{capture_every}} --capture-seconds {{capture_seconds}} --checkpoint-every {{checkpoint_every}} --device "{{device}}" --num-envs {{num_envs}}
@@ -96,6 +100,11 @@ league-live-matches run_dir="/home/rob/runs/vsss-lab-matches" matches="100000" c
   mkdir -p "{{run_dir}}"
   just web-build
   echo "VSSS replay viewer: http://127.0.0.1:{{port}} (HTTP log: {{run_dir}}/viewer.log)"; uv run python -m tools.replay_web.server --run-dir "{{run_dir}}" --host 127.0.0.1 --port {{port}} > "{{run_dir}}/viewer.log" 2>&1 & viewer_pid=$!; trap 'kill "$viewer_pid" 2>/dev/null || true' EXIT; just league-matches "{{run_dir}}" "{{matches}}" "{{capture_every}}" "{{capture_seconds}}" "{{checkpoint_every}}" "{{device}}" "{{num_envs}}"
+
+league-live-steps run_dir="/home/rob/runs/vsss-lab-20m" steps="20000000" capture_every="25" capture_seconds="60" checkpoint_every="25" device="auto" num_envs="64" port="8765":
+  mkdir -p "{{run_dir}}"
+  just web-build
+  echo "VSSS replay viewer: http://127.0.0.1:{{port}} (HTTP log: {{run_dir}}/viewer.log)"; uv run python -m tools.replay_web.server --run-dir "{{run_dir}}" --host 127.0.0.1 --port {{port}} > "{{run_dir}}/viewer.log" 2>&1 & viewer_pid=$!; trap 'kill "$viewer_pid" 2>/dev/null || true' EXIT; just league-steps "{{run_dir}}" "{{steps}}" "{{capture_every}}" "{{capture_seconds}}" "{{checkpoint_every}}" "{{device}}" "{{num_envs}}"
 
 league-live-resume run_dir="/home/rob/runs/vsss-lab-live" iterations="1000" capture_every="100" capture_seconds="60" checkpoint_every="100" device="auto" num_envs="64" port="8765":
   just web-build

@@ -29,6 +29,7 @@ class TrainingDashboard:
     device: str
     num_envs: int
     target_matches: int | None = None
+    target_steps: int | None = None
     console: Console = field(default_factory=Console)
 
     def __post_init__(self) -> None:
@@ -50,10 +51,15 @@ class TrainingDashboard:
             console=self.console,
             expand=True,
         )
-        self._task = self._progress.add_task(
-            "matches" if self.target_matches is not None else "training",
-            total=self.target_matches or self.total_iterations,
+        description = (
+            "steps"
+            if self.target_steps is not None
+            else "matches"
+            if self.target_matches is not None
+            else "training"
         )
+        total = self.target_steps or self.target_matches or self.total_iterations
+        self._task = self._progress.add_task(description, total=total)
         self._live = Live(
             Group(self._table(), self._progress),
             console=self.console,
@@ -85,6 +91,7 @@ class TrainingDashboard:
         completed: int,
         iteration_rate: float,
         frame_rate: float,
+        environment_steps: int,
         matches: int,
         match_rate: float,
         checkpoint: bool,
@@ -100,7 +107,11 @@ class TrainingDashboard:
         if checkpoint and result.checkpoint is not None:
             self._checkpoint = result.checkpoint.rsplit("/", maxsplit=1)[-1]
         progress_completed = (
-            min(matches, self.target_matches) if self.target_matches is not None else completed
+            min(environment_steps, self.target_steps)
+            if self.target_steps is not None
+            else min(matches, self.target_matches)
+            if self.target_matches is not None
+            else completed
         )
         self._progress.update(self._task, completed=progress_completed)
         if self.interactive:

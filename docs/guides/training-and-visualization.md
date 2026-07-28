@@ -46,6 +46,16 @@ just league-live-matches /home/rob/runs/vsss-100k 100000 25 60 25 auto 64
 The terminal reports completed matches and matches/s. An iteration is an
 optimizer update, not a match.
 
+For comparable RL budgets, target environment steps instead:
+
+```sh
+just league-live-steps /home/rob/runs/vsss-20m 20000000 25 60 25 auto 64
+```
+
+One environment step is one 20 ms control decision in one world. With 64 worlds
+and 256-step rollouts, each PPO update collects 16,384 steps. Matches and
+optimizer updates remain visible but are not the primary budget.
+
 Artifacts:
 
 ```text

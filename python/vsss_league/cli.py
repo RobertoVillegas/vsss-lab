@@ -37,7 +37,9 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--match-state", type=Path, required=True)
     run.add_argument("--run-dir", type=Path, required=True)
     run.add_argument("--iterations", type=int, default=3)
-    run.add_argument("--matches", type=int)
+    target = run.add_mutually_exclusive_group()
+    target.add_argument("--matches", type=int)
+    target.add_argument("--steps", type=int)
     run.add_argument("--capture-every", type=int, default=1)
     run.add_argument("--capture-seconds", type=float, default=60.0)
     run.add_argument("--checkpoint-every", type=int, default=100)
@@ -87,12 +89,13 @@ def _run(arguments: argparse.Namespace) -> None:
     if (
         arguments.iterations <= 0
         or (arguments.matches is not None and arguments.matches <= 0)
+        or (arguments.steps is not None and arguments.steps <= 0)
         or arguments.capture_every <= 0
         or arguments.capture_seconds <= 0
         or arguments.checkpoint_every <= 0
     ):
         raise ValueError(
-            "iterations, matches, capture-every, capture-seconds, and checkpoint-every "
+            "iterations, matches, steps, capture-every, capture-seconds, and checkpoint-every "
             "must be positive"
         )
     run_dir: Path = arguments.run_dir
@@ -155,6 +158,8 @@ def _run(arguments: argparse.Namespace) -> None:
         requested_iterations = math.ceil(arguments.matches / config.num_envs) * math.ceil(
             config.horizon / config.rollout_steps
         )
+    elif arguments.steps is not None:
+        requested_iterations = math.ceil(arguments.steps / (config.num_envs * config.rollout_steps))
     final_iteration = start_iteration + requested_iterations - 1
     stop_requested = False
     completed = 0
@@ -168,6 +173,7 @@ def _run(arguments: argparse.Namespace) -> None:
         device=learner.device.type,
         num_envs=config.num_envs,
         target_matches=arguments.matches,
+        target_steps=arguments.steps,
     )
     dashboard.start()
     if config.device == "auto" and learner.device.type == "cpu":
@@ -207,7 +213,10 @@ def _run(arguments: argparse.Namespace) -> None:
                 arguments.matches is not None
                 and total_matches + result.matches >= arguments.matches
             )
-            if reached_match_target and checkpoint is None:
+            reached_step_target = (
+                arguments.steps is not None and total_frames + result.frames >= arguments.steps
+            )
+            if (reached_match_target or reached_step_target) and checkpoint is None:
                 checkpoint = checkpoint_dir / f"iteration-{iteration:06d}.pt"
                 learner.save(checkpoint)
                 result = replace(result, checkpoint=str(checkpoint.resolve()))
@@ -245,6 +254,7 @@ def _run(arguments: argparse.Namespace) -> None:
                 completed=completed,
                 iteration_rate=rate,
                 frame_rate=frame_rate,
+                environment_steps=total_frames,
                 matches=total_matches,
                 match_rate=total_matches / elapsed,
                 checkpoint=checkpoint is not None,
@@ -252,6 +262,8 @@ def _run(arguments: argparse.Namespace) -> None:
             if stop_requested:
                 break
             if reached_match_target:
+                break
+            if reached_step_target:
                 break
     finally:
         signal.signal(signal.SIGINT, previous_sigint)
@@ -264,6 +276,7 @@ def _run(arguments: argparse.Namespace) -> None:
                 "run_dir": str(run_dir.resolve()),
                 "iterations": completed,
                 "matches": total_matches,
+                "environment_steps": total_frames,
                 "final_iteration": actual_final,
                 "latest_version": learner.policy_version,
                 "viewer_replays": str(replay_dir.resolve()),
