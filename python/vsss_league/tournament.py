@@ -9,6 +9,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from vsss_train.ablations import EntityAttentionActor
 from vsss_train.marl import SharedActor
 from vsss_train.marl_env import MarlMatchEnv
 
@@ -62,7 +63,7 @@ class CheckpointScorecard:
 
 
 def evaluate_checkpoint_scorecard(
-    actor: SharedActor,
+    actor: SharedActor | EntityAttentionActor,
     config_json: str,
     state_json: str,
     *,
@@ -121,7 +122,7 @@ def evaluate_checkpoint_scorecard(
 
 
 def evaluate_candidate_vs_heuristic(
-    actor: SharedActor,
+    actor: SharedActor | EntityAttentionActor,
     config_json: str,
     state_json: str,
     *,

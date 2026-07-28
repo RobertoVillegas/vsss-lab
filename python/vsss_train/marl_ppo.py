@@ -13,12 +13,14 @@ from tensordict import TensorDict
 from torch import Tensor, nn
 from torch.distributions import Normal
 
+from vsss_train.ablations import EntityAttentionActor
 from vsss_train.config import MarlConfig
 from vsss_train.marl import CentralizedCritic, LocalCritic, SharedActor, TeamBatch
 from vsss_train.ppo import seed_everything
 
 MARL_CHECKPOINT_SCHEMA = 1
 TRAJECTORY_SCHEMA = 1
+PolicyActor = SharedActor | EntityAttentionActor
 LEGACY_NEUTRAL_CONFIG = {
     "minimum_log_std": -5.0,
     "maximum_log_std": 0.0,
@@ -32,6 +34,7 @@ LEGACY_NEUTRAL_CONFIG = {
     "league_historical_weight": 0.0,
     "league_heuristic_weight": 0.0,
     "league_history_window": 16,
+    "policy_architecture": "mlp",
 }
 ACTION_EPSILON = 1e-6
 
@@ -130,7 +133,7 @@ class MarlLearner:
         self.config = config
         seed_everything(config.seed)
         self.device = resolve_device(config.device)
-        self.actor = SharedActor(config.hidden_size).to(self.device)
+        self.actor = _build_actor(config).to(self.device)
         self.critic: LocalCritic | CentralizedCritic
         self.critic = (
             LocalCritic(config.hidden_size)
@@ -284,11 +287,11 @@ def load_policy_actor(
     path: Path,
     config: MarlConfig,
     device: torch.device,
-) -> tuple[SharedActor, int]:
+) -> tuple[PolicyActor, int]:
     """Load an inference-only historical actor without mutating trainer RNG state."""
     payload = _load_checkpoint_payload(path, config)
     with torch.random.fork_rng():
-        actor = SharedActor(config.hidden_size).to(device)
+        actor = _build_actor(config).to(device)
     actor.load_state_dict(payload["actor"])
     return actor.eval(), int(payload["policy_version"])
 
@@ -332,3 +335,9 @@ def resolve_device(requested: str) -> torch.device:
     if requested == "auto" and torch.cuda.is_available():
         return torch.device("cuda")
     return torch.device("cpu")
+
+
+def _build_actor(config: MarlConfig) -> PolicyActor:
+    if config.policy_architecture == "attention":
+        return EntityAttentionActor(config.hidden_size)
+    return SharedActor(config.hidden_size)

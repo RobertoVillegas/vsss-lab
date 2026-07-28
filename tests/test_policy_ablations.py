@@ -1,13 +1,22 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import torch
+from vsss_league.training import train_iteration
 from vsss_train.ablations import (
     EntityAttentionActor,
     RecurrentSharedActor,
     RecurrentState,
     SymmetricWheelLattice,
 )
+from vsss_train.config import MarlConfig
 from vsss_train.marl import TeamBatch
+from vsss_train.marl_ppo import MarlLearner
+
+ROOT = Path(__file__).parents[1]
+CONFIG = (ROOT / "tests/golden/m1_match_config.json").read_text()
+STATE = (ROOT / "tests/golden/m1_match_state.json").read_text()
 
 
 def observations(worlds: int = 2) -> TeamBatch:
@@ -48,3 +57,34 @@ def test_wheel_lattice_is_symmetric_and_bounded() -> None:
     assert torch.all(actions.abs() <= 1.0)
     values = set(lattice.values)
     assert all((-left, -right) in values for left, right in values)
+
+
+def test_attention_actor_runs_a_real_mappo_update_and_checkpoint(tmp_path: Path) -> None:
+    config = MarlConfig(
+        device="cpu",
+        policy_architecture="attention",
+        num_envs=1,
+        hidden_size=8,
+        rollout_steps=2,
+        horizon=4,
+        action_repeat=1,
+        epochs=1,
+        minibatch_size=6,
+    )
+    learner = MarlLearner(config)
+    checkpoint = tmp_path / "attention.pt"
+    result = train_iteration(
+        learner,
+        None,
+        CONFIG,
+        STATE,
+        iteration=1,
+        seed=14,
+        opponent_id="heuristic",
+        checkpoint=checkpoint,
+    )
+    assert result.policy_version == 1
+    assert checkpoint.is_file()
+    restored = MarlLearner(config)
+    restored.load(checkpoint)
+    assert restored.policy_version == 1

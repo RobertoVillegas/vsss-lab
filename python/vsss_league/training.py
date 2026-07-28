@@ -11,11 +11,12 @@ import torch
 from tensordict import TensorDict
 from torch.distributions import Normal
 from vsss_train.config import MarlConfig
-from vsss_train.marl import SharedActor, TeamBatch, build_team_observation, stack_team_batches
+from vsss_train.marl import TeamBatch, build_team_observation, stack_team_batches
 from vsss_train.marl_env import FloatArray, VectorMarlMatchEnv
 from vsss_train.marl_ppo import (
     TRAJECTORY_SCHEMA,
     MarlLearner,
+    PolicyActor,
     TeamTrajectory,
     TrajectoryMetadata,
     sample_bounded_action,
@@ -76,7 +77,7 @@ def create_rollout_session(config: MarlConfig, config_json: str, state_json: str
 
 def collect_self_play_trajectory(
     learner: MarlLearner,
-    opponent: SharedActor | None,
+    opponent: PolicyActor | None,
     config_json: str,
     state_json: str,
     *,
@@ -238,7 +239,7 @@ def collect_self_play_trajectory(
 
 def train_iteration(
     learner: MarlLearner,
-    opponent: SharedActor | None,
+    opponent: PolicyActor | None,
     config_json: str,
     state_json: str,
     *,

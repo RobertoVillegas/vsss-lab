@@ -13,9 +13,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from vsss_train.config import MarlConfig, load_marl_config
-from vsss_train.marl import SharedActor
 from vsss_train.marl_env import distill_dynamic_teacher
-from vsss_train.marl_ppo import MarlLearner, load_policy_actor
+from vsss_train.marl_ppo import MarlLearner, PolicyActor, load_policy_actor
 
 from vsss_league.progress import TrainingDashboard
 from vsss_league.promotion import FixtureResult, decide_promotion
@@ -193,7 +192,7 @@ def _run(arguments: argparse.Namespace) -> None:
     total_matches = 0
     started_at = time.monotonic()
     rollout_session = create_rollout_session(config, config_json, state_json)
-    opponent_cache: dict[str, SharedActor] = {}
+    opponent_cache: dict[str, PolicyActor] = {}
     telemetry = TrainingTelemetry.create(
         run_dir,
         config,
@@ -365,8 +364,8 @@ def _select_training_opponent(
     *,
     iteration: int,
     latest_checkpoint: str,
-    cache: dict[str, SharedActor],
-) -> tuple[SharedActor | None, str]:
+    cache: dict[str, PolicyActor],
+) -> tuple[PolicyActor | None, str]:
     if iteration <= config.curriculum_heuristic_iterations:
         return None, "heuristic-dynamic"
     selection = registry.select_training_opponent(

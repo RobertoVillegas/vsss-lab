@@ -11,6 +11,7 @@ from typing import Any, TextIO
 
 import numpy as np
 import torch
+from vsss_train.ablations import EntityAttentionActor
 from vsss_train.marl import SharedActor, build_team_observation
 from vsss_train.marl_env import MarlMatchEnv
 from vsss_vision import (
@@ -27,8 +28,8 @@ from vsss_vision import (
 
 
 def run_policy_replay(
-    blue: SharedActor,
-    yellow: SharedActor | None,
+    blue: SharedActor | EntityAttentionActor,
+    yellow: SharedActor | EntityAttentionActor | None,
     config_json: str,
     state_json: str,
     *,

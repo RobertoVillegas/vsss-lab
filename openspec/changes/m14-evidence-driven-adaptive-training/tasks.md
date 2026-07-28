@@ -35,7 +35,7 @@
 
 - [ ] Add recurrent MAPPO behind an explicit experiment configuration
 - [ ] Compare MLP and GRU policies under camera-realistic partial observability
-- [ ] Add a batched entity-attention policy and expose attention telemetry
+- [x] Add a batched entity-attention policy and expose attention telemetry
 - [ ] Compare continuous wheels with one symmetric, physically meaningful
       action abstraction at matched control frequency
 - [x] Implement a bounded exact-simulator planner for one atomic skill

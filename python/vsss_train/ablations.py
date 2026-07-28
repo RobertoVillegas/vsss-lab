@@ -106,6 +106,10 @@ class EntityAttentionActor(nn.Module):
         mean = self.action_head(fused)
         return mean, self.log_std.expand_as(mean)
 
+    def deterministic_action(self, observation: TeamBatch) -> Tensor:
+        mean, _ = self(observation)
+        return torch.tanh(mean)
+
 
 class SymmetricWheelLattice:
     """Small symmetric differential-drive action abstraction."""

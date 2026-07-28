@@ -14,6 +14,7 @@ from numpy.typing import NDArray
 from vsss_baselines import DynamicTeamController
 from vsss_env._native import BatchSimulator
 
+from vsss_train.ablations import EntityAttentionActor
 from vsss_train.marl import (
     SharedActor,
     TeamBatch,
@@ -585,7 +586,7 @@ def _defensive_threat(ball_x: float, activation_x: float) -> float:
 
 
 def distill_dynamic_teacher(
-    actor: SharedActor,
+    actor: SharedActor | EntityAttentionActor,
     config_json: str,
     state_json: str,
     *,
@@ -628,7 +629,7 @@ def distill_dynamic_teacher(
 
 
 def evaluate_against_random(
-    actor: SharedActor,
+    actor: SharedActor | EntityAttentionActor,
     config_json: str,
     state_json: str,
     *,
