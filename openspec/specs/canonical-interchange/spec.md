@@ -34,4 +34,3 @@ orientation by rotating the field 180 degrees and swapping team-relative labels.
 #### Scenario: Goals and scores follow teams
 - **WHEN** a state with a blue goal event and unequal scores is reflected
 - **THEN** blue/yellow scores, teams, and goal event bits are swapped
-

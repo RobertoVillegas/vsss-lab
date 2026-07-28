@@ -39,4 +39,3 @@ limits, reset rules, randomization ranges, seed, and backend settings.
 #### Scenario: Reject incompatible timing
 - **WHEN** control period is shorter than the fixed physics timestep
 - **THEN** configuration validation fails at the control-period field
-
