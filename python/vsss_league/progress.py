@@ -191,6 +191,16 @@ class TrainingDashboard:
                 f"{latest.losses[name]:+.5f}" if latest is not None else "—",
                 "",
             )
+        for name in ("approx_kl", "clip_fraction", "mean_abs_action", "action_saturation"):
+            table.add_row(
+                name,
+                (
+                    f"{latest.losses[name]:+.5f}"
+                    if latest is not None and name in latest.losses
+                    else "—"
+                ),
+                "",
+            )
         table.add_row("latest checkpoint", self._checkpoint, "")
         return table
 

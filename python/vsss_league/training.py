@@ -18,6 +18,7 @@ from vsss_train.marl_ppo import (
     MarlLearner,
     TeamTrajectory,
     TrajectoryMetadata,
+    sample_bounded_action,
 )
 
 
@@ -116,8 +117,7 @@ def collect_self_play_trajectory(
         with torch.no_grad():
             mean, log_std = learner.actor(observation)
             distribution = Normal(mean, log_std.exp())
-            raw_action = distribution.sample()  # type: ignore[no-untyped-call]
-            log_probability = distribution.log_prob(raw_action).sum(-1)  # type: ignore[no-untyped-call]
+            action, log_probability = sample_bounded_action(distribution)
             value = learner.critic(observation)
             opponent_actions: FloatArray | None
             if opponent is not None:
@@ -128,7 +128,7 @@ def collect_self_play_trajectory(
             else:
                 opponent_actions = None
         observations.append(observation)
-        actions.append(raw_action)
+        actions.append(action)
         log_probabilities.append(log_probability)
         values.append(value)
         ticks.append(
@@ -138,7 +138,7 @@ def collect_self_play_trajectory(
                 device=learner.device,
             )
         )
-        blue_actions = torch.tanh(raw_action).cpu().numpy()
+        blue_actions = action.cpu().numpy()
         (
             next_observation,
             step_rewards,

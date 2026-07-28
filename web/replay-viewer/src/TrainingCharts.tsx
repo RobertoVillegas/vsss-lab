@@ -16,6 +16,10 @@ type ChartDatum = TrainingMetric & {
   policy_loss?: number;
   value_loss?: number;
   entropy?: number;
+  approx_kl?: number;
+  clip_fraction?: number;
+  mean_abs_action?: number;
+  action_saturation?: number;
   goals?: number;
   draws?: number;
   stagnations?: number;
@@ -32,6 +36,10 @@ export default function TrainingCharts({ metrics }: { metrics: TrainingMetric[] 
       policy_loss: metric.losses.policy_loss,
       value_loss: metric.losses.value_loss,
       entropy: metric.losses.entropy,
+      approx_kl: metric.losses.approx_kl,
+      clip_fraction: metric.losses.clip_fraction,
+      mean_abs_action: metric.losses.mean_abs_action,
+      action_saturation: metric.losses.action_saturation,
       goals: metric.terminations?.goal,
       draws: metric.terminations?.draw,
       stagnations: metric.terminations?.stagnation,
@@ -68,6 +76,17 @@ export default function TrainingCharts({ metrics }: { metrics: TrainingMetric[] 
           <Line dataKey="policy_loss" name="policy loss" stroke="#71e1ae" dot={false} />
           <Line dataKey="value_loss" name="value loss" stroke="#ffd84a" dot={false} />
           <Line dataKey="entropy" name="entropy" stroke="#ff8a62" dot={false} />
+        </TrainingChart>
+        <TrainingChart title="POLICY HEALTH" data={data}>
+          <Line dataKey="approx_kl" name="approx KL" stroke="#71e1ae" dot={false} />
+          <Line dataKey="clip_fraction" name="clip fraction" stroke="#ffd84a" dot={false} />
+          <Line dataKey="mean_abs_action" name="mean |action|" stroke="#49a7ff" dot={false} />
+          <Line
+            dataKey="action_saturation"
+            name="saturation"
+            stroke="#ff8a62"
+            dot={false}
+          />
         </TrainingChart>
         <TrainingChart title="THROUGHPUT" data={data}>
           <Line dataKey="frames_per_second" name="frames/s" stroke="#71e1ae" dot={false} />

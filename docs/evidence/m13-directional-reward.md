@@ -77,3 +77,29 @@ just league-live-steps 50000000 25 60 25 auto 64
 The second command allocates a fresh run automatically and uses the M13 config.
 Do not resume run 0002 into M13 because its reward fingerprint is intentionally
 different.
+
+## Saturated-policy diagnosis
+
+Run `/home/rob/runs/vsss-training-run-0003` was intentionally stopped after
+23,724,032 environment steps. Between iterations 1 and 1,450, actor `log_std`
+rose from approximately -0.50 to +1.07 while entropy rose from 1.84 to 4.98.
+Over the final 100 iterations, about 76.5% of terminal matches ended by
+stagnation and mean field progress was approximately zero.
+
+Deterministic replay inspection showed the learned mean itself deteriorating:
+near-limit wheel commands rose from 0% at iteration 25 to 91.8% at iteration
+1,000 and 100% at iterations 1,250 and 1,450. Increasing matches/s therefore
+mostly represented faster stagnation resets rather than stronger play.
+
+The correction moves stored rollout actions and PPO likelihood evaluation into
+the tanh-bounded action domain, includes the transform Jacobian, caps `log_std`
+at -0.2, and reduces the entropy coefficient from 0.005 to 0.001. It also
+extends heuristic-only training to 1,000 iterations and raises the later
+heuristic population share to 35%.
+
+A three-iteration CUDA smoke with 64 worlds produced finite losses,
+`log_std` near -0.497, mean absolute normalized action near 0.57, action
+saturation between 4.5% and 5.5%, approximate KL between 0.011 and 0.021, and
+clip fraction between 0.13 and 0.24. These measurements validate the numerical
+contract; the next full run remains responsible for demonstrating learning
+quality.

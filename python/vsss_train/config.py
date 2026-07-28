@@ -91,6 +91,7 @@ class MarlConfig:
     clip_epsilon: float = 0.2
     entropy_coefficient: float = 1e-3
     minimum_log_std: float = -5.0
+    maximum_log_std: float = 0.0
     value_coefficient: float = 0.5
     max_grad_norm: float = 0.5
     epochs: int = 4
@@ -159,6 +160,8 @@ class MarlConfig:
             raise ValueError("stagnation thresholds must be positive")
         if self.minimum_log_std > 0.0:
             raise ValueError("minimum_log_std must not be positive")
+        if self.maximum_log_std < self.minimum_log_std:
+            raise ValueError("maximum_log_std must not be below minimum_log_std")
         if self.curriculum_heuristic_iterations < 0:
             raise ValueError("curriculum_heuristic_iterations must be non-negative")
         if (

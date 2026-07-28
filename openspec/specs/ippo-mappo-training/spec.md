@@ -74,6 +74,27 @@ actions independently from physical actuator dynamics.
 - **WHEN** action-delta regularization is positive and commands change abruptly
 - **THEN** the reward includes the configured negative action-delta term
 
+### Requirement: Bounded continuous-action policy
+The MARL learner SHALL sample wheel actions through a tanh-transformed Gaussian,
+evaluate PPO likelihoods in that bounded action domain, and clamp learned
+exploration between configured minimum and maximum log standard deviations.
+
+#### Scenario: Optimize a high-variance actor
+- **WHEN** an actor enters optimization with log standard deviation above its
+  configured maximum
+- **THEN** the update produces finite transformed likelihoods and clamps the
+  parameter to the configured exploration ceiling
+
+### Requirement: PPO action-health telemetry
+Every training iteration SHALL record approximate KL divergence, PPO clip
+fraction, mean absolute normalized action, and the fraction of actions within
+five percent of saturation.
+
+#### Scenario: Inspect a live training run
+- **WHEN** an iteration is written to canonical metrics
+- **THEN** terminal, TensorBoard, and web observability can expose whether policy
+  updates or wheel commands are saturating
+
 ### Requirement: Persistent match-target training
 The runner SHALL keep 30-second matches alive across shorter PPO rollouts and
 SHALL support stopping after a requested number of completed matches.
@@ -101,4 +122,3 @@ after a goal event before reporting match termination.
 - **WHEN** a goal event occurs with a one-second configured pause
 - **THEN** the event is rewarded once and termination occurs after 50 control
   frames
-

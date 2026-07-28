@@ -31,6 +31,8 @@ from vsss_train.marl_ppo import (
     MarlLearner,
     TeamTrajectory,
     TrajectoryMetadata,
+    bounded_action_log_prob,
+    sample_bounded_action,
 )
 
 ROOT = Path(__file__).parents[1]
@@ -103,8 +105,7 @@ def trajectory(learner: MarlLearner, steps: int = 4) -> TeamTrajectory:
     with torch.no_grad():
         mean, log_std = learner.actor(observation)
         distribution = Normal(mean, log_std.exp())
-        action = distribution.sample()  # type: ignore[no-untyped-call]
-        log_probability = distribution.log_prob(action).sum(-1)  # type: ignore[no-untyped-call]
+        action, log_probability = sample_bounded_action(distribution)
         value = learner.critic(observation)
     data = TensorDict(
         {
@@ -172,6 +173,38 @@ def test_optimizer_preserves_exploration_floor() -> None:
     assert torch.all(learner.actor.log_std >= -2.0)
 
 
+def test_optimizer_enforces_exploration_ceiling() -> None:
+    learner = MarlLearner(
+        MarlConfig(
+            device="cpu",
+            num_envs=1,
+            hidden_size=8,
+            epochs=1,
+            minibatch_size=4,
+            maximum_log_std=-0.2,
+        )
+    )
+    with torch.no_grad():
+        learner.actor.log_std.fill_(3.0)
+
+    learner.optimize(trajectory(learner))
+
+    assert torch.all(learner.actor.log_std <= -0.2)
+
+
+def test_bounded_action_matches_transformed_gaussian_density() -> None:
+    distribution = Normal(torch.zeros(64, 2), torch.ones(64, 2))
+    action, log_probability = sample_bounded_action(distribution)
+
+    assert torch.all(action > -1.0)
+    assert torch.all(action < 1.0)
+    assert torch.all(torch.isfinite(log_probability))
+    torch.testing.assert_close(
+        bounded_action_log_prob(distribution, action),
+        log_probability,
+    )
+
+
 def test_stale_trajectory_is_rejected_before_update() -> None:
     learner = MarlLearner(MarlConfig(device="cpu", num_envs=1, hidden_size=8, epochs=1))
     stale = trajectory(learner)
@@ -218,6 +251,7 @@ def test_legacy_checkpoint_accepts_only_neutral_new_fields(tmp_path: Path) -> No
     payload = torch.load(checkpoint, map_location="cpu", weights_only=True)
     for key in (
         "minimum_log_std",
+        "maximum_log_std",
         "wheel_effort_coefficient",
         "ball_direction_coefficient",
         "attacker_alignment_coefficient",
@@ -251,7 +285,9 @@ def test_versioned_marl_configs() -> None:
     assert coordinated.ball_direction_coefficient == 1.0
     assert coordinated.time_penalty_coefficient == 1.0
     assert coordinated.minimum_log_std == -2.0
-    assert coordinated.curriculum_heuristic_iterations == 250
+    assert coordinated.maximum_log_std == -0.2
+    assert coordinated.curriculum_heuristic_iterations == 1000
+    assert coordinated.league_heuristic_weight == 0.35
 
 
 def test_c7_and_c8_have_explicit_opponent_modes_and_team_rewards() -> None:

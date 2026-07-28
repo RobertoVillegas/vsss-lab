@@ -23,13 +23,17 @@ defending half. This creates a dense defensive signal without assigning a fixed
 robot identity or rewarding stationary camping.
 
 All reward and exploration fields are included in the checkpoint fingerprint.
-The M13 config uses a larger actor, higher entropy coefficient, and a minimum
-`log_std` of -2.0. The optimizer clamps that floor after every update. The first
-250 iterations use the deterministic dynamic heuristic as opponent. Subsequent
-iterations sample 50% frozen current learner, 35% uniformly from the latest 16
-eligible historical checkpoints, and 15% dynamic heuristic. Selection uses a
-local seeded RNG; inference-only historical actor loading cannot mutate trainer
-RNG state.
+The M13 actor samples a Gaussian latent action and transforms it through `tanh`;
+PPO evaluates the corresponding bounded density with its Jacobian correction.
+The optimizer clamps `log_std` to the configured `[-2.0, -0.2]` interval after
+every update, and the transformed-policy entropy coefficient is 0.001. This
+prevents the entropy bonus from driving most wheel commands into clipping.
+
+The first 1,000 iterations use the deterministic dynamic heuristic as opponent.
+Subsequent iterations sample 35% frozen current learner, 30% uniformly from the
+latest 16 eligible historical checkpoints, and 35% dynamic heuristic. Selection
+uses a local seeded RNG; inference-only historical actor loading cannot mutate
+trainer RNG state.
 
 Old checkpoints may omit newly introduced fields only when the selected config
 supplies their exact neutral legacy defaults. This preserves M12 inspection
@@ -53,7 +57,8 @@ teammate-spacing clustering proxy in a machine-readable artifact.
 ## Validation
 
 - Unit tests cover scalar/vector reward parity, directionality, bounded costs,
-  exploration clamping, legacy loading, and terminal scorecards.
+  transformed action densities, both exploration clamps, legacy loading, and
+  terminal scorecards.
 - A CUDA smoke run must produce finite loss, return, and a checkpoint.
 - The completed 50M run is ranked as historical evidence; a fresh M13 run is
   required for an identical-budget comparison.

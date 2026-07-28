@@ -26,6 +26,10 @@ export interface TrainingMetric {
     policy_loss?: number;
     value_loss?: number;
     entropy?: number;
+    approx_kl?: number;
+    clip_fraction?: number;
+    mean_abs_action?: number;
+    action_saturation?: number;
   };
   terminations?: {
     goal?: number;

@@ -20,6 +20,9 @@
 - [x] Add TensorBoard-compatible events and in-viewer training charts
 - [x] Mix current, bounded historical, and heuristic opponents deterministically
 - [x] Add a machine-readable paired-run comparison command
+- [x] Bound stochastic wheel actions with a transformed Gaussian density
+- [x] Add an exploration ceiling and PPO action-health telemetry
+- [x] Diagnose and stop the saturated 23.7M-step run 0003
 - [ ] Run a fresh 50 million-step M13 paired experiment
 - [ ] Compare goals, terminal outcomes, clustering, exploration, and throughput
       against run 0002

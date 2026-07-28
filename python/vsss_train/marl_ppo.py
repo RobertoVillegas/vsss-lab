@@ -21,6 +21,7 @@ MARL_CHECKPOINT_SCHEMA = 1
 TRAJECTORY_SCHEMA = 1
 LEGACY_NEUTRAL_CONFIG = {
     "minimum_log_std": -5.0,
+    "maximum_log_std": 0.0,
     "wheel_effort_coefficient": 0.0,
     "ball_direction_coefficient": 0.0,
     "attacker_alignment_coefficient": 0.0,
@@ -32,6 +33,25 @@ LEGACY_NEUTRAL_CONFIG = {
     "league_heuristic_weight": 0.0,
     "league_history_window": 16,
 }
+ACTION_EPSILON = 1e-6
+
+
+def sample_bounded_action(distribution: Normal) -> tuple[Tensor, Tensor]:
+    """Sample a tanh-bounded action and its transformed log probability."""
+    latent = distribution.sample()  # type: ignore[no-untyped-call]
+    action = torch.tanh(latent)
+    return action, bounded_action_log_prob(distribution, action)
+
+
+def bounded_action_log_prob(distribution: Normal, action: Tensor) -> Tensor:
+    """Evaluate a tanh-transformed Gaussian in the action domain."""
+    bounded = action.clamp(-1.0 + ACTION_EPSILON, 1.0 - ACTION_EPSILON)
+    latent = torch.atanh(bounded)
+    correction = torch.log1p(-bounded.square() + ACTION_EPSILON)
+    return cast(
+        Tensor,
+        (distribution.log_prob(latent) - correction).sum(-1),  # type: ignore[no-untyped-call]
+    )
 
 
 @dataclass(frozen=True)
@@ -141,7 +161,13 @@ class MarlLearner:
             )
             advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-8)
 
-        totals = {"policy_loss": 0.0, "value_loss": 0.0, "entropy": 0.0}
+        totals = {
+            "policy_loss": 0.0,
+            "value_loss": 0.0,
+            "entropy": 0.0,
+            "approx_kl": 0.0,
+            "clip_fraction": 0.0,
+        }
         steps = 0
         generator = torch.Generator().manual_seed(self.config.seed + self.policy_version)
         agents_per_step = self.config.num_envs * 3
@@ -155,7 +181,7 @@ class MarlLearner:
                 sample_advantage = advantage[indices]
                 mean, log_std = self.actor(sample_observation)
                 distribution = Normal(mean, log_std.exp())
-                log_probability = distribution.log_prob(sample["action"]).sum(-1)  # type: ignore[no-untyped-call]
+                log_probability = bounded_action_log_prob(distribution, sample["action"])
                 ratio = (log_probability - sample["sample_log_prob"]).exp()
                 clipped = ratio.clamp(
                     1.0 - self.config.clip_epsilon,
@@ -167,7 +193,11 @@ class MarlLearner:
                 ).mean()
                 value = self.critic(sample_observation)
                 value_loss = 0.5 * (value - value_target[indices]).square().mean()
-                entropy = distribution.entropy().sum(-1).mean()  # type: ignore[no-untyped-call]
+                entropy_action = torch.tanh(distribution.rsample())
+                entropy = -bounded_action_log_prob(distribution, entropy_action).mean()
+                log_ratio = log_probability - sample["sample_log_prob"]
+                approx_kl = ((ratio - 1.0) - log_ratio).mean()
+                clip_fraction = ((ratio - 1.0).abs() > self.config.clip_epsilon).float().mean()
                 loss = (
                     policy_loss
                     + self.config.value_coefficient * value_loss
@@ -181,13 +211,21 @@ class MarlLearner:
                 )
                 self.optimizer.step()
                 with torch.no_grad():
-                    self.actor.log_std.clamp_(min=self.config.minimum_log_std)
+                    self.actor.log_std.clamp_(
+                        min=self.config.minimum_log_std,
+                        max=self.config.maximum_log_std,
+                    )
                 totals["policy_loss"] += float(policy_loss.detach())
                 totals["value_loss"] += float(value_loss.detach())
                 totals["entropy"] += float(entropy.detach())
+                totals["approx_kl"] += float(approx_kl.detach())
+                totals["clip_fraction"] += float(clip_fraction.detach())
                 steps += 1
+        result = {name: value / steps for name, value in totals.items()}
+        result["mean_abs_action"] = float(data["action"].abs().mean())
+        result["action_saturation"] = float((data["action"].abs() > 0.95).float().mean())
         self.policy_version += 1
-        return {name: value / steps for name, value in totals.items()}
+        return result
 
     def save(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
