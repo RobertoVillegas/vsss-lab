@@ -22,6 +22,7 @@ from vsss_vision.contracts import (
     RobotMeasurement,
 )
 from vsss_vision.filters import BallKalmanFilter, RobotEkf
+from vsss_vision.metrics import ErrorSummary, VisionMetrics, analyze_replay
 from vsss_vision.prediction import (
     FieldPredictionModel,
     analytic_ball_prediction,
@@ -39,6 +40,7 @@ __all__ = [
     "CameraEstimatorBridge",
     "CameraFrame",
     "CameraPerturbationProfile",
+    "ErrorSummary",
     "EstimatorCalibration",
     "EstimatorFrame",
     "FieldPredictionModel",
@@ -51,7 +53,9 @@ __all__ = [
     "RobotEstimate",
     "RobotMeasurement",
     "SyntheticCamera",
+    "VisionMetrics",
     "analytic_ball_prediction",
+    "analyze_replay",
     "camera_frame_from_json",
     "camera_frame_from_mapping",
     "collision_aware_ball_prediction",

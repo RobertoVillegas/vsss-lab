@@ -125,6 +125,9 @@ league-live-resume run_dir="/home/rob/runs/vsss-lab-live" iterations="1000" capt
 league-inspect run_dir="/home/rob/runs/vsss-lab-demo":
   uv run --group train python -m vsss_league.cli inspect --run-dir "{{run_dir}}"
 
+vision-metrics replay:
+  uv run python -m tools.vision_metrics "{{replay}}"
+
 league-tournament checkpoint run_dir="/home/rob/runs/vsss-lab-tournament" config="experiments/configs/m6-mappo.toml" seeds="5":
   uv run --group train python -m vsss_league.cli tournament --config "{{config}}" --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --checkpoint "{{checkpoint}}" --output-dir "{{run_dir}}" --seeds {{seeds}}
 
