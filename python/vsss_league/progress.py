@@ -10,7 +10,6 @@ from rich.live import Live
 from rich.progress import (
     BarColumn,
     Progress,
-    TaskProgressColumn,
     TextColumn,
     TimeElapsedColumn,
     TimeRemainingColumn,
@@ -40,12 +39,16 @@ class TrainingDashboard:
         self._frame_rate = 0.0
         self._iteration_rate = 0.0
         self._checkpoint = "—"
+        self._environment_steps = 0
         self._matches = 0
         self._match_rate = 0.0
         self._progress = Progress(
             TextColumn("[bold green]{task.description}"),
             BarColumn(),
-            TaskProgressColumn(),
+            TextColumn(
+                "[progress.percentage]{task.completed:,.0f}/{task.total:,.0f}"
+                " · {task.percentage:>6.2f}%"
+            ),
             TimeElapsedColumn(),
             TimeRemainingColumn(),
             console=self.console,
@@ -101,6 +104,7 @@ class TrainingDashboard:
         self._progress_values.append(result.progress)
         self._iteration_rate = iteration_rate
         self._frame_rate = frame_rate
+        self._environment_steps = environment_steps
         self._matches = matches
         self._match_rate = match_rate
         self._status = "checkpointed" if checkpoint else "running"
@@ -153,6 +157,19 @@ class TrainingDashboard:
             f"{self._iteration_rate:.2f} iter/s",
         )
         table.add_row("experience", f"{self._frame_rate:,.0f} frames/s", "")
+        table.add_row(
+            "environment steps",
+            (
+                f"{self._environment_steps:,} / {self.target_steps:,}"
+                if self.target_steps is not None
+                else f"{self._environment_steps:,}"
+            ),
+            (
+                f"{self._environment_steps / self.target_steps:.3%}"
+                if self.target_steps is not None
+                else ""
+            ),
+        )
         table.add_row(
             "matches",
             f"{self._matches:,}",
