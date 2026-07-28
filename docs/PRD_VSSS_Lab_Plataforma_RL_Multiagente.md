@@ -173,6 +173,15 @@ separa identidad lógica, asignación azul/amarillo y marcador visual removible;
 los assets se derivarán de las reglas fijadas para el evento en lugar de usar
 el número de textura como identidad de política.
 
+La tesis de De La Torre Vanegas (2024) acompaña ese simulador y aporta baselines
+concretos: PPO/TD3 para un agente, MATD3 con actores descentralizados y críticos
+centralizados, curriculum de dos etapas, una recompensa direccional de pelota y
+un pipeline de visión HSL/K-means/Húngaro/Kalman-EKF. Sus resultados se tratarán
+como hipótesis reproducibles, no como evidencia propia. En particular, la mejora
+obtenida al fijar recompensas de atacante/defensa/portero se comparará contra
+roles dinámicos bajo permutación, y su propuesta futura de MAPPO coincide con el
+baseline principal de VSSS Lab.
+
 **Qué no se hereda como arquitectura principal:**
 
 - ROS 1 Noetic;
@@ -2152,6 +2161,8 @@ Además:
 20. ROS 2 Lyrical: https://docs.ros.org/en/lyrical/  
 21. ROS/Gazebo compatibility: https://gazebosim.org/docs/latest/ros_installation/  
 22. ROS/Gazebo bridge: https://gazebosim.org/docs/latest/ros2_integration/
+23. De La Torre Vanegas, Julio (2024), *Aprendizaje profundo por refuerzo para
+    robots colaborativos y/o competitivos*, tesis de maestría, CIMAT.
 
 ---
 

@@ -1,6 +1,6 @@
 ## 1. Protocol foundation
 
-- [x] 1.1 Research current VSSS rules, Julio marker assets, FlatBuffers, and ZeroMQ
+- [x] 1.1 Research current VSSS rules, Julio thesis/marker assets, FlatBuffers, and ZeroMQ
 - [x] 1.2 Record logical/team/visual identity boundary in ADR-0010
 - [x] 1.3 Define M8 OpenSpec scope, contracts, non-goals, and validation
 - [ ] 1.4 Add pinned FlatBuffers compiler/runtime and native ZeroMQ dependencies
