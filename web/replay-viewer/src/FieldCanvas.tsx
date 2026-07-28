@@ -150,35 +150,35 @@ export function FieldCanvas({ header, frame, layers }: Props) {
     if (layers.predicted && prediction && prediction.samples.length > 1) {
       context.beginPath();
       prediction.samples.forEach((sample, index) => {
-        const sigma = prediction.uncertainty[index];
-        const [sampleX, sampleY] = point(sample[1], sample[2]);
-        const radius = Math.max(sigma?.[1] ?? 0, sigma?.[2] ?? 0) * scale * 2;
-        if (index === 0) context.moveTo(sampleX, sampleY - radius);
-        else context.lineTo(sampleX, sampleY - radius);
-      });
-      [...prediction.samples].reverse().forEach((sample, reverseIndex) => {
-        const index = prediction.samples.length - reverseIndex - 1;
-        const sigma = prediction.uncertainty[index];
-        const [sampleX, sampleY] = point(sample[1], sample[2]);
-        const radius = Math.max(sigma?.[1] ?? 0, sigma?.[2] ?? 0) * scale * 2;
-        context.lineTo(sampleX, sampleY + radius);
-      });
-      context.closePath();
-      context.fillStyle = "rgba(72, 224, 255, 0.10)";
-      context.fill();
-      context.beginPath();
-      prediction.samples.forEach((sample, index) => {
         const [sampleX, sampleY] = point(sample[1], sample[2]);
         if (index === 0) context.moveTo(sampleX, sampleY);
         else context.lineTo(sampleX, sampleY);
       });
-      context.strokeStyle = prediction.stale ? "rgba(255, 184, 77, 0.6)" : "rgba(72, 224, 255, 0.8)";
-      context.lineWidth = 2;
-      context.setLineDash([6, 5]);
+      context.strokeStyle = prediction.stale ? "rgba(255, 184, 77, 0.75)" : "rgba(72, 224, 255, 0.95)";
+      context.lineWidth = 2.5;
       context.stroke();
-      context.setLineDash([]);
+
+      const previous = prediction.samples.at(-2);
+      const last = prediction.samples.at(-1);
+      if (previous && last) {
+        const [previousX, previousY] = point(previous[1], previous[2]);
+        const [lastX, lastY] = point(last[1], last[2]);
+        const direction = Math.atan2(lastY - previousY, lastX - previousX);
+        context.save();
+        context.translate(lastX, lastY);
+        context.rotate(direction);
+        context.beginPath();
+        context.moveTo(0, 0);
+        context.lineTo(-9, -4);
+        context.lineTo(-9, 4);
+        context.closePath();
+        context.fillStyle = context.strokeStyle;
+        context.fill();
+        context.restore();
+      }
+
       prediction.samples.forEach((sample, index) => {
-        if (index === 0 || index % 2 !== 0) return;
+        if (index === 0 || index !== prediction.samples.length - 1) return;
         const [sampleX, sampleY] = point(sample[1], sample[2]);
         context.fillStyle = "rgba(132, 234, 255, 0.9)";
         context.font = "10px ui-monospace, monospace";
