@@ -86,11 +86,11 @@ league-resume run_dir="/home/rob/runs/vsss-lab-demo" iterations="1000" capture_e
 league-live run_dir="/home/rob/runs/vsss-lab-live" iterations="1000" capture_every="100" capture_seconds="60" checkpoint_every="100" device="auto" num_envs="16" port="8765":
   mkdir -p "{{run_dir}}"
   just web-build
-  uv run python -m tools.replay_web.server --run-dir "{{run_dir}}" --host 127.0.0.1 --port {{port}} & viewer_pid=$!; trap 'kill "$viewer_pid" 2>/dev/null || true' EXIT; just league-run run_dir="{{run_dir}}" iterations="{{iterations}}" capture_every="{{capture_every}}" capture_seconds="{{capture_seconds}}" checkpoint_every="{{checkpoint_every}}" device="{{device}}" num_envs="{{num_envs}}"
+  uv run python -m tools.replay_web.server --run-dir "{{run_dir}}" --host 127.0.0.1 --port {{port}} & viewer_pid=$!; trap 'kill "$viewer_pid" 2>/dev/null || true' EXIT; just league-run "{{run_dir}}" "{{iterations}}" "{{capture_every}}" "{{capture_seconds}}" "{{checkpoint_every}}" "{{device}}" "{{num_envs}}"
 
 league-live-resume run_dir="/home/rob/runs/vsss-lab-live" iterations="1000" capture_every="100" capture_seconds="60" checkpoint_every="100" device="auto" num_envs="16" port="8765":
   just web-build
-  uv run python -m tools.replay_web.server --run-dir "{{run_dir}}" --host 127.0.0.1 --port {{port}} & viewer_pid=$!; trap 'kill "$viewer_pid" 2>/dev/null || true' EXIT; just league-resume run_dir="{{run_dir}}" iterations="{{iterations}}" capture_every="{{capture_every}}" capture_seconds="{{capture_seconds}}" checkpoint_every="{{checkpoint_every}}" device="{{device}}" num_envs="{{num_envs}}"
+  uv run python -m tools.replay_web.server --run-dir "{{run_dir}}" --host 127.0.0.1 --port {{port}} & viewer_pid=$!; trap 'kill "$viewer_pid" 2>/dev/null || true' EXIT; just league-resume "{{run_dir}}" "{{iterations}}" "{{capture_every}}" "{{capture_seconds}}" "{{checkpoint_every}}" "{{device}}" "{{num_envs}}"
 
 league-inspect run_dir="/home/rob/runs/vsss-lab-demo":
   uv run --group train python -m vsss_league.cli inspect --run-dir "{{run_dir}}"
