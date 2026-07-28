@@ -26,6 +26,13 @@ description = "Build and install the native Python extension"
 depends = ["bootstrap"]
 run = "uv run maturin develop --release"
 
+[tasks.train-env]
+description = "Install locked training dependencies and native Python extension"
+run = [
+  "uv sync --group train --locked",
+  "uv run maturin develop --release",
+]
+
 [tasks.doctor]
 description = "Validate host and project invariants"
 run = "bash tools/doctors/doctor.sh"
