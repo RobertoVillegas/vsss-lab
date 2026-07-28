@@ -3,8 +3,8 @@
 use std::{cell::Cell, rc::Rc};
 
 use vsss_match_server::{
-    Clock, ControllerIdentity, FallbackPolicy, MatchMachine, SessionError, SessionRegistry,
-    SessionState, TickDecision,
+    Clock, ControllerIdentity, FallbackPolicy, LeaseAdjudication, MatchMachine, SessionError,
+    SessionRegistry, SessionState, TickDecision,
 };
 use vsss_physics_rapier::RapierBackend;
 use vsss_protocol::wire::ControllerSlot;
@@ -125,7 +125,10 @@ fn sessions_enforce_slot_sequence_and_lease() {
         Err(SessionError::WrongSlot)
     );
 
-    assert_eq!(sessions.expire(221, 100), vec![ControllerSlot::Blue]);
+    assert_eq!(
+        sessions.adjudicate_leases(221, 100),
+        LeaseAdjudication::YellowWinsByForfeit
+    );
     assert_eq!(
         sessions.get(b"blue-route").expect("session").state,
         SessionState::Disconnected

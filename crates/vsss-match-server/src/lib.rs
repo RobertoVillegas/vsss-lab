@@ -10,7 +10,7 @@ pub use machine::{
     Advance, FallbackPolicy, MachineError, MatchMachine, MatchPhase, SlotActions, TickDecision,
 };
 pub use session::{
-    ControllerIdentity, ControllerSession, NegotiatedCapabilities, SessionError, SessionRegistry,
-    SessionState,
+    ControllerIdentity, ControllerSession, LeaseAdjudication, NegotiatedCapabilities, SessionError,
+    SessionRegistry, SessionState,
 };
 pub use transport::{IncomingMessage, RouterTransport, TransportError};

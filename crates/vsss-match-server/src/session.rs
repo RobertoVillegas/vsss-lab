@@ -36,6 +36,19 @@ pub enum SessionState {
     Closed,
 }
 
+/// Deterministic result of applying the heartbeat lease policy.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LeaseAdjudication {
+    /// Both controllers remain active.
+    Continue,
+    /// Blue disconnected; Yellow wins by forfeit.
+    YellowWinsByForfeit,
+    /// Yellow disconnected; Blue wins by forfeit.
+    BlueWinsByForfeit,
+    /// Both leases expired at the same adjudication boundary.
+    DoubleForfeit,
+}
+
 /// Server-owned state for one controller connection.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ControllerSession {
@@ -246,6 +259,20 @@ impl SessionRegistry {
         }
         expired.sort_by_key(|slot| slot.0);
         expired
+    }
+
+    /// Expire heartbeat leases and produce a deterministic forfeit decision.
+    #[must_use]
+    pub fn adjudicate_leases(&mut self, now_ns: u64, lease_ns: u64) -> LeaseAdjudication {
+        let expired = self.expire(now_ns, lease_ns);
+        let blue = expired.contains(&ControllerSlot::Blue);
+        let yellow = expired.contains(&ControllerSlot::Yellow);
+        match (blue, yellow) {
+            (false, false) => LeaseAdjudication::Continue,
+            (true, false) => LeaseAdjudication::YellowWinsByForfeit,
+            (false, true) => LeaseAdjudication::BlueWinsByForfeit,
+            (true, true) => LeaseAdjudication::DoubleForfeit,
+        }
     }
 
     /// Return a session by opaque transport identity.
