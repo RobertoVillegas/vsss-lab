@@ -8,6 +8,8 @@ allowing visualization latency into the physics hot loop.
 
 The contract choice is recorded in
 `docs/decisions/0006-decoupled-fast-sim-visualization.md`.
+The comparison evidence is recorded in
+`docs/architecture/simulator-landscape.md`.
 
 ## Goals / Non-Goals
 
@@ -75,7 +77,15 @@ format or required runtime. Foxglove is deferred to the ROS/MCAP milestones.
 - [Bevy adds compile weight] → Keep it in a leaf viewer crate and preserve a
   dependency-light headless renderer.
 - [JSONL is verbose] → Keep adapters versioned and migrate storage only when the
-  protocol milestone provides measured justification.
+protocol milestone provides measured justification.
+
+### Follow the proven standalone-simulator/viewer split
+
+VSS-SDK separates its Bullet simulator from a viewer that consumes states from
+simulation or vision. RocketSim/RLGym makes rendering optional, and RLViser is
+a Rust/Bevy process that listens for state packets. These independent VSSS and
+high-throughput RL precedents support a leaf Bevy viewer behind a replaceable
+transport rather than rendering inside Rapier.
 - [Interpolation can show non-physical intermediate poses] → Label interpolated
   display state and retain exact-tick stepping.
 
