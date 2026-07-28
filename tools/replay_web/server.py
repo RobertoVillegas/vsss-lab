@@ -70,15 +70,12 @@ def _summarize_replay(filename: str, _size: int, _modified_ns: int) -> ReplaySum
     score_yellow = 0
     simulation_seconds = 0.0
     try:
-        with Path(filename).open(encoding="utf-8") as stream:
-            for line in stream:
-                record = json.loads(line)
-                if record.get("type") != "tick":
-                    continue
-                snapshot = record["snapshot"]
-                score_blue = int(snapshot["score_blue"])
-                score_yellow = int(snapshot["score_yellow"])
-                simulation_seconds = float(snapshot["simulation_time"])
+        record = json.loads(_last_complete_line(Path(filename)))
+        if record.get("type") == "tick":
+            snapshot = record["snapshot"]
+            score_blue = int(snapshot["score_blue"])
+            score_yellow = int(snapshot["score_yellow"])
+            simulation_seconds = float(snapshot["simulation_time"])
     except (json.JSONDecodeError, KeyError, TypeError, ValueError):
         pass
     return {
@@ -90,6 +87,35 @@ def _summarize_replay(filename: str, _size: int, _modified_ns: int) -> ReplaySum
         "goals": score_blue + score_yellow,
         "simulation_seconds": simulation_seconds,
     }
+
+
+def _last_complete_line(path: Path, chunk_size: int = 64 * 1024) -> str:
+    """Read the final complete JSONL record without scanning a large replay."""
+    with path.open("rb") as stream:
+        position = stream.seek(0, 2)
+        if position == 0:
+            raise ValueError("replay is empty")
+        stream.seek(-1, 2)
+        ends_with_newline = stream.read(1) == b"\n"
+        suffix = b""
+        while position > 0:
+            amount = min(chunk_size, position)
+            position -= amount
+            stream.seek(position)
+            suffix = stream.read(amount) + suffix
+            lines = suffix.splitlines()
+            if not ends_with_newline:
+                lines = lines[:-1]
+            if position == 0:
+                candidates = lines
+            elif len(lines) > 1:
+                candidates = lines[1:]
+            else:
+                continue
+            for line in reversed(candidates):
+                if line.strip():
+                    return line.decode("utf-8")
+    raise ValueError("replay is empty")
 
 
 def discover_checkpoints(run_dir: Path) -> list[CheckpointInfo]:
@@ -123,10 +149,10 @@ def latest_metric(run_dir: Path) -> dict[str, Any] | None:
 
 def resolve_replay(run_dir: Path, filename: str) -> Path | None:
     """Resolve only a replay currently discoverable in the configured run."""
-    names = {replay.filename for replay in discover_replays(run_dir)}
-    if filename not in names:
+    if REPLAY_NAME.fullmatch(filename) is None:
         return None
-    return run_dir.resolve() / "replays" / filename
+    replay = run_dir.resolve() / "replays" / filename
+    return replay if replay.is_file() else None
 
 
 def make_handler(run_dir: Path, static_dir: Path) -> type[SimpleHTTPRequestHandler]:
@@ -179,8 +205,11 @@ def make_handler(run_dir: Path, static_dir: Path) -> type[SimpleHTTPRequestHandl
             self.send_header("Content-Length", str(path.stat().st_size))
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
-            with path.open("rb") as replay:
-                self.copyfile(replay, self.wfile)
+            try:
+                with path.open("rb") as replay:
+                    self.copyfile(replay, self.wfile)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
 
     return ReplayRequestHandler
 

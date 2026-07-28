@@ -30,6 +30,41 @@ def test_discovers_iterations_in_numeric_order(tmp_path: Path) -> None:
     ]
 
 
+def test_summarizes_replay_from_final_tick(tmp_path: Path) -> None:
+    replay_dir = tmp_path / "replays"
+    replay_dir.mkdir()
+    replay = replay_dir / "iteration-0007.jsonl"
+    replay.write_text(
+        '{"type":"header"}\n'
+        '{"type":"tick","snapshot":{"score_blue":0,"score_yellow":0,'
+        '"simulation_time":0.02}}\n'
+        '{"type":"tick","snapshot":{"score_blue":2,"score_yellow":1,'
+        '"simulation_time":60.0}}\n'
+    )
+
+    [summary] = discover_replays(tmp_path)
+
+    assert summary.iteration == 7
+    assert summary.outcome == "win"
+    assert summary.goals == 3
+    assert summary.simulation_seconds == 60.0
+
+
+def test_ignores_incomplete_trailing_record(tmp_path: Path) -> None:
+    replay_dir = tmp_path / "replays"
+    replay_dir.mkdir()
+    replay = replay_dir / "iteration-0008.jsonl"
+    replay.write_text(
+        '{"type":"tick","snapshot":{"score_blue":1,"score_yellow":0,'
+        '"simulation_time":30.0}}\n{"type":"tick"'
+    )
+
+    [summary] = discover_replays(tmp_path)
+
+    assert summary.outcome == "win"
+    assert summary.simulation_seconds == 30.0
+
+
 def test_resolves_only_discovered_replay(tmp_path: Path) -> None:
     replay_dir = tmp_path / "replays"
     replay_dir.mkdir()
