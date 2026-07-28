@@ -326,9 +326,9 @@ def _run(arguments: argparse.Namespace) -> None:
                     blue_policy=f"{config.policy_id}@{result.policy_version}",
                     yellow_policy=opponent_id,
                 )
-                if session.curriculum is not None:
+                if rollout_session.curriculum is not None:
                     for descriptor in analyze_replay(replay_path).failure_descriptors():
-                        session.curriculum.ingest_failure_descriptor(
+                        rollout_session.curriculum.ingest_failure_descriptor(
                             kind=descriptor.kind,
                             digest=descriptor.digest,
                         )

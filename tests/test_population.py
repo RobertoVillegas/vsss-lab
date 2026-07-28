@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+from vsss_league.evaluation import PairedMatch, paired_estimate
 from vsss_league.population import (
     BehaviorCheckpoint,
     decide_consolidation,
     select_diverse_population,
     verify_distillation,
 )
-from vsss_league.evaluation import PairedMatch, paired_estimate
 from vsss_league.ratings import paired_elo_report
 
 

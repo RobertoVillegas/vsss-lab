@@ -147,6 +147,7 @@ def test_ippo_and_mappo_update_finite_losses() -> None:
                 minibatch_size=4,
             )
         )
+        assert isinstance(learner.actor, SharedActor)
         before = learner.actor.action_head.weight.detach().clone()
         losses = learner.optimize(trajectory(learner))
         assert all(np.isfinite(value) for value in losses.values())

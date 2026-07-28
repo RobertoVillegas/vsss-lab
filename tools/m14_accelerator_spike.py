@@ -122,7 +122,11 @@ def main() -> None:
     print(rendered, end="")
 
 
-def _kinematic_step(state: torch.Tensor, actions: torch.Tensor, config: dict[str, Any]) -> torch.Tensor:
+def _kinematic_step(
+    state: torch.Tensor,
+    actions: torch.Tensor,
+    config: dict[str, Any],
+) -> torch.Tensor:
     result = state.clone()
     dt = float(config["timestep"])
     wheel_radius = float(config["wheel"]["radius"])
@@ -149,7 +153,10 @@ def _kinematic_step(state: torch.Tensor, actions: torch.Tensor, config: dict[str
     return result
 
 
-def _benchmark_kernels(initial: np.ndarray[Any, np.dtype[np.float32]], device: torch.device) -> dict[str, Any]:
+def _benchmark_kernels(
+    initial: np.ndarray[Any, np.dtype[np.float32]],
+    device: torch.device,
+) -> dict[str, Any]:
     state = torch.from_numpy(initial).to(device)
     iterations = 1_000
     timings: dict[str, float] = {}
@@ -157,8 +164,7 @@ def _benchmark_kernels(initial: np.ndarray[Any, np.dtype[np.float32]], device: t
         ("observation", lambda: torch.cat((state[:, 5:10], state[:, 10:21]), dim=1)),
         (
             "reward",
-            lambda: (state[:, 5] - state[:, 12])
-            - 0.01 * state[:, 7:9].square().sum(dim=1),
+            lambda: (state[:, 5] - state[:, 12]) - 0.01 * state[:, 7:9].square().sum(dim=1),
         ),
         (
             "reset",
@@ -180,7 +186,9 @@ def _benchmark_kernels(initial: np.ndarray[Any, np.dtype[np.float32]], device: t
     }
 
 
-def _positions(state: np.ndarray[Any, np.dtype[np.float32]]) -> np.ndarray[Any, np.dtype[np.float32]]:
+def _positions(
+    state: np.ndarray[Any, np.dtype[np.float32]],
+) -> np.ndarray[Any, np.dtype[np.float32]]:
     positions = [state[:, 5:7]]
     positions.extend(state[:, 12 + robot * 11 : 14 + robot * 11] for robot in range(6))
     return np.stack(positions, axis=1)
@@ -206,9 +214,8 @@ def _goal_events(state: torch.Tensor, config: dict[str, Any]) -> torch.Tensor:
 def _device(requested: str) -> torch.device:
     if requested == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("CUDA requested but unavailable")
-    return torch.device(
-        "cuda" if requested == "cuda" or requested == "auto" and torch.cuda.is_available() else "cpu"
-    )
+    use_cuda = requested == "cuda" or (requested == "auto" and torch.cuda.is_available())
+    return torch.device("cuda" if use_cuda else "cpu")
 
 
 def _sync(device: torch.device) -> None:
