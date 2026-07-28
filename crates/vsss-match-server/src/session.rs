@@ -3,7 +3,18 @@
 use std::collections::BTreeMap;
 
 use thiserror::Error;
-use vsss_protocol::wire::ControllerSlot;
+use vsss_protocol::{MAX_MESSAGE_BYTES, PROTOCOL_VERSION, VerifiedEnvelope, wire::ControllerSlot};
+
+/// Capabilities fixed by a successful handshake.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct NegotiatedCapabilities {
+    /// Selected wire protocol version.
+    pub protocol_version: u32,
+    /// Server control interval.
+    pub control_period_ns: u64,
+    /// Largest accepted wire message.
+    pub max_message_bytes: usize,
+}
 
 /// Stable transport identity and human-readable controller name.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -32,6 +43,8 @@ pub struct ControllerSession {
     pub identity: ControllerIdentity,
     /// Ephemeral match slot.
     pub slot: ControllerSlot,
+    /// Agreed protocol and timing limits.
+    pub capabilities: NegotiatedCapabilities,
     /// Last accepted sender sequence.
     pub last_sequence: u64,
     /// Last received message time.
@@ -69,6 +82,12 @@ pub enum SessionError {
     /// Session no longer accepts messages.
     #[error("controller session is not active")]
     Inactive,
+    /// First message was not an unassigned Hello envelope.
+    #[error("controller handshake must be an unassigned Hello")]
+    InvalidHandshake,
+    /// Controller and server have no common protocol version.
+    #[error("controller has no compatible protocol version")]
+    CapabilityMismatch,
 }
 
 /// Two-slot controller registry independent of transport implementation.
@@ -78,6 +97,51 @@ pub struct SessionRegistry {
 }
 
 impl SessionRegistry {
+    /// Negotiate the first available slot from a verified Hello envelope.
+    ///
+    /// # Errors
+    ///
+    /// Rejects non-Hello input, incompatible versions, or a full registry.
+    pub fn negotiate(
+        &mut self,
+        identity: ControllerIdentity,
+        envelope: VerifiedEnvelope<'_>,
+        now_ns: u64,
+        control_period_ns: u64,
+        max_message_bytes: usize,
+    ) -> Result<&ControllerSession, SessionError> {
+        let wire = envelope.wire();
+        if wire.controller_slot() != ControllerSlot::Unassigned {
+            return Err(SessionError::InvalidHandshake);
+        }
+        let hello = wire
+            .payload_as_hello()
+            .ok_or(SessionError::InvalidHandshake)?;
+        if hello.min_protocol_version() > PROTOCOL_VERSION
+            || hello.max_protocol_version() < PROTOCOL_VERSION
+        {
+            return Err(SessionError::CapabilityMismatch);
+        }
+        let slot = [ControllerSlot::Blue, ControllerSlot::Yellow]
+            .into_iter()
+            .find(|candidate| {
+                !self.sessions.values().any(|session| {
+                    session.slot == *candidate && session.state == SessionState::Active
+                })
+            })
+            .ok_or(SessionError::SlotOccupied)?;
+        self.register_with_capabilities(
+            identity,
+            slot,
+            now_ns,
+            NegotiatedCapabilities {
+                protocol_version: PROTOCOL_VERSION,
+                control_period_ns,
+                max_message_bytes: max_message_bytes.min(MAX_MESSAGE_BYTES),
+            },
+        )
+    }
+
     /// Register a controller in one unoccupied team slot.
     ///
     /// # Errors
@@ -88,6 +152,25 @@ impl SessionRegistry {
         identity: ControllerIdentity,
         slot: ControllerSlot,
         now_ns: u64,
+    ) -> Result<&ControllerSession, SessionError> {
+        self.register_with_capabilities(
+            identity,
+            slot,
+            now_ns,
+            NegotiatedCapabilities {
+                protocol_version: PROTOCOL_VERSION,
+                control_period_ns: 0,
+                max_message_bytes: MAX_MESSAGE_BYTES,
+            },
+        )
+    }
+
+    fn register_with_capabilities(
+        &mut self,
+        identity: ControllerIdentity,
+        slot: ControllerSlot,
+        now_ns: u64,
+        capabilities: NegotiatedCapabilities,
     ) -> Result<&ControllerSession, SessionError> {
         if !matches!(slot, ControllerSlot::Blue | ControllerSlot::Yellow) {
             return Err(SessionError::InvalidSlot);
@@ -108,6 +191,7 @@ impl SessionRegistry {
             ControllerSession {
                 identity,
                 slot,
+                capabilities,
                 last_sequence: 0,
                 last_seen_ns: now_ns,
                 state: SessionState::Active,

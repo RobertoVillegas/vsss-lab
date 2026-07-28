@@ -4142,6 +4142,7 @@ dependencies = [
 name = "vsss-match-server"
 version = "0.0.0"
 dependencies = [
+ "bytes",
  "serde",
  "thiserror 2.0.19",
  "tokio",
