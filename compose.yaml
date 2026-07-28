@@ -1,0 +1,19 @@
+services:
+  dev-cpu:
+    build:
+      context: .
+      dockerfile: containers/dev-cpu/Dockerfile
+    image: vsss-lab/dev-cpu:m0
+    user: "10001:10001"
+    working_dir: /workspace
+
+  train-cuda:
+    build:
+      context: .
+      dockerfile: containers/train-cuda/Dockerfile
+    image: vsss-lab/train-cuda:m0
+    user: "10001:10001"
+    gpus: all
+    working_dir: /workspace
+    security_opt:
+      - no-new-privileges:true
