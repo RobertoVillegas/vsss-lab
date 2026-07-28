@@ -33,6 +33,17 @@ describe("replay helpers", () => {
     expect(parseReplay(`${JSON.stringify(header)}\n${JSON.stringify(frame)}\n`).frames).toHaveLength(1);
   });
 
+  it("ignores a trailing JSONL record that is still being written", () => {
+    const text = `${JSON.stringify(header)}\n${JSON.stringify(frame)}\n{"type":"tick"`;
+    expect(parseReplay(text).frames).toHaveLength(1);
+  });
+
+  it("reports a replay without a complete frame as still recording", () => {
+    expect(() => parseReplay(`${JSON.stringify(header)}\n{"type":"tick"`)).toThrow(
+      "Replay is still being recorded.",
+    );
+  });
+
   it("clamps stepping and formats its position", () => {
     expect(clampedFrame(2, -10, 5)).toBe(0);
     expect(clampedFrame(2, 10, 5)).toBe(4);

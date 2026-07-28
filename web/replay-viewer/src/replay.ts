@@ -1,9 +1,12 @@
 import type { Replay, ReplayFrame, ReplayHeader } from "./types";
 
 export function parseReplay(text: string): Replay {
-  const lines = text.trim().split(/\r?\n/);
+  const completeText = /\r?\n$/.test(text)
+    ? text.trimEnd()
+    : text.slice(0, Math.max(0, text.lastIndexOf("\n"))).trimEnd();
+  const lines = completeText ? completeText.split(/\r?\n/) : [];
   if (lines.length < 2) {
-    throw new Error("Replay has no recorded frames.");
+    throw new Error("Replay is still being recorded.");
   }
   const header = JSON.parse(lines[0]) as ReplayHeader;
   if (header.type !== "header" || !header.config?.field) {

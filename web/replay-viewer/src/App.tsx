@@ -72,6 +72,8 @@ export default function App() {
       if (!response.ok) throw new Error(`Could not load ${selected}.`);
       return parseReplay(await response.text());
     },
+    retry: 10,
+    retryDelay: (attempt) => Math.min(500 * 2 ** attempt, POLL_INTERVAL_MS),
     staleTime: Number.POSITIVE_INFINITY,
   });
   const replay = replayQuery.data ?? null;
@@ -307,6 +309,9 @@ export default function App() {
 
         <section className={`stage ${activeView === "metrics" ? "metrics-stage" : ""}`}>
           {error ? <div className="empty-state"><strong>Replay unavailable</strong><span>{String(error)}</span></div> : null}
+          {activeView === "replay" && replayQuery.isPending && replayQuery.failureCount > 0 ? (
+            <div className="loading">Replay is still being recorded · retrying…</div>
+          ) : null}
           {activeView === "replay" && loading ? <div className="loading">Loading recorded frames…</div> : null}
           {activeView === "replay" && replay && frame && !error ? (
             <FieldCanvas header={replay.header} frame={frame} layers={visionLayers} />

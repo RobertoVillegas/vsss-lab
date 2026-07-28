@@ -51,11 +51,15 @@ def run_policy_replay(
     robot_filters: dict[int, RobotEkf] = {}
     replay_path.parent.mkdir(parents=True, exist_ok=True)
     analysis_path = replay_path.with_suffix(".analysis.jsonl")
+    pending_replay_path = replay_path.with_name(f"{replay_path.name}.partial")
+    pending_analysis_path = analysis_path.with_name(f"{analysis_path.name}.partial")
+    pending_replay_path.unlink(missing_ok=True)
+    pending_analysis_path.unlink(missing_ok=True)
     final_checksum = ""
     pending_predictions: list[dict[str, Any]] = []
     with (
-        replay_path.open("w", encoding="utf-8", newline="\n") as replay,
-        analysis_path.open("w", encoding="utf-8", newline="\n") as analysis,
+        pending_replay_path.open("w", encoding="utf-8", newline="\n") as replay,
+        pending_analysis_path.open("w", encoding="utf-8", newline="\n") as analysis,
     ):
         _write(
             replay,
@@ -229,6 +233,8 @@ def run_policy_replay(
                 pending_predictions.clear()
                 episode += 1
                 observation = environment.reset(seed + episode)
+    pending_replay_path.replace(replay_path)
+    pending_analysis_path.replace(analysis_path)
     return {
         "ticks": index,
         "score_blue": goals_blue,
