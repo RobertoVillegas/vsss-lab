@@ -184,6 +184,7 @@ frames/second, matches/second, return, losses, entropy, and checkpoint status.
 The browser viewer adds:
 
 - play, pause, seek, rewind, skip, loop, and speed controls;
+- client-side WebM video and bounded animated-GIF export;
 - lazy replay discovery and loading;
 - filters for goals, wins, losses, draws, passes, and other events;
 - synchronized robot actions and state;

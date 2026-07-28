@@ -13,6 +13,7 @@
   "dependencies": {
     "@tanstack/react-query": "^5.90.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "gifenc": "^1.0.3",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "recharts": "^3.3.0",

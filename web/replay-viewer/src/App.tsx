@@ -1,6 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import { exportReplay } from "./exportReplay";
+import type { ExportFormat, ExportProgress } from "./exportReplay";
 import { FieldCanvas } from "./FieldCanvas";
 import { clampedFrame, frameLabel, parseReplay } from "./replay";
 import type { MetricHistory, Replay, ReplayAnalytics, ReplayIndex } from "./types";
@@ -27,6 +29,8 @@ export default function App() {
   const [loop, setLoop] = useState(true);
   const [filter, setFilter] = useState("all");
   const [analyticsEventFilter, setAnalyticsEventFilter] = useState("all");
+  const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
+  const [exportError, setExportError] = useState("");
   const [visionLayers, setVisionLayers] = useState({
     truth: true,
     measured: true,
@@ -34,6 +38,7 @@ export default function App() {
     predicted: true,
   });
   const frameRef = useRef(0);
+  const fieldCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const indexQuery = useQuery({
     queryKey: ["training-run-index"],
@@ -146,6 +151,35 @@ export default function App() {
       setFrameIndex((current) => clampedFrame(current, delta, replay.frames.length));
     },
     [replay],
+  );
+
+  const beginExport = useCallback(
+    async (format: ExportFormat) => {
+      const canvas = fieldCanvasRef.current;
+      if (!canvas || !replay || exportProgress) return;
+      const originalFrame = frameRef.current;
+      setPlaying(false);
+      setExportError("");
+      setExportProgress({ completed: 0, total: 1, format });
+      try {
+        await exportReplay(format, {
+          canvas,
+          replay,
+          speed,
+          seek: async (requested) => {
+            setFrameIndex(requested);
+            await nextPaint();
+          },
+          onProgress: setExportProgress,
+        });
+      } catch (cause) {
+        setExportError(cause instanceof Error ? cause.message : String(cause));
+      } finally {
+        setFrameIndex(originalFrame);
+        setExportProgress(null);
+      }
+    },
+    [exportProgress, replay, speed],
   );
 
   useEffect(() => {
@@ -389,7 +423,12 @@ export default function App() {
           ) : null}
           {activeView === "replay" && loading ? <div className="loading">Loading recorded frames…</div> : null}
           {activeView === "replay" && replay && frame && !error ? (
-            <FieldCanvas header={replay.header} frame={frame} layers={visionLayers} />
+            <FieldCanvas
+              ref={fieldCanvasRef}
+              header={replay.header}
+              frame={frame}
+              layers={visionLayers}
+            />
           ) : null}
           {activeView === "metrics" ? (
             <Suspense fallback={<div className="loading">Loading chart engine…</div>}>
@@ -445,6 +484,26 @@ export default function App() {
             <Control label="Forward 100 frames" icon={ICONS.forward} onClick={() => move(100)} />
           </div>
           <div className="transport-options">
+            <div className="export-controls">
+              <button
+                disabled={!replay || Boolean(exportProgress)}
+                onClick={() => void beginExport("webm")}
+              >
+                VIDEO
+              </button>
+              <button
+                disabled={!replay || Boolean(exportProgress)}
+                onClick={() => void beginExport("gif")}
+              >
+                GIF
+              </button>
+              {exportProgress ? (
+                <span>
+                  {exportProgress.format.toUpperCase()}{" "}
+                  {Math.round(100 * exportProgress.completed / exportProgress.total)}%
+                </span>
+              ) : exportError ? <span className="export-error">{exportError}</span> : null}
+            </div>
             <label className="loop-toggle">
               <input type="checkbox" checked={loop} onChange={(event) => setLoop(event.target.checked)} />
               LOOP
@@ -510,6 +569,11 @@ function exportAnalyticsCsv(analytics: ReplayAnalytics) {
   anchor.download = "vsss-replay-analytics.csv";
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+async function nextPaint(): Promise<void> {
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 }
 
 function ActorTelemetry({

@@ -97,7 +97,7 @@ export default function TrainingCharts({ metrics }: { metrics: TrainingMetric[] 
           <Line dataKey="draws" name="draws" stroke="#ffd84a" dot={false} />
           <Line dataKey="stagnations" name="stagnation" stroke="#ff8a62" dot={false} />
         </TrainingChart>
-        <TrainingChart title="EXPLORATION · LOG STD" data={data} wide>
+        <TrainingChart title="EXPLORATION · LOG STD" data={data}>
           <Line dataKey="log_std_left" name="left wheel" stroke="#71e1ae" dot={false} />
           <Line dataKey="log_std_right" name="right wheel" stroke="#49a7ff" dot={false} />
         </TrainingChart>
@@ -109,16 +109,14 @@ export default function TrainingCharts({ metrics }: { metrics: TrainingMetric[] 
 function TrainingChart({
   title,
   data,
-  wide = false,
   children,
 }: {
   title: string;
   data: ChartDatum[];
-  wide?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <article className={`chart-card ${wide ? "wide" : ""}`}>
+    <article className="chart-card">
       <h3>{title}</h3>
       <ResponsiveContainer width="100%" height={220}>
         <LineChart data={data} syncId="training" margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 
 import type { ReplayFrame, ReplayHeader } from "./types";
 
@@ -13,8 +13,15 @@ interface Props {
   };
 }
 
-export function FieldCanvas({ header, frame, layers }: Props) {
+export const FieldCanvas = forwardRef<HTMLCanvasElement, Props>(function FieldCanvas(
+  { header, frame, layers },
+  forwardedRef,
+) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  useImperativeHandle(forwardedRef, () => {
+    if (!canvasRef.current) throw new Error("Field canvas is not mounted.");
+    return canvasRef.current;
+  });
   const [size, setSize] = useState({ width: 0, height: 0 });
 
   useEffect(() => {
@@ -281,4 +288,4 @@ export function FieldCanvas({ header, frame, layers }: Props) {
   }, [frame, header, layers, size]);
 
   return <canvas aria-label="Recorded VSSS field" ref={canvasRef} />;
-}
+});
