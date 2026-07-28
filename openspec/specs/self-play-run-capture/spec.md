@@ -6,9 +6,9 @@ TBD - created by archiving change m7-league-self-play. Update Purpose after arch
 ### Requirement: Real self-play training iteration
 
 Each training iteration SHALL collect a native trajectory against a frozen
-registered opponent, optimize IPPO or MAPPO, increment policy version, and
-permit the orchestrator to resume from the latest durable compatible
-checkpoint.
+registered opponent, optimize IPPO or MAPPO, increment policy version, permit
+resume from the latest durable compatible checkpoint, and report progress and
+estimated completion time.
 
 #### Scenario: Complete one iteration
 
@@ -19,6 +19,11 @@ checkpoint.
 
 - **WHEN** an operator resumes a run with an existing league registry
 - **THEN** training loads the latest registered checkpoint and continues with the next iteration number
+
+#### Scenario: Request a graceful stop
+
+- **WHEN** the operator sends SIGINT or SIGTERM during training
+- **THEN** the current iteration completes, its latest policy is durably registered, and the process exits
 
 ### Requirement: Iteration capture
 

@@ -90,6 +90,25 @@ additional work; checkpoints and 60-second captures can be spaced independently:
 just league-resume /home/rob/runs/vsss-long 10000 100 60 100
 ```
 
+The trainer reports return, progress, throughput, ETA, and checkpoint writes.
+`Ctrl+C` requests a clean stop: the current iteration finishes and the latest
+policy is checkpointed before exit. Training and viewing are independent:
+
+```bash
+# Terminal 1: training only
+just league-resume /home/rob/runs/vsss-long 10000 100 60 100
+
+# Terminal 2: optional read-only viewer
+just league-web /home/rob/runs/vsss-long
+
+# Or launch a new run and its viewer together
+just league-live /home/rob/runs/vsss-live 10000 100 60 100
+```
+
+Fast simulation intentionally computes virtual time faster than wall time while
+preserving the 5 ms physics step and 20 ms control period. A 60-second replay is
+always 60 simulated seconds even when the host produces it in a few seconds.
+
 See `docs/calibration/m11-wheel-action-scale.md` before comparing old
 checkpoints or planning a physical-robot deployment.
 
