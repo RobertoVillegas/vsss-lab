@@ -82,9 +82,12 @@ impl<B: PhysicsBackend + Send> PhysicsBatch<B> {
         assert!(repeats > 0, "repeats must be positive");
         let advance = |world: &mut B, action: &[RobotAction; 6]| {
             let mut state = world.step(action)?;
+            let mut events = state.events;
             for _ in 1..repeats {
                 state = world.step(action)?;
+                events.0 |= state.events.0;
             }
+            state.events = events;
             Ok(state)
         };
         if self.worlds.len() < PARALLEL_WORLD_THRESHOLD {

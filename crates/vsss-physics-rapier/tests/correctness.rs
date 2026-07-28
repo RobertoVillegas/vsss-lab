@@ -94,12 +94,28 @@ fn snapshot_restore_replays_identically() {
 fn positive_goal_line_scores_for_blue() {
     let mut backend = world();
     let mut snapshot = backend.snapshot();
-    snapshot.ball.x.0 = 0.751;
+    snapshot.ball.x.0 = 0.770;
     snapshot.ball.y.0 = 0.0;
+    snapshot.ball.vx.0 = 1.0;
     backend.restore(&snapshot).unwrap();
     let state = backend.step(&stopped()).unwrap();
     assert_eq!(state.score_blue, snapshot.score_blue + 1);
     assert!(state.events.contains(EventFlags::GOAL_BLUE));
+    let next = backend.step(&stopped()).unwrap();
+    assert_eq!(next.score_blue, state.score_blue);
+    assert!(!next.events.contains(EventFlags::GOAL_BLUE));
+}
+
+#[test]
+fn ball_center_crossing_alone_is_not_a_goal() {
+    let mut backend = world();
+    let mut snapshot = backend.snapshot();
+    snapshot.ball.x.0 = 0.751;
+    snapshot.ball.y.0 = 0.0;
+    backend.restore(&snapshot).unwrap();
+    let state = backend.step(&stopped()).unwrap();
+    assert_eq!(state.score_blue, snapshot.score_blue);
+    assert!(!state.events.contains(EventFlags::GOAL_BLUE));
 }
 
 #[test]

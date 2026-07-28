@@ -172,14 +172,22 @@ impl RapierBackend {
         self.state.ball.omega = AngularVelocity(ball.angvel());
     }
 
-    fn detect_goal(&mut self) {
+    fn detect_goal(&mut self, previous_ball_x: f32) {
         self.state.events = EventFlags::NONE;
         let in_mouth = self.state.ball.y.get().abs() <= self.config.field.goal_width.get() / 2.0;
         let goal_line = self.config.field.length.get() / 2.0;
-        if in_mouth && self.state.ball.x.get() > goal_line {
+        let full_positive_crossing = goal_line + self.config.ball.radius.get();
+        let full_negative_crossing = -full_positive_crossing;
+        if in_mouth
+            && previous_ball_x <= full_positive_crossing
+            && self.state.ball.x.get() > full_positive_crossing
+        {
             self.state.score_blue = self.state.score_blue.saturating_add(1);
             self.state.events = EventFlags::GOAL_BLUE;
-        } else if in_mouth && self.state.ball.x.get() < -goal_line {
+        } else if in_mouth
+            && previous_ball_x >= full_negative_crossing
+            && self.state.ball.x.get() < full_negative_crossing
+        {
             self.state.score_yellow = self.state.score_yellow.saturating_add(1);
             self.state.events = EventFlags::GOAL_YELLOW;
         }
@@ -196,9 +204,10 @@ impl PhysicsBackend for RapierBackend {
 
     fn step(&mut self, actions: &[RobotAction; 6]) -> Result<MatchState, PhysicsError> {
         self.apply_actions(actions);
+        let previous_ball_x = self.state.ball.x.get();
         let parameters = IntegrationParameters {
             dt: self.config.timestep.get(),
-            contact_softness: SpringCoefficients::new(1_000.0, 1.0),
+            contact_softness: SpringCoefficients::new(5_000.0, 1.0),
             normalized_allowed_linear_error: 0.0001,
             normalized_max_corrective_velocity: 100.0,
             normalized_prediction_distance: 0.005,
@@ -223,7 +232,7 @@ impl PhysicsBackend for RapierBackend {
         self.state.simulation_time =
             Seconds(self.state.simulation_time.get() + self.config.timestep.get());
         self.read_state();
-        self.detect_goal();
+        self.detect_goal(previous_ball_x);
         Ok(self.state.clone())
     }
 

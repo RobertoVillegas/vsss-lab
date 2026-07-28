@@ -43,6 +43,13 @@ iterations reduce sustained contact to the committed tolerance. Regression
 tests drive robots into each other and a robot into the ball for 1,000 fixed
 steps.
 
+Iteration 0050 of the first 100K-match attempt confirmed two separate goal
+events, but each was emitted when the ball center barely crossed x=0.75 m. Goal
+detection now requires the trailing edge of the 21.5 mm-radius ball to cross the
+line, emits once on that crossing, and leaves the match running for the
+configured one-second post-goal grace before termination. A 50-control-step
+lifecycle smoke observed the event on step 1 and termination on step 50.
+
 ## Viewer stability
 
 The replay viewer now uses a monospace stack and OpenType tabular-number/slashed

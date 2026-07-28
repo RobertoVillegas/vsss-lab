@@ -79,6 +79,7 @@ class MarlMatchEnv:
         self._initial_ball_x = 0.0
         self._initial_closest = 0.0
         self._previous_blue_actions = np.zeros((3, 2), dtype=np.float32)
+        self._goal_grace_remaining: int | None = None
 
     def reset(self, seed: int) -> TeamBatch:
         snapshot = _seeded_snapshot(self._template, seed)
@@ -88,6 +89,7 @@ class MarlMatchEnv:
         self._ball_x = float(self.state[5])
         self._closest = self._closest_blue_distance()
         self._previous_blue_actions.fill(0.0)
+        self._goal_grace_remaining = None
         return build_team_observation(self.state, team=0)
 
     def step(
@@ -99,16 +101,25 @@ class MarlMatchEnv:
         action_delta = normalized_blue - self._previous_blue_actions
         actions = np.zeros((1, 6, 2), dtype=np.float32)
         actions[0, :3] = normalized_blue * self._max_wheel_speed
+        events = 0
         for _ in range(self.action_repeat):
             if opponent_actions is not None:
                 actions[0, 3:] = np.clip(opponent_actions, -1.0, 1.0) * self._max_wheel_speed
             elif self.stage == 8:
                 actions[0, 3:] = self._yellow.actions(self.state) * self._max_wheel_speed
             self.state = self._native.step(actions)[0]
+            events |= int(self.state[-1])
         self.steps += 1
         ball_x = float(self.state[5])
         closest = self._closest_blue_distance()
-        events = int(self.state[-1])
+        if events & 0b11 and self._goal_grace_remaining is None:
+            self._goal_grace_remaining = round(
+                float(self._config["reset"]["goal_pause"]) / float(self._config["control_period"])
+            )
+        goal_complete = False
+        if self._goal_grace_remaining is not None:
+            self._goal_grace_remaining -= 1
+            goal_complete = self._goal_grace_remaining <= 0
         reward = TeamReward(
             ball_progress=4.0 * (ball_x - self._ball_x),
             approach_progress=2.0 * (self._closest - closest),
@@ -118,13 +129,14 @@ class MarlMatchEnv:
         self._previous_blue_actions = normalized_blue.copy()
         self._ball_x = ball_x
         self._closest = closest
-        done = self.steps >= self.horizon or bool(events & 0b11)
+        done = self.steps >= self.horizon or goal_complete
         return (
             build_team_observation(self.state, team=0),
             reward,
             done,
             {
                 "events": events,
+                "goal_pending": self._goal_grace_remaining is not None,
                 "closest_ball_distance": closest,
                 "ball_x": ball_x,
                 "opponent_mode": (
@@ -192,6 +204,7 @@ class VectorMarlMatchEnv:
         self._initial_ball_x = np.zeros(num_envs, dtype=np.float32)
         self._initial_closest = np.zeros(num_envs, dtype=np.float32)
         self._previous_blue_actions = np.zeros((num_envs, 3, 2), dtype=np.float32)
+        self._goal_grace_remaining = np.full(num_envs, -1, dtype=np.int64)
 
     def reset(self, world: int, seed: int) -> TeamBatch:
         snapshot = _seeded_snapshot(self._template, seed)
@@ -204,20 +217,29 @@ class VectorMarlMatchEnv:
         self._initial_ball_x[world] = self._ball_x[world]
         self._initial_closest[world] = self._closest[world]
         self._previous_blue_actions[world].fill(0.0)
+        self._goal_grace_remaining[world] = -1
         return build_team_observation(self.states[world], team=0)
 
     def step(
         self,
         blue_actions: FloatArray,
         opponent_actions: FloatArray | None,
-    ) -> tuple[TeamBatch, FloatArray, NDArray[np.bool_], NDArray[np.int64]]:
+    ) -> tuple[
+        TeamBatch,
+        FloatArray,
+        NDArray[np.bool_],
+        NDArray[np.int64],
+        NDArray[np.bool_],
+    ]:
         normalized_blue = np.clip(blue_actions, -1.0, 1.0)
         action_delta = normalized_blue - self._previous_blue_actions
         actions = np.zeros((self.num_envs, 6, 2), dtype=np.float32)
         actions[:, :3] = normalized_blue * self._max_wheel_speed
+        events = np.zeros(self.num_envs, dtype=np.int64)
         if opponent_actions is not None:
             actions[:, 3:] = np.clip(opponent_actions, -1.0, 1.0) * self._max_wheel_speed
             self.states = self._native.step_repeated(actions, self.action_repeat)
+            events |= self.states[:, -1].astype(np.int64)
         elif self.stage == 8:
             for _ in range(self.action_repeat):
                 for world in range(self.num_envs):
@@ -225,15 +247,23 @@ class VectorMarlMatchEnv:
                         self._yellow.actions(self.states[world]) * self._max_wheel_speed
                     )
                 self.states = self._native.step(actions)
+                events |= self.states[:, -1].astype(np.int64)
         else:
             self.states = self._native.step_repeated(actions, self.action_repeat)
+            events |= self.states[:, -1].astype(np.int64)
         self.steps += 1
         ball_x = self.states[:, 5]
         closest = np.asarray(
             [_closest_blue_distance(state) for state in self.states],
             dtype=np.float32,
         )
-        events = self.states[:, -1].astype(np.int64)
+        newly_scored = ((events & 0b11) != 0) & (self._goal_grace_remaining < 0)
+        self._goal_grace_remaining[newly_scored] = round(
+            float(self._config["reset"]["goal_pause"]) / float(self._config["control_period"])
+        )
+        active_grace = self._goal_grace_remaining >= 0
+        self._goal_grace_remaining[active_grace] -= 1
+        goal_complete = active_grace & (self._goal_grace_remaining <= 0)
         rewards = (
             4.0 * (ball_x - self._ball_x)
             + 2.0 * (self._closest - closest)
@@ -244,11 +274,11 @@ class VectorMarlMatchEnv:
         self._previous_blue_actions = normalized_blue.copy()
         self._ball_x = ball_x.copy()
         self._closest = closest
-        done = (self.steps >= self.horizon) | ((events & 0b11) != 0)
+        done = (self.steps >= self.horizon) | goal_complete
         observations = stack_team_batches(
             [build_team_observation(state, team=0) for state in self.states]
         )
-        return observations, rewards, done, events
+        return observations, rewards, done, events, goal_complete
 
     def mark_progress_origin(self) -> None:
         self._initial_closest = self._closest.copy()

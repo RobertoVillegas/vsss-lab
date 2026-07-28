@@ -124,9 +124,13 @@ def collect_self_play_trajectory(
             )
         )
         blue_actions = torch.tanh(raw_action).cpu().numpy()
-        next_observation, step_rewards, step_done, step_events = environment.step(
-            blue_actions, opponent_actions
-        )
+        (
+            next_observation,
+            step_rewards,
+            step_done,
+            _step_events,
+            step_terminated,
+        ) = environment.step(blue_actions, opponent_actions)
         returns = [
             total + float(reward) for total, reward in zip(returns, step_rewards, strict=True)
         ]
@@ -155,7 +159,7 @@ def collect_self_play_trajectory(
         )
         terminated.append(
             torch.tensor(
-                [[bool(event & 0b11)] * 3 for event in step_events],
+                [[bool(value)] * 3 for value in step_terminated],
                 dtype=torch.bool,
                 device=learner.device,
             )
