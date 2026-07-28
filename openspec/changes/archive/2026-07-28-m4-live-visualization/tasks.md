@@ -35,5 +35,5 @@
 - [x] 5.2 Run `openspec validate --strict`, `just doctor`, `just lint`,
   `just build`, and `just test`
 - [x] 5.3 Record artifacts, known limitations, compatibility, and rollback
-- [ ] 5.4 Create small signed Conventional Commits and merge without requiring a
+- [x] 5.4 Create small signed Conventional Commits and merge without requiring a
   long-lived pull request
