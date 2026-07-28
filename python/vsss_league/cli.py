@@ -27,6 +27,29 @@ from vsss_league.training import (
     train_iteration,
 )
 
+FORCE_STOP_WINDOW_SECONDS = 2.0
+
+
+class TrainingInterrupt:
+    """Translate signals into a graceful stop or a deliberate forced stop."""
+
+    def __init__(self) -> None:
+        self.stop_requested = False
+        self._first_sigint_at: float | None = None
+
+    def handle(self, signum: int, _frame: object) -> bool:
+        now = time.monotonic()
+        if signum == signal.SIGINT:
+            if (
+                self._first_sigint_at is not None
+                and now - self._first_sigint_at <= FORCE_STOP_WINDOW_SECONDS
+            ):
+                raise KeyboardInterrupt
+            self._first_sigint_at = now
+        first_request = not self.stop_requested
+        self.stop_requested = True
+        return first_request
+
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser()
@@ -161,7 +184,8 @@ def _run(arguments: argparse.Namespace) -> None:
     elif arguments.steps is not None:
         requested_iterations = math.ceil(arguments.steps / (config.num_envs * config.rollout_steps))
     final_iteration = start_iteration + requested_iterations - 1
-    stop_requested = False
+    interrupt = TrainingInterrupt()
+    forced_stop = False
     completed = 0
     total_frames = 0
     total_matches = 0
@@ -182,10 +206,13 @@ def _run(arguments: argparse.Namespace) -> None:
         )
 
     def request_stop(_signum: int, _frame: object) -> None:
-        nonlocal stop_requested
-        if not stop_requested:
-            stop_requested = True
+        if interrupt.handle(_signum, _frame):
             dashboard.request_stop()
+            if _signum == signal.SIGINT:
+                dashboard.log(
+                    "Press Ctrl+C again within 2 seconds to stop immediately; "
+                    "the last completed checkpoint will remain available."
+                )
 
     previous_sigint = signal.signal(signal.SIGINT, request_stop)
     previous_sigterm = signal.signal(signal.SIGTERM, request_stop)
@@ -238,7 +265,7 @@ def _run(arguments: argparse.Namespace) -> None:
                     blue_policy=f"{config.policy_id}@{result.policy_version}",
                     yellow_policy=f"{config.policy_id}@{result.policy_version - 1}",
                 )
-            if stop_requested and checkpoint is None:
+            if interrupt.stop_requested and checkpoint is None:
                 checkpoint = checkpoint_dir / f"iteration-{iteration:06d}.pt"
                 learner.save(checkpoint)
                 result = replace(result, checkpoint=str(checkpoint.resolve()))
@@ -259,12 +286,15 @@ def _run(arguments: argparse.Namespace) -> None:
                 match_rate=total_matches / elapsed,
                 checkpoint=checkpoint is not None,
             )
-            if stop_requested:
+            if interrupt.stop_requested:
                 break
             if reached_match_target:
                 break
             if reached_step_target:
                 break
+    except KeyboardInterrupt:
+        forced_stop = True
+        dashboard.log("Forced stop; preserving the last completed checkpoint.")
     finally:
         signal.signal(signal.SIGINT, previous_sigint)
         signal.signal(signal.SIGTERM, previous_sigterm)
@@ -280,7 +310,8 @@ def _run(arguments: argparse.Namespace) -> None:
                 "final_iteration": actual_final,
                 "latest_version": learner.policy_version,
                 "viewer_replays": str(replay_dir.resolve()),
-                "stopped": stop_requested,
+                "stopped": interrupt.stop_requested or forced_stop,
+                "forced_stop": forced_stop,
             },
             sort_keys=True,
         )
