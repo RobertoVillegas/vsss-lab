@@ -22,6 +22,17 @@ from vsss_vision.contracts import (
     RobotMeasurement,
 )
 from vsss_vision.filters import BallKalmanFilter, RobotEkf
+from vsss_vision.image import (
+    BallImagePipeline,
+    BallImagePipelineFrame,
+    ImagePipelineTiming,
+    OverheadImageCalibration,
+    RawCameraImage,
+    decode_gazebo_image_pbtxt,
+    decode_ros_image,
+    detect_orange_ball,
+    profile_ball_pipeline,
+)
 from vsss_vision.metrics import ErrorSummary, VisionMetrics, analyze_replay
 from vsss_vision.prediction import (
     FieldPredictionModel,
@@ -35,6 +46,8 @@ __all__ = [
     "DETECTION_SCHEMA",
     "Association",
     "BallEstimate",
+    "BallImagePipeline",
+    "BallImagePipelineFrame",
     "BallKalmanFilter",
     "BallMeasurement",
     "CameraEstimatorBridge",
@@ -44,11 +57,14 @@ __all__ = [
     "EstimatorCalibration",
     "EstimatorFrame",
     "FieldPredictionModel",
+    "ImagePipelineTiming",
     "Interception",
+    "OverheadImageCalibration",
     "PolicyVisionRecord",
     "Prediction",
     "PredictiveFeatures",
     "PredictiveObservationAdapter",
+    "RawCameraImage",
     "RobotEkf",
     "RobotEstimate",
     "RobotMeasurement",
@@ -59,6 +75,10 @@ __all__ = [
     "camera_frame_from_json",
     "camera_frame_from_mapping",
     "collision_aware_ball_prediction",
+    "decode_gazebo_image_pbtxt",
+    "decode_ros_image",
+    "detect_orange_ball",
     "goalkeeper_interception",
+    "profile_ball_pipeline",
     "segment_interception",
 ]

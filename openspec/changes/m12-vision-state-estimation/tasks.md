@@ -48,11 +48,12 @@
 
 ## 6. Physical camera and acceleration
 
-- [ ] 6.1 Replay a recorded overhead-camera fixture through the CPU pipeline
-- [ ] 6.2 Integrate the estimator with the ROS camera bridge
+- [x] 6.1 Replay a recorded overhead-camera fixture through the CPU pipeline
+- [x] 6.2 Integrate the estimator with the ROS camera bridge
 - [ ] 6.3 Profile decode, segmentation, association, filter, and transfer stages
-- [ ] 6.4 Add CUDA vision only if CPU image processing is a measured bottleneck
-- [ ] 6.5 Verify CPU/CUDA estimate agreement within calibrated tolerances
+- [x] 6.4 Add CUDA vision only if CPU image processing is a measured bottleneck
+- [x] 6.5 Verify CPU/CUDA estimate agreement within calibrated tolerances
+  (not applicable: the measured CPU path did not cross the CUDA gate)
 
 ## 7. Gates and delivery
 
