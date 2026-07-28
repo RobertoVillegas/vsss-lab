@@ -105,6 +105,8 @@ class MarlConfig:
     rollout_steps: int = 256
     action_repeat: int = 4
     action_delta_coefficient: float = 0.01
+    goal_coefficient: float = 10.0
+    progress_coefficient: float = 0.0
     wheel_effort_coefficient: float = 0.0
     ball_direction_coefficient: float = 0.0
     attacker_alignment_coefficient: float = 0.0
@@ -143,6 +145,8 @@ class MarlConfig:
             raise ValueError("horizon and rollout_steps must be positive")
         non_negative = (
             self.action_delta_coefficient,
+            self.goal_coefficient,
+            self.progress_coefficient,
             self.wheel_effort_coefficient,
             self.ball_direction_coefficient,
             self.attacker_alignment_coefficient,

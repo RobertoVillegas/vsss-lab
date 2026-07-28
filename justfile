@@ -81,6 +81,14 @@ benchmark-marl iterations="2000":
 profile-m14 steps="200" output="reports/m14/profile.json":
   uv run --group train python -m tools.profile_m14 --steps {{steps}} --output "{{output}}"
 
+m14-study trials="2" output="experiments/reports/m14-study" device="auto":
+  mise run train-env
+  uv run --group train python -m tools.m14_study --trials {{trials}} --output-dir "{{output}}" --device "{{device}}"
+
+m14-curriculum-ablation output="experiments/reports/m14-curriculum.json" device="auto" seeds="3":
+  mise run train-env
+  uv run --group train python -m tools.m14_curriculum_ablation --output "{{output}}" --device "{{device}}" --seeds {{seeds}}
+
 league-run run_dir="/home/rob/runs/vsss-lab-demo" iterations="3" capture_every="1" capture_seconds="60" checkpoint_every="100" device="auto" num_envs="64" config="experiments/configs/m13-mappo-directional.toml":
   mise run train-env
   uv run --group train python -m vsss_league.cli run --config "{{config}}" --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --run-dir "{{run_dir}}" --iterations {{iterations}} --capture-every {{capture_every}} --capture-seconds {{capture_seconds}} --checkpoint-every {{checkpoint_every}} --device "{{device}}" --num-envs {{num_envs}}

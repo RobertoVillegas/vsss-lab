@@ -27,9 +27,9 @@
 - [x] Implement learning-progress allocation and deduplicated failure replay
 - [x] Add routine/frontier/failure/holdout mixture telemetry
 - [x] Add resumable Optuna study storage and lineage manifests
-- [ ] Implement smoke, screen, and confirm fidelities with pruning
-- [ ] Run a fixed-reward curriculum ablation before joint reward search
-- [ ] Run a bounded multiobjective reward search with paired seeds
+- [x] Implement smoke, screen, and confirm fidelities with pruning
+- [x] Run a fixed-reward curriculum ablation before joint reward search
+- [x] Run a bounded multiobjective reward search with paired seeds
 
 ## 4. Policy and teacher ablations
 

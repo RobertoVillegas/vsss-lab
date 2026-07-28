@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
@@ -59,6 +60,18 @@ class TrialLineage:
     status: str
     pruning_reason: str | None
     objectives: tuple[float, ...] | None
+
+
+@dataclass(frozen=True)
+class FidelityResult:
+    terminal_score: float
+    coordination_failure: float
+    compute_seconds: float
+    physically_valid: bool = True
+    non_finite: bool = False
+
+
+TrialEvaluator = Callable[[SearchParameters, Fidelity, tuple[int, ...]], FidelityResult]
 
 
 def create_study(
@@ -127,3 +140,67 @@ def current_commit() -> str:
         capture_output=True,
         text=True,
     ).stdout.strip()
+
+
+def run_multifidelity_trial(
+    study: optuna.study.Study,
+    evaluator: TrialEvaluator,
+    *,
+    lineage_path: Path,
+    confirmation_floor: float = 0.45,
+) -> optuna.trial.FrozenTrial:
+    """Execute smoke→screen→confirm and persist every fidelity decision."""
+    trial = study.ask()
+    parameters = suggest_parameters(trial)
+    commit = current_commit()
+    parent = trial.number - 1 if trial.number else None
+    final: FidelityResult | None = None
+    for fidelity in ("smoke", "screen", "confirm"):
+        seeds = seed_set(trial_number=trial.number, fidelity=fidelity)
+        result = evaluator(parameters, fidelity, seeds)
+        invalid = not result.physically_valid or result.non_finite
+        below_floor = fidelity != "smoke" and result.terminal_score < confirmation_floor
+        pruning_reason = (
+            "physical_or_numeric_invalidity"
+            if invalid
+            else "terminal_score_below_fidelity_floor"
+            if below_floor
+            else None
+        )
+        record_lineage(
+            lineage_path,
+            TrialLineage(
+                study=study.study_name,
+                trial=trial.number,
+                fidelity=fidelity,
+                seeds=seeds,
+                code_commit=commit,
+                config_sha256=parameters.digest,
+                parent_trial=parent,
+                compute_seconds=result.compute_seconds,
+                status="pruned" if pruning_reason else "complete",
+                pruning_reason=pruning_reason,
+                objectives=(
+                    result.terminal_score,
+                    result.coordination_failure,
+                    result.compute_seconds,
+                ),
+            ),
+        )
+        trial.set_user_attr(f"{fidelity}_seeds", seeds)
+        trial.set_user_attr(f"{fidelity}_result", asdict(result))
+        if pruning_reason:
+            study.tell(trial, state=optuna.trial.TrialState.PRUNED)
+            return study.trials[trial.number]
+        final = result
+    if final is None:
+        raise AssertionError("multi-fidelity trial produced no result")
+    study.tell(
+        trial,
+        values=(
+            final.terminal_score,
+            final.coordination_failure,
+            final.compute_seconds,
+        ),
+    )
+    return study.trials[trial.number]

@@ -76,6 +76,8 @@ class MarlMatchEnv:
         horizon: int = 1_000,
         action_repeat: int = 4,
         action_delta_coefficient: float = 0.0,
+        goal_coefficient: float = 10.0,
+        progress_coefficient: float = 0.0,
         wheel_effort_coefficient: float = 0.0,
         ball_direction_coefficient: float = 0.0,
         attacker_alignment_coefficient: float = 0.0,
@@ -101,6 +103,8 @@ class MarlMatchEnv:
         self.horizon = horizon
         self.action_repeat = action_repeat
         self.action_delta_coefficient = action_delta_coefficient
+        self.goal_coefficient = goal_coefficient
+        self.progress_coefficient = progress_coefficient
         self.wheel_effort_coefficient = wheel_effort_coefficient
         self.ball_direction_coefficient = ball_direction_coefficient
         self.attacker_alignment_coefficient = attacker_alignment_coefficient
@@ -185,7 +189,8 @@ class MarlMatchEnv:
         )
         draw = self.steps >= self.horizon and not goal_complete and not stagnated
         reward = TeamReward(
-            ball_progress=0.0,
+            ball_progress=self.progress_coefficient
+            * (2.0 * (self._closest - closest) + (ball_x - self._ball_x)),
             ball_direction=self.ball_direction_coefficient
             * _ball_direction_reward(self.state, self._config, self.movement_speed_threshold)
             / self.horizon,
@@ -194,8 +199,8 @@ class MarlMatchEnv:
             / self.horizon,
             time=-self.time_penalty_coefficient / self.horizon,
             goal=(
-                10.0 * float(bool(events & 1))
-                - 10.0 * float(bool(events & 2))
+                self.goal_coefficient * float(bool(events & 1))
+                - self.goal_coefficient * float(bool(events & 2))
                 - self.draw_penalty * float(draw)
                 - self.stagnation_penalty * float(stagnated)
             ),
@@ -270,6 +275,8 @@ class VectorMarlMatchEnv:
         horizon: int,
         action_repeat: int,
         action_delta_coefficient: float,
+        goal_coefficient: float,
+        progress_coefficient: float,
         wheel_effort_coefficient: float,
         ball_direction_coefficient: float,
         attacker_alignment_coefficient: float,
@@ -296,6 +303,8 @@ class VectorMarlMatchEnv:
         self.horizon = horizon
         self.action_repeat = action_repeat
         self.action_delta_coefficient = action_delta_coefficient
+        self.goal_coefficient = goal_coefficient
+        self.progress_coefficient = progress_coefficient
         self.wheel_effort_coefficient = wheel_effort_coefficient
         self.ball_direction_coefficient = ball_direction_coefficient
         self.attacker_alignment_coefficient = attacker_alignment_coefficient
@@ -412,7 +421,8 @@ class VectorMarlMatchEnv:
         )
         draw = (self.steps >= self.horizon) & ~goal_complete & ~stagnated
         rewards = (
-            self.ball_direction_coefficient
+            self.progress_coefficient * (2.0 * (self._closest - closest) + (ball_x - self._ball_x))
+            + self.ball_direction_coefficient
             * np.asarray(
                 [
                     _ball_direction_reward(state, self._config, self.movement_speed_threshold)
@@ -431,8 +441,8 @@ class VectorMarlMatchEnv:
             )
             / self.horizon
             - self.time_penalty_coefficient / self.horizon
-            + 10.0 * ((events & 1) != 0)
-            - 10.0 * ((events & 2) != 0)
+            + self.goal_coefficient * ((events & 1) != 0)
+            - self.goal_coefficient * ((events & 2) != 0)
             - self.action_delta_coefficient * np.square(action_delta).mean(axis=(1, 2))
             - self.wheel_effort_coefficient * np.square(normalized_blue).mean(axis=(1, 2))
             - self.teammate_congestion_coefficient * congestion

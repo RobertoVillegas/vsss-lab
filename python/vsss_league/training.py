@@ -70,6 +70,8 @@ def create_rollout_session(config: MarlConfig, config_json: str, state_json: str
             horizon=config.horizon,
             action_repeat=config.action_repeat,
             action_delta_coefficient=config.action_delta_coefficient,
+            goal_coefficient=config.goal_coefficient,
+            progress_coefficient=config.progress_coefficient,
             wheel_effort_coefficient=config.wheel_effort_coefficient,
             ball_direction_coefficient=config.ball_direction_coefficient,
             attacker_alignment_coefficient=config.attacker_alignment_coefficient,

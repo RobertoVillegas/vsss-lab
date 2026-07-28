@@ -37,6 +37,8 @@ LEGACY_NEUTRAL_CONFIG = {
     "policy_architecture": "mlp",
     "adaptive_curriculum": False,
     "scenario_suite": "",
+    "goal_coefficient": 10.0,
+    "progress_coefficient": 0.0,
 }
 ACTION_EPSILON = 1e-6
 

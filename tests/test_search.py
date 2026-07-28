@@ -6,10 +6,12 @@ from pathlib import Path
 import optuna
 import pytest
 from vsss_train.search import (
+    FidelityResult,
     SearchParameters,
     TrialLineage,
     create_study,
     record_lineage,
+    run_multifidelity_trial,
     seed_set,
     suggest_parameters,
 )
@@ -65,3 +67,30 @@ def test_lineage_is_idempotent_and_rejects_conflicting_resume(tmp_path: Path) ->
     conflicting = TrialLineage(**{**lineage.__dict__, "compute_seconds": 13.0})
     with pytest.raises(ValueError, match="conflicting"):
         record_lineage(path, conflicting)
+
+
+def test_multifidelity_trial_records_exact_seeds_and_prunes_before_confirm(
+    tmp_path: Path,
+) -> None:
+    study = create_study(name="m14-fidelity", storage_path=tmp_path / "study.db")
+    calls: list[str] = []
+
+    def evaluator(
+        parameters: SearchParameters,
+        fidelity: str,
+        seeds: tuple[int, ...],
+    ) -> FidelityResult:
+        calls.append(fidelity)
+        score = 0.5 if fidelity == "smoke" else 0.2
+        return FidelityResult(score, 0.1, 1.0)
+
+    trial = run_multifidelity_trial(
+        study,
+        evaluator,
+        lineage_path=tmp_path / "lineage.jsonl",
+    )
+    assert trial.state == optuna.trial.TrialState.PRUNED
+    assert calls == ["smoke", "screen"]
+    records = [json.loads(line) for line in (tmp_path / "lineage.jsonl").read_text().splitlines()]
+    assert [record["fidelity"] for record in records] == ["smoke", "screen"]
+    assert len(records[1]["seeds"]) == 3
