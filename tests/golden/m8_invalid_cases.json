@@ -1,0 +1,19 @@
+{
+  "cases": [
+    {
+      "name": "wrong-file-identifier",
+      "mutation": "replace bytes 4..8 with NOPE",
+      "expected_error": "wrong_identifier"
+    },
+    {
+      "name": "non-finite-action",
+      "construction": "three robot action with first=NaN",
+      "expected_error": "non_finite_action"
+    },
+    {
+      "name": "oversized-message",
+      "construction": "message larger than MAX_MESSAGE_BYTES",
+      "expected_error": "payload_too_large"
+    }
+  ]
+}

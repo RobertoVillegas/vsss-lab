@@ -1,0 +1,16 @@
+[package]
+name = "vsss-match-server"
+description = "Authoritative external-controller match server for VSSS Lab"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "time"] }
+vsss-protocol = { path = "../vsss-protocol" }
+zeromq = { version = "0.6.0", default-features = false, features = ["tokio-runtime", "tcp-transport"] }
+
+[lints]
+workspace = true

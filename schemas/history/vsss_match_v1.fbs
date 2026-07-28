@@ -1,0 +1,103 @@
+// Frozen compatibility baseline for protocol v1.
+namespace vsss.protocol.v1;
+
+file_identifier "VSS1";
+file_extension "vsss";
+
+enum ControllerSlot : ubyte { Unassigned = 0, Blue = 1, Yellow = 2 }
+enum ControlMode : ubyte { WheelVelocity = 0, BodyVelocity = 1 }
+enum MatchEventKind : ubyte {
+  Unspecified = 0,
+  GoalBlue = 1,
+  GoalYellow = 2,
+  BallOut = 3,
+  MatchEnded = 4,
+  ActionRejected = 5,
+  DeadlineMissed = 6,
+  ControllerDisconnected = 7
+}
+enum ErrorCode : ushort {
+  Unspecified = 0,
+  Malformed = 1,
+  UnsupportedVersion = 2,
+  WrongMatch = 3,
+  WrongSlot = 4,
+  DuplicateSequence = 5,
+  StaleSequence = 6,
+  FutureTick = 7,
+  DeadlineExceeded = 8,
+  OutOfRange = 9,
+  PayloadTooLarge = 10,
+  CapabilityMismatch = 11
+}
+
+table Hello {
+  controller_name:string (required);
+  sdk_name:string;
+  sdk_version:string;
+  min_protocol_version:uint = 1;
+  max_protocol_version:uint = 1;
+}
+table Capabilities {
+  accepted_protocol_version:uint = 1;
+  assigned_slot:ControllerSlot = Unassigned;
+  control_period_ns:ulong;
+  max_message_bytes:uint;
+}
+table MatchConfigJson {
+  canonical_json:string (required);
+  sha256:[ubyte] (required);
+}
+table Reset {
+  config:MatchConfigJson (required);
+  initial_state_json:string (required);
+  seed:ulong;
+}
+table Observation {
+  canonical_state_json:string (required);
+  state_sha256:[ubyte] (required);
+}
+struct RobotAction {
+  mode:ControlMode;
+  first:float;
+  second:float;
+}
+table Action { robots:[RobotAction] (required); }
+table Heartbeat { last_observation_tick:ulong; }
+table MatchEvent {
+  kind:MatchEventKind = Unspecified;
+  detail:string;
+}
+table MatchResult {
+  score_blue:ushort;
+  score_yellow:ushort;
+  replay_sha256:[ubyte] (required);
+  reason:string;
+}
+table ProtocolError {
+  code:ErrorCode = Unspecified;
+  detail:string (required);
+}
+union Payload {
+  Hello,
+  Capabilities,
+  Reset,
+  Observation,
+  Action,
+  Heartbeat,
+  MatchEvent,
+  MatchResult,
+  ProtocolError
+}
+table Envelope {
+  protocol_version:uint = 1;
+  match_id:[ubyte] (required);
+  controller_slot:ControllerSlot = Unassigned;
+  sequence:ulong;
+  server_tick:ulong;
+  sent_monotonic_ns:ulong;
+  deadline_monotonic_ns:ulong;
+  payload:Payload (required);
+}
+
+root_type Envelope;

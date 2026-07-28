@@ -1,0 +1,17 @@
+{
+  "protocol_version": 1,
+  "match_id": [103, 111, 108, 100, 101, 110, 45, 109, 97, 116, 99, 104, 45, 48, 48, 49],
+  "controller_slot": "Unassigned",
+  "sequence": 1,
+  "server_tick": 0,
+  "sent_monotonic_ns": 1000,
+  "deadline_monotonic_ns": 0,
+  "payload_type": "Hello",
+  "payload": {
+    "controller_name": "golden-python",
+    "sdk_name": "vsss-python",
+    "sdk_version": "0.0.0",
+    "min_protocol_version": 1,
+    "max_protocol_version": 1
+  }
+}

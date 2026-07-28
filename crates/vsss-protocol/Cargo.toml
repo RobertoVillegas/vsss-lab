@@ -1,0 +1,23 @@
+[package]
+name = "vsss-protocol"
+description = "Versioned external-controller protocol for VSSS Lab"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+flatbuffers = "25.12.19"
+thiserror = "2.0"
+vsss-spec = { path = "../vsss-spec" }
+
+[lints.rust]
+# flatc-generated accessors contain the unsafe byte reads required by the
+# FlatBuffers runtime. Hand-written protocol code remains safe-only.
+unsafe_code = "allow"
+missing_docs = "warn"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"

@@ -48,6 +48,65 @@ url = "https://github.com/oven-sh/bun/releases/download/bun-v1.3.1/bun-windows-x
 checksum = "sha256:eda1a3a55a17e40eeda4fd08d82b6a0db0bddc660cd35bc7d67525cd38c35063"
 url = "https://github.com/oven-sh/bun/releases/download/bun-v1.3.1/bun-windows-x64-baseline.zip"
 
+[[tools.flatc]]
+version = "25.12.19"
+backend = "github:google/flatbuffers"
+
+[tools.flatc."platforms.linux-arm64"]
+checksum = "sha256:9f87066dc5dfa7fe02090b55bab5f3e55df03e32c9b0cdf229004ade7d091039"
+url = "https://github.com/google/flatbuffers/releases/download/v25.12.19/Linux.flatc.binary.g%2B%2B-13.zip"
+url_api = "https://api.github.com/repos/google/flatbuffers/releases/assets/330837047"
+
+[tools.flatc."platforms.linux-arm64-musl"]
+checksum = "sha256:9f87066dc5dfa7fe02090b55bab5f3e55df03e32c9b0cdf229004ade7d091039"
+url = "https://github.com/google/flatbuffers/releases/download/v25.12.19/Linux.flatc.binary.g%2B%2B-13.zip"
+url_api = "https://api.github.com/repos/google/flatbuffers/releases/assets/330837047"
+
+[tools.flatc."platforms.linux-x64"]
+checksum = "sha256:9f87066dc5dfa7fe02090b55bab5f3e55df03e32c9b0cdf229004ade7d091039"
+url = "https://github.com/google/flatbuffers/releases/download/v25.12.19/Linux.flatc.binary.g%2B%2B-13.zip"
+url_api = "https://api.github.com/repos/google/flatbuffers/releases/assets/330837047"
+
+[tools.flatc."platforms.linux-x64-baseline"]
+checksum = "sha256:9f87066dc5dfa7fe02090b55bab5f3e55df03e32c9b0cdf229004ade7d091039"
+url = "https://github.com/google/flatbuffers/releases/download/v25.12.19/Linux.flatc.binary.g%2B%2B-13.zip"
+url_api = "https://api.github.com/repos/google/flatbuffers/releases/assets/330837047"
+
+[tools.flatc."platforms.linux-x64-musl"]
+checksum = "sha256:9f87066dc5dfa7fe02090b55bab5f3e55df03e32c9b0cdf229004ade7d091039"
+url = "https://github.com/google/flatbuffers/releases/download/v25.12.19/Linux.flatc.binary.g%2B%2B-13.zip"
+url_api = "https://api.github.com/repos/google/flatbuffers/releases/assets/330837047"
+
+[tools.flatc."platforms.linux-x64-musl-baseline"]
+checksum = "sha256:9f87066dc5dfa7fe02090b55bab5f3e55df03e32c9b0cdf229004ade7d091039"
+url = "https://github.com/google/flatbuffers/releases/download/v25.12.19/Linux.flatc.binary.g%2B%2B-13.zip"
+url_api = "https://api.github.com/repos/google/flatbuffers/releases/assets/330837047"
+
+[tools.flatc."platforms.macos-arm64"]
+checksum = "sha256:9340a5f9900b95e34ccadcb06bceec91180cc8b83098d5e966ed6d8d590cbba2"
+url = "https://github.com/google/flatbuffers/releases/download/v25.12.19/Mac.flatc.binary.zip"
+url_api = "https://api.github.com/repos/google/flatbuffers/releases/assets/330838353"
+
+[tools.flatc."platforms.macos-x64"]
+checksum = "sha256:9340a5f9900b95e34ccadcb06bceec91180cc8b83098d5e966ed6d8d590cbba2"
+url = "https://github.com/google/flatbuffers/releases/download/v25.12.19/Mac.flatc.binary.zip"
+url_api = "https://api.github.com/repos/google/flatbuffers/releases/assets/330838353"
+
+[tools.flatc."platforms.macos-x64-baseline"]
+checksum = "sha256:9340a5f9900b95e34ccadcb06bceec91180cc8b83098d5e966ed6d8d590cbba2"
+url = "https://github.com/google/flatbuffers/releases/download/v25.12.19/Mac.flatc.binary.zip"
+url_api = "https://api.github.com/repos/google/flatbuffers/releases/assets/330838353"
+
+[tools.flatc."platforms.windows-x64"]
+checksum = "sha256:fff9445c9db907227bc64b54cc98743084c4949282aa4e576cff6a955724ddc8"
+url = "https://github.com/google/flatbuffers/releases/download/v25.12.19/Windows.flatc.binary.zip"
+url_api = "https://api.github.com/repos/google/flatbuffers/releases/assets/330839852"
+
+[tools.flatc."platforms.windows-x64-baseline"]
+checksum = "sha256:fff9445c9db907227bc64b54cc98743084c4949282aa4e576cff6a955724ddc8"
+url = "https://github.com/google/flatbuffers/releases/download/v25.12.19/Windows.flatc.binary.zip"
+url_api = "https://api.github.com/repos/google/flatbuffers/releases/assets/330839852"
+
 [[tools.just]]
 version = "1.57.0"
 backend = "aqua:casey/just"
@@ -67,7 +126,17 @@ checksum = "sha256:45b548094283cb9739af8f13273b8cddeee869f5b4ef2bb631b1f311cb566
 url = "https://github.com/casey/just/releases/download/1.57.0/just-1.57.0-x86_64-unknown-linux-musl.tar.gz"
 url_api = "https://api.github.com/repos/casey/just/releases/assets/481976790"
 
+[tools.just."platforms.linux-x64-baseline"]
+checksum = "sha256:45b548094283cb9739af8f13273b8cddeee869f5b4ef2bb631b1f311cb566155"
+url = "https://github.com/casey/just/releases/download/1.57.0/just-1.57.0-x86_64-unknown-linux-musl.tar.gz"
+url_api = "https://api.github.com/repos/casey/just/releases/assets/481976790"
+
 [tools.just."platforms.linux-x64-musl"]
+checksum = "sha256:45b548094283cb9739af8f13273b8cddeee869f5b4ef2bb631b1f311cb566155"
+url = "https://github.com/casey/just/releases/download/1.57.0/just-1.57.0-x86_64-unknown-linux-musl.tar.gz"
+url_api = "https://api.github.com/repos/casey/just/releases/assets/481976790"
+
+[tools.just."platforms.linux-x64-musl-baseline"]
 checksum = "sha256:45b548094283cb9739af8f13273b8cddeee869f5b4ef2bb631b1f311cb566155"
 url = "https://github.com/casey/just/releases/download/1.57.0/just-1.57.0-x86_64-unknown-linux-musl.tar.gz"
 url_api = "https://api.github.com/repos/casey/just/releases/assets/481976790"
@@ -82,7 +151,17 @@ checksum = "sha256:5e6ade3698095576274b2b32cc9e5d467185e8e40b04949004c04cc3d7e96
 url = "https://github.com/casey/just/releases/download/1.57.0/just-1.57.0-x86_64-apple-darwin.tar.gz"
 url_api = "https://api.github.com/repos/casey/just/releases/assets/481976824"
 
+[tools.just."platforms.macos-x64-baseline"]
+checksum = "sha256:5e6ade3698095576274b2b32cc9e5d467185e8e40b04949004c04cc3d7e962dc"
+url = "https://github.com/casey/just/releases/download/1.57.0/just-1.57.0-x86_64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/casey/just/releases/assets/481976824"
+
 [tools.just."platforms.windows-x64"]
+checksum = "sha256:4c7391d17cb1d17b758b52004ee6411372b8a13ff37c3c9b9031625cb6026e09"
+url = "https://github.com/casey/just/releases/download/1.57.0/just-1.57.0-x86_64-pc-windows-msvc.zip"
+url_api = "https://api.github.com/repos/casey/just/releases/assets/481977734"
+
+[tools.just."platforms.windows-x64-baseline"]
 checksum = "sha256:4c7391d17cb1d17b758b52004ee6411372b8a13ff37c3c9b9031625cb6026e09"
 url = "https://github.com/casey/just/releases/download/1.57.0/just-1.57.0-x86_64-pc-windows-msvc.zip"
 url_api = "https://api.github.com/repos/casey/just/releases/assets/481977734"
@@ -106,7 +185,17 @@ checksum = "sha256:571a710c62520b26dbadbd16e8850e24565c01dea94440223bc16caa21614
 url = "https://github.com/astral-sh/python-build-standalone/releases/download/20260718/cpython-3.13.14+20260718-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz"
 provenance = "github-attestations"
 
+[tools.python."platforms.linux-x64-baseline"]
+checksum = "sha256:571a710c62520b26dbadbd16e8850e24565c01dea94440223bc16caa21614021"
+url = "https://github.com/astral-sh/python-build-standalone/releases/download/20260718/cpython-3.13.14+20260718-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz"
+provenance = "github-attestations"
+
 [tools.python."platforms.linux-x64-musl"]
+checksum = "sha256:0dbfe4b9c043f81a60953245a2735594f6b09308031086ceac15511f4c0af193"
+url = "https://github.com/astral-sh/python-build-standalone/releases/download/20260718/cpython-3.13.14+20260718-x86_64-unknown-linux-musl-install_only_stripped.tar.gz"
+provenance = "github-attestations"
+
+[tools.python."platforms.linux-x64-musl-baseline"]
 checksum = "sha256:0dbfe4b9c043f81a60953245a2735594f6b09308031086ceac15511f4c0af193"
 url = "https://github.com/astral-sh/python-build-standalone/releases/download/20260718/cpython-3.13.14+20260718-x86_64-unknown-linux-musl-install_only_stripped.tar.gz"
 provenance = "github-attestations"
@@ -121,7 +210,17 @@ checksum = "sha256:93ec3863e3265ed87382a9216d2e973b47ab7ef330b496c0249bfc2bfc164
 url = "https://github.com/astral-sh/python-build-standalone/releases/download/20260718/cpython-3.13.14+20260718-x86_64-apple-darwin-install_only_stripped.tar.gz"
 provenance = "github-attestations"
 
+[tools.python."platforms.macos-x64-baseline"]
+checksum = "sha256:93ec3863e3265ed87382a9216d2e973b47ab7ef330b496c0249bfc2bfc164cee"
+url = "https://github.com/astral-sh/python-build-standalone/releases/download/20260718/cpython-3.13.14+20260718-x86_64-apple-darwin-install_only_stripped.tar.gz"
+provenance = "github-attestations"
+
 [tools.python."platforms.windows-x64"]
+checksum = "sha256:91ea0cd883295458fa766eae36241df3ecc21f7029814189707d54b450e55c69"
+url = "https://github.com/astral-sh/python-build-standalone/releases/download/20260718/cpython-3.13.14+20260718-x86_64-pc-windows-msvc-install_only_stripped.tar.gz"
+provenance = "github-attestations"
+
+[tools.python."platforms.windows-x64-baseline"]
 checksum = "sha256:91ea0cd883295458fa766eae36241df3ecc21f7029814189707d54b450e55c69"
 url = "https://github.com/astral-sh/python-build-standalone/releases/download/20260718/cpython-3.13.14+20260718-x86_64-pc-windows-msvc-install_only_stripped.tar.gz"
 provenance = "github-attestations"
@@ -148,7 +247,19 @@ url = "https://github.com/astral-sh/ruff/releases/download/0.16.0/ruff-x86_64-un
 url_api = "https://api.github.com/repos/astral-sh/ruff/releases/assets/487540129"
 provenance = "github-attestations"
 
+[tools.ruff."platforms.linux-x64-baseline"]
+checksum = "sha256:2138b7bc58ff877f5bba09aea4cc984ad5699433b6a3f811003527b8cff8e9ad"
+url = "https://github.com/astral-sh/ruff/releases/download/0.16.0/ruff-x86_64-unknown-linux-musl.tar.gz"
+url_api = "https://api.github.com/repos/astral-sh/ruff/releases/assets/487540129"
+provenance = "github-attestations"
+
 [tools.ruff."platforms.linux-x64-musl"]
+checksum = "sha256:2138b7bc58ff877f5bba09aea4cc984ad5699433b6a3f811003527b8cff8e9ad"
+url = "https://github.com/astral-sh/ruff/releases/download/0.16.0/ruff-x86_64-unknown-linux-musl.tar.gz"
+url_api = "https://api.github.com/repos/astral-sh/ruff/releases/assets/487540129"
+provenance = "github-attestations"
+
+[tools.ruff."platforms.linux-x64-musl-baseline"]
 checksum = "sha256:2138b7bc58ff877f5bba09aea4cc984ad5699433b6a3f811003527b8cff8e9ad"
 url = "https://github.com/astral-sh/ruff/releases/download/0.16.0/ruff-x86_64-unknown-linux-musl.tar.gz"
 url_api = "https://api.github.com/repos/astral-sh/ruff/releases/assets/487540129"
@@ -166,7 +277,19 @@ url = "https://github.com/astral-sh/ruff/releases/download/0.16.0/ruff-x86_64-ap
 url_api = "https://api.github.com/repos/astral-sh/ruff/releases/assets/487540116"
 provenance = "github-attestations"
 
+[tools.ruff."platforms.macos-x64-baseline"]
+checksum = "sha256:3d9ef6228c4eeb26d593c398b2dc5250e0f6d6425933db2993fcf30d49c78b69"
+url = "https://github.com/astral-sh/ruff/releases/download/0.16.0/ruff-x86_64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/astral-sh/ruff/releases/assets/487540116"
+provenance = "github-attestations"
+
 [tools.ruff."platforms.windows-x64"]
+checksum = "sha256:c5d1185c47261f86361d03b547da25be79120226a6f1721d623b2aba9d27668b"
+url = "https://github.com/astral-sh/ruff/releases/download/0.16.0/ruff-x86_64-pc-windows-msvc.zip"
+url_api = "https://api.github.com/repos/astral-sh/ruff/releases/assets/487540121"
+provenance = "github-attestations"
+
+[tools.ruff."platforms.windows-x64-baseline"]
 checksum = "sha256:c5d1185c47261f86361d03b547da25be79120226a6f1721d623b2aba9d27668b"
 url = "https://github.com/astral-sh/ruff/releases/download/0.16.0/ruff-x86_64-pc-windows-msvc.zip"
 url_api = "https://api.github.com/repos/astral-sh/ruff/releases/assets/487540121"
@@ -202,7 +325,19 @@ url = "https://github.com/astral-sh/uv/releases/download/0.11.32/uv-x86_64-unkno
 url_api = "https://api.github.com/repos/astral-sh/uv/releases/assets/487747669"
 provenance = "github-attestations"
 
+[tools.uv."platforms.linux-x64-baseline"]
+checksum = "sha256:1fd052f196108d87e61fc3d98fe06b4ec758c9a1eb1466a6fd1a436fe45885f2"
+url = "https://github.com/astral-sh/uv/releases/download/0.11.32/uv-x86_64-unknown-linux-musl.tar.gz"
+url_api = "https://api.github.com/repos/astral-sh/uv/releases/assets/487747669"
+provenance = "github-attestations"
+
 [tools.uv."platforms.linux-x64-musl"]
+checksum = "sha256:1fd052f196108d87e61fc3d98fe06b4ec758c9a1eb1466a6fd1a436fe45885f2"
+url = "https://github.com/astral-sh/uv/releases/download/0.11.32/uv-x86_64-unknown-linux-musl.tar.gz"
+url_api = "https://api.github.com/repos/astral-sh/uv/releases/assets/487747669"
+provenance = "github-attestations"
+
+[tools.uv."platforms.linux-x64-musl-baseline"]
 checksum = "sha256:1fd052f196108d87e61fc3d98fe06b4ec758c9a1eb1466a6fd1a436fe45885f2"
 url = "https://github.com/astral-sh/uv/releases/download/0.11.32/uv-x86_64-unknown-linux-musl.tar.gz"
 url_api = "https://api.github.com/repos/astral-sh/uv/releases/assets/487747669"
@@ -220,7 +355,19 @@ url = "https://github.com/astral-sh/uv/releases/download/0.11.32/uv-x86_64-apple
 url_api = "https://api.github.com/repos/astral-sh/uv/releases/assets/487747646"
 provenance = "github-attestations"
 
+[tools.uv."platforms.macos-x64-baseline"]
+checksum = "sha256:77f5ca26c0de20e992a3677a174fe1121ee25c36f9b1434a863f75bf077a05eb"
+url = "https://github.com/astral-sh/uv/releases/download/0.11.32/uv-x86_64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/astral-sh/uv/releases/assets/487747646"
+provenance = "github-attestations"
+
 [tools.uv."platforms.windows-x64"]
+checksum = "sha256:acfde570451cfdb8689fa159a138ee805ba4e241c466432750302c86254b0984"
+url = "https://github.com/astral-sh/uv/releases/download/0.11.32/uv-x86_64-pc-windows-msvc.zip"
+url_api = "https://api.github.com/repos/astral-sh/uv/releases/assets/487747656"
+provenance = "github-attestations"
+
+[tools.uv."platforms.windows-x64-baseline"]
 checksum = "sha256:acfde570451cfdb8689fa159a138ee805ba4e241c466432750302c86254b0984"
 url = "https://github.com/astral-sh/uv/releases/download/0.11.32/uv-x86_64-pc-windows-msvc.zip"
 url_api = "https://api.github.com/repos/astral-sh/uv/releases/assets/487747656"

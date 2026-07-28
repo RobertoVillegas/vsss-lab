@@ -1,8 +1,10 @@
 [workspace]
 members = [
     "crates/vsss-batch",
+    "crates/vsss-match-server",
     "crates/vsss-physics-api",
     "crates/vsss-physics-rapier",
+    "crates/vsss-protocol",
     "crates/vsss-python",
     "crates/vsss-spec",
     "crates/vsss-viewer-2d",

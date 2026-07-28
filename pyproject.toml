@@ -14,6 +14,7 @@ build-backend = "maturin"
 
 [dependency-groups]
 dev = [
+  "flatbuffers==25.12.19",
   "gymnasium>=1.2,<2",
   "maturin>=1.9,<2",
   "mypy>=1.17,<2",
@@ -45,6 +46,7 @@ extend-exclude = [
   "experiments",
   "runs",
   "checkpoints",
+  "python/vsss_controller/generated",
   "docs/PRD_VSSS_Lab_Plataforma_RL_Multiagente.md",
 ]
 
@@ -57,6 +59,10 @@ strict = true
 
 [[tool.mypy.overrides]]
 module = ["pettingzoo", "pettingzoo.*", "torch", "torch.*", "torchrl", "torchrl.*", "tensordict", "tensordict.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["vsss", "vsss.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

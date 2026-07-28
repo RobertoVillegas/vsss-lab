@@ -1,0 +1,17 @@
+{
+  "protocol_version": 1,
+  "match_id": [103, 111, 108, 100, 101, 110, 45, 109, 97, 116, 99, 104, 45, 48, 48, 49],
+  "controller_slot": "Blue",
+  "sequence": 7,
+  "server_tick": 42,
+  "sent_monotonic_ns": 1000,
+  "deadline_monotonic_ns": 2000,
+  "payload_type": "Action",
+  "payload": {
+    "robots": [
+      { "mode": "WheelVelocity", "first": 1.0, "second": 2.0 },
+      { "mode": "BodyVelocity", "first": -0.5, "second": 0.25 },
+      { "mode": "WheelVelocity", "first": 0.0, "second": 0.0 }
+    ]
+  }
+}

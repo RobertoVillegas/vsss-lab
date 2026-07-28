@@ -98,6 +98,12 @@ league-web run_dir="/home/rob/runs/vsss-lab-demo" port="8765":
   just web-build
   uv run python -m tools.replay_web.server --run-dir "{{run_dir}}" --host 127.0.0.1 --port {{port}}
 
+protocol-generate:
+  bash tools/protocol/generate.sh
+
+protocol-check:
+  bash tools/protocol/check.sh
+
 league-promote candidate manifest run_dir="/home/rob/runs/vsss-lab-demo":
   uv run --group train python -m vsss_league.cli promote --run-dir "{{run_dir}}" --candidate "{{candidate}}" --manifest "{{manifest}}"
 
