@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<sdf version="1.12">
+  <model name="vsss_robot">
+    <link name="base">
+      <inertial><mass>0.5</mass></inertial>
+      <collision name="collision"><geometry><box><size>0.075 0.075 0.075</size></box></geometry></collision>
+      <visual name="visual"><geometry><box><size>0.075 0.075 0.075</size></box></geometry></visual>
+    </link>
+    <link name="left_wheel"><pose relative_to="base">0 0.03 -0.025 1.570796 0 0</pose>
+      <collision name="collision"><geometry><cylinder><radius>0.025</radius><length>0.01</length></cylinder></geometry></collision>
+      <visual name="visual"><geometry><cylinder><radius>0.025</radius><length>0.01</length></cylinder></geometry></visual>
+    </link>
+    <link name="right_wheel"><pose relative_to="base">0 -0.03 -0.025 1.570796 0 0</pose>
+      <collision name="collision"><geometry><cylinder><radius>0.025</radius><length>0.01</length></cylinder></geometry></collision>
+      <visual name="visual"><geometry><cylinder><radius>0.025</radius><length>0.01</length></cylinder></geometry></visual>
+    </link>
+    <joint name="left_wheel_joint" type="revolute"><parent>base</parent><child>left_wheel</child><axis><xyz>0 1 0</xyz></axis></joint>
+    <joint name="right_wheel_joint" type="revolute"><parent>base</parent><child>right_wheel</child><axis><xyz>0 1 0</xyz></axis></joint>
+    <plugin filename="gz-sim-diff-drive-system" name="gz::sim::systems::DiffDrive">
+      <left_joint>left_wheel_joint</left_joint><right_joint>right_wheel_joint</right_joint>
+      <wheel_separation>0.06</wheel_separation><wheel_radius>0.025</wheel_radius>
+    </plugin>
+  </model>
+</sdf>

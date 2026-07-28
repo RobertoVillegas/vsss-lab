@@ -79,6 +79,21 @@ services:
     tmpfs: [/tmp]
     pids_limit: 128
 
+  ros-gazebo:
+    profiles: ["gazebo"]
+    build:
+      context: .
+      dockerfile: containers/ros/Dockerfile
+    image: vsss-lab/ros-gazebo:m10
+    environment:
+      GZ_SIM_RESOURCE_PATH: /workspace/simulation/gazebo/models
+      SDF_PATH: /workspace/simulation/gazebo/models
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp, /root/.gz, /root/.ros]
+    pids_limit: 512
+
 networks:
   competition:
     internal: true
