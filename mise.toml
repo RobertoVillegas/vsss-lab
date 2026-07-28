@@ -18,13 +18,18 @@ run = [
   "cargo fetch --locked",
 ]
 
+[tasks.bindings]
+description = "Build and install the native Python extension"
+depends = ["bootstrap"]
+run = "uv run maturin develop --release"
+
 [tasks.doctor]
 description = "Validate host and project invariants"
 run = "bash tools/doctors/doctor.sh"
 
 [tasks.build]
 description = "Build Rust and validate Python sources"
-depends = ["bootstrap"]
+depends = ["bindings"]
 run = [
   "cargo build --workspace --locked",
   "uv run python -m compileall -q python tests tools",
@@ -32,7 +37,7 @@ run = [
 
 [tasks.test]
 description = "Run Rust and Python test suites"
-depends = ["bootstrap"]
+depends = ["bindings"]
 run = [
   "cargo test --workspace --locked",
   "uv run pytest -q",
@@ -46,5 +51,5 @@ run = [
   "cargo clippy --workspace --all-targets -- -D warnings",
   "ruff check .",
   "ruff format --check .",
-  "uv run mypy tests",
+  "uv run mypy tests python/vsss_env",
 ]
