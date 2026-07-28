@@ -35,6 +35,9 @@ match-scripted ticks="1000" replay="reports/m4-scripted.jsonl":
 replay-view replay="reports/m4-scripted.jsonl":
   uv run python -m tools.replay_viewer.view "{{replay}}"
 
+replay-render replay="reports/m4-scripted.jsonl" output="reports/m4-scripted.svg":
+  uv run python -m tools.replay_viewer.view "{{replay}}" --svg "{{output}}"
+
 clean:
   cargo clean
   rm -rf .venv .pytest_cache .mypy_cache .ruff_cache

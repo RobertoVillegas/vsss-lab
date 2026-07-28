@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import TextIO
@@ -9,6 +10,8 @@ from typing import TextIO
 import numpy as np
 from vsss_baselines import DynamicTeamController
 from vsss_env._native import BatchSimulator
+
+from vsss_eval.visual import FrameSink, VisualFrame
 
 REPLAY_VERSION = 1
 
@@ -30,10 +33,14 @@ def run_scripted_match(
     ticks: int,
     replay_path: Path,
     seed: int = 0,
+    observers: Iterable[FrameSink] = (),
 ) -> MatchSummary:
     """Run and record a deterministic 3v3 match."""
     if ticks <= 0:
         raise ValueError("ticks must be positive")
+    observer_sinks = tuple(observers)
+    config = json.loads(config_json)
+    timestep = float(config["timestep"])
     simulator = BatchSimulator(config_json, state_json, 1)
     state = simulator.reset()[0]
     blue = DynamicTeamController(0, 1)
@@ -49,6 +56,7 @@ def run_scripted_match(
                 "seed": seed,
                 "ticks": ticks,
                 "config_sha256": hashlib.sha256(config_json.encode()).hexdigest(),
+                "config": config,
             },
         )
         for index in range(ticks):
@@ -62,17 +70,21 @@ def run_scripted_match(
             final_checksum = hashlib.sha256(canonical_snapshot.encode()).hexdigest()
             event_flags = int(state[-1])
             goals += int(bool(event_flags & 0b11))
-            _write(
-                replay,
-                {
-                    "type": "tick",
-                    "index": index + 1,
-                    "actions": actions[0].tolist(),
-                    "events": event_flags,
-                    "checksum": final_checksum,
-                    "snapshot": snapshot,
-                },
+            record = {
+                "type": "tick",
+                "index": index + 1,
+                "actions": actions[0].tolist(),
+                "events": event_flags,
+                "checksum": final_checksum,
+                "snapshot": snapshot,
+            }
+            _write(replay, record)
+            frame = VisualFrame.from_replay_record(
+                record,
+                timestep=timestep,
             )
+            for observer in observer_sinks:
+                observer.publish(frame)
     return MatchSummary(
         ticks=ticks,
         score_blue=int(state[3]),
