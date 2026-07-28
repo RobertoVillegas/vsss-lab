@@ -1,6 +1,8 @@
 import math
+from dataclasses import asdict
 
 import numpy as np
+import pytest
 from vsss_vision import (
     Association,
     BallKalmanFilter,
@@ -87,3 +89,36 @@ def test_dropout_prediction_is_bounded_by_calibration_age() -> None:
     assert robot_prediction.rejection_reason == "measurement_missing"
     assert ball.predict_only(0.5, 0.52) is None
     assert robot.predict_only(0.5, 0.52) is None
+
+
+def test_ball_filter_golden_transition_and_covariance() -> None:
+    estimator = BallKalmanFilter.initialize(
+        ball_measurement(0, 0.0, 0.0, 0.0), EstimatorCalibration()
+    )
+
+    estimate = estimator.update(ball_measurement(1, 0.1, 0.02, -0.01))
+
+    assert estimate.state == pytest.approx(
+        (
+            0.019992144733289148,
+            0.0019736357611017013,
+            0.00009819083388565681,
+            -0.009996072366644574,
+            -0.0009868178805508506,
+            -0.000049095416942828404,
+        )
+    )
+    covariance = np.asarray(estimate.covariance)
+    assert covariance[0, 0] == pytest.approx(0.000399842895)
+    assert covariance[1, 1] == pytest.approx(1.0080824803)
+    assert covariance[0, 3] == 0.0
+
+
+def test_measurement_and_estimate_contracts_are_not_interchangeable() -> None:
+    measurement = ball_measurement(0, 0.0, 0.0, 0.0)
+    estimator = BallKalmanFilter.initialize(measurement, EstimatorCalibration())
+    estimate = estimator.update(measurement)
+
+    assert set(asdict(measurement)) != set(asdict(estimate))
+    with pytest.raises(TypeError):
+        BallMeasurement(**asdict(estimate))

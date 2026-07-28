@@ -4,7 +4,7 @@
 - [x] 1.2 Define versioned measurement, association, estimate, covariance, and
   prediction schemas
 - [x] 1.3 Define camera/filter calibration profiles and stable validation errors
-- [ ] 1.4 Add contract tests proving canonical truth and estimated state cannot be
+- [x] 1.4 Add contract tests proving canonical truth and estimated state cannot be
   confused
 
 ## 2. Deterministic state estimation
@@ -15,7 +15,7 @@
   prediction-only dropout handling
 - [x] 2.4 Implement confidence-aware marker association input without binding
   marker identity to policy role
-- [ ] 2.5 Add golden transition, covariance, outlier, occlusion, and seed tests
+- [x] 2.5 Add golden transition, covariance, outlier, occlusion, and seed tests
 
 ## 3. Predictive trajectory
 
@@ -24,7 +24,7 @@
   damping, restitution, and chamfers
 - [x] 3.3 Implement goalkeeper-line and general segment interception queries
 - [x] 3.4 Add uncertainty propagation and stale-estimate limits
-- [ ] 3.5 Add a future-truth mutation test that blocks information leakage
+- [x] 3.5 Add a future-truth mutation test that blocks information leakage
 
 ## 4. Simulation and policy evaluation
 
