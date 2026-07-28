@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "scenarios": [
+    {
+      "id": "straight-constant-wheel-speed",
+      "ticks": 200,
+      "wheel_action": [20.0, 20.0],
+      "metric": "robot_0_displacement_m",
+      "reference": 0.5,
+      "tolerance": 0.015
+    },
+    {
+      "id": "center-turn-constant-wheel-speed",
+      "ticks": 100,
+      "wheel_action": [-10.0, 10.0],
+      "metric": "robot_0_heading_rad",
+      "reference": -2.116519,
+      "tolerance": 0.03
+    },
+    {
+      "id": "passive-ball-damping",
+      "ticks": 200,
+      "wheel_action": [0.0, 0.0],
+      "initial_ball": {"x": 0.0, "y": 0.0, "vx": 0.1, "vy": 0.0},
+      "metric": "ball_speed_mps",
+      "reference": 0.08607,
+      "tolerance": 0.01
+    }
+  ]
+}

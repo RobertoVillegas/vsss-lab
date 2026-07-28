@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "source": {
+    "repository": "https://github.com/juliodltv/simulation_vsss",
+    "thesis_sha256": "d0e5752290a800f604e7b9f2f01bf937bf996558ffb2e938c6e3428b0a1bef09",
+    "review": "docs/architecture/julio-thesis-review.md"
+  },
+  "parameters": {
+    "field_length": {"value": 1.5, "unit": "m", "kind": "extracted"},
+    "field_width": {"value": 1.3, "unit": "m", "kind": "extracted"},
+    "robot_length": {"value": 0.075, "unit": "m", "kind": "adopted"},
+    "robot_width": {"value": 0.075, "unit": "m", "kind": "adopted"},
+    "wheel_radius": {"value": 0.025, "unit": "m", "kind": "adopted"},
+    "axle_track": {"value": 0.06, "unit": "m", "kind": "adopted"},
+    "ball_radius": {"value": 0.0215, "unit": "m", "kind": "extracted"},
+    "ball_mass": {"value": 0.046, "unit": "kg", "kind": "adopted"}
+  },
+  "assets": {
+    "marker_textures": {
+      "url": "https://github.com/juliodltv/simulation_vsss/tree/main/media/materials/textures",
+      "count": 6,
+      "dimensions_px": [800, 800],
+      "migration": "metadata-only pending explicit reuse-license verification"
+    }
+  }
+}
