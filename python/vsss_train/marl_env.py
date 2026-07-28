@@ -335,6 +335,10 @@ class VectorMarlMatchEnv:
         self._initial_ball_x = np.zeros(num_envs, dtype=np.float32)
         self._initial_closest = np.zeros(num_envs, dtype=np.float32)
         self._previous_blue_actions = np.zeros((num_envs, 3, 2), dtype=np.float32)
+        self._normalized_blue_actions = np.zeros((num_envs, 3, 2), dtype=np.float32)
+        self._action_delta = np.zeros((num_envs, 3, 2), dtype=np.float32)
+        self._native_actions = np.zeros((num_envs, 6, 2), dtype=np.float32)
+        self._events = np.zeros(num_envs, dtype=np.int64)
         self._goal_grace_remaining = np.full(num_envs, -1, dtype=np.int64)
         self._defensive_distance = np.zeros(num_envs, dtype=np.float32)
         self._stagnation_anchor = np.zeros((num_envs, 2), dtype=np.float32)
@@ -374,11 +378,17 @@ class VectorMarlMatchEnv:
         NDArray[np.int64],
         NDArray[np.bool_],
     ]:
-        normalized_blue = np.clip(blue_actions, -1.0, 1.0)
-        action_delta = normalized_blue - self._previous_blue_actions
-        actions = np.zeros((self.num_envs, 6, 2), dtype=np.float32)
+        normalized_blue = np.clip(blue_actions, -1.0, 1.0, out=self._normalized_blue_actions)
+        action_delta = np.subtract(
+            normalized_blue,
+            self._previous_blue_actions,
+            out=self._action_delta,
+        )
+        actions = self._native_actions
+        actions.fill(0.0)
         actions[:, :3] = normalized_blue * self._max_wheel_speed
-        events = np.zeros(self.num_envs, dtype=np.int64)
+        events = self._events
+        events.fill(0)
         if opponent_actions is not None:
             actions[:, 3:] = np.clip(opponent_actions, -1.0, 1.0) * self._max_wheel_speed
             self.states = self._native.step_repeated(actions, self.action_repeat)
@@ -461,8 +471,8 @@ class VectorMarlMatchEnv:
             - self.draw_penalty * draw
             - self.stagnation_penalty * stagnated
         ).astype(np.float32)
-        self._previous_blue_actions = normalized_blue.copy()
-        self._ball_x = ball_x.copy()
+        np.copyto(self._previous_blue_actions, normalized_blue)
+        np.copyto(self._ball_x, ball_x)
         self._closest = closest
         self._defensive_distance = defensive_distance
         done = draw | goal_complete | stagnated

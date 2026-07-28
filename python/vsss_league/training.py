@@ -54,6 +54,8 @@ class RolloutSession:
     episode_counts: list[int]
     curriculum: ScenarioCurriculum | None = None
     scenarios: list[Scenario | None] = field(default_factory=list)
+    blue_host_actions: torch.Tensor | None = None
+    opponent_host_actions: torch.Tensor | None = None
     initialized: bool = False
 
 
@@ -202,10 +204,14 @@ def collect_self_play_trajectory(
                         opponent_observation,
                         opponent_recurrent_state,
                     )
-                    opponent_actions = torch.tanh(opponent_mean).cpu().numpy()
+                    opponent_actions, session.opponent_host_actions = _host_actions(
+                        torch.tanh(opponent_mean),
+                        session.opponent_host_actions,
+                    )
                 else:
-                    opponent_actions = (
-                        opponent.deterministic_action(opponent_observation).cpu().numpy()
+                    opponent_actions, session.opponent_host_actions = _host_actions(
+                        opponent.deterministic_action(opponent_observation),
+                        session.opponent_host_actions,
                     )
             else:
                 opponent_actions = None
@@ -220,7 +226,10 @@ def collect_self_play_trajectory(
                 device=learner.device,
             )
         )
-        blue_actions = action.cpu().numpy()
+        blue_actions, session.blue_host_actions = _host_actions(
+            action,
+            session.blue_host_actions,
+        )
         (
             next_observation,
             step_rewards,
@@ -334,6 +343,17 @@ def collect_self_play_trajectory(
         completed_matches,
         termination_counts,
     )
+
+
+def _host_actions(
+    actions: torch.Tensor,
+    buffer: torch.Tensor | None,
+) -> tuple[FloatArray, torch.Tensor]:
+    """Reuse one CPU bridge buffer instead of allocating every simulation step."""
+    if buffer is None or tuple(buffer.shape) != tuple(actions.shape):
+        buffer = torch.empty(actions.shape, dtype=torch.float32, device="cpu")
+    buffer.copy_(actions.detach(), non_blocking=False)
+    return buffer.numpy(), buffer
 
 
 def train_iteration(

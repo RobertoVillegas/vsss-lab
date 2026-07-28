@@ -45,3 +45,25 @@ are local evidence, not cross-machine claims.
 A candidate that is ten times faster but disagrees on one contact/goal event
 must be rejected. A parity-passing candidate below 1.5× end-to-end speedup must
 also be rejected.
+
+## Executed CUDA spike
+
+`just m14-accelerator-spike experiments/reports/m14-accelerator-spike.json
+cuda 64 256` exercised 64 worlds, including 16 forced goal-entry traces and 16
+robot-ball contact traces. The device-resident microkernels measured roughly
+2.31M observation, 0.61M reward, and 1.33M reset world-operations/s.
+
+The deliberately minimal Torch CUDA kinematic prototype achieved 29,443
+frames/s versus 127,986 frames/s for authoritative Rust/Rapier (`0.23×`), had
+3,968 goal-event mismatches, maximum planar error `2.711 m`, and mean error
+`0.0868 m`. It fails both correctness and speed. The rejection is therefore
+measured rather than hypothetical, and the prototype is not selectable by
+training.
+
+The production vector bridge now reuses CPU action storage across decisions,
+and the environment reuses normalized-action, delta, native-action, and event
+buffers. These changes remove recurrent host allocations without changing the
+authoritative backend. The same 100-step profile produced 11,247 frames/s after
+the change versus 11,136 frames/s in the recorded pre-change profile (`+1.0%`);
+the optimization is retained as non-regressing, not presented as a major
+throughput breakthrough.

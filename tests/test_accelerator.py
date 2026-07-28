@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import numpy as np
+import torch
+from vsss_league.training import _host_actions
 from vsss_train.accelerator import compare_traces, decide_accelerator
 
 
@@ -41,3 +43,12 @@ def test_parity_candidate_still_requires_material_end_to_end_speedup() -> None:
         candidate_fps=20_000,
         parity=parity,
     ).adopted
+
+
+def test_host_action_bridge_reuses_storage() -> None:
+    actions = torch.ones((2, 3, 2), dtype=torch.float32)
+    first, buffer = _host_actions(actions, None)
+    second, reused = _host_actions(actions * 0.5, buffer)
+    assert reused.data_ptr() == buffer.data_ptr()
+    assert first.__array_interface__["data"][0] == second.__array_interface__["data"][0]
+    assert np.all(second == 0.5)

@@ -53,10 +53,10 @@
 ## 6. Accelerator feasibility
 
 - [x] Profile physics, bindings, copies, reward, inference, and PPO update
-- [ ] Remove avoidable host allocation and conversion in vector rollouts
-- [ ] Benchmark device-resident reward, observation, and reset kernels
-- [ ] Prototype GPU VSSS primitives only if physics dominates the profile
-- [ ] Compare accelerator traces with authoritative Rapier contacts and goals
+- [x] Remove avoidable host allocation and conversion in vector rollouts
+- [x] Benchmark device-resident reward, observation, and reset kernels
+- [x] Prototype GPU VSSS primitives only if physics dominates the profile
+- [x] Compare accelerator traces with authoritative Rapier contacts and goals
 - [x] Record an adopt-or-reject decision for Warp/Newton or custom Rust/CUDA
 
 ## 7. Delivery
