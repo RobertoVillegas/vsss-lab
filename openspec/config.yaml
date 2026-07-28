@@ -1,0 +1,19 @@
+schema: spec-driven
+
+context: |
+  VSSS Lab is a Rust-first platform for deterministic Very Small Size Soccer
+  simulation and multi-agent reinforcement learning. The canonical vsss-spec
+  crate cannot depend on physics engines, Python, ROS, PyTorch, or networking.
+  Use SI units, stable versioned contracts, Conventional Commits, signed commits,
+  and executable local gates. Work within the active PRD milestone only.
+
+rules:
+  proposal:
+    - Identify the PRD milestone and explicit non-goals.
+  design:
+    - Record contract choices in ADRs.
+    - Include validation, compatibility, and rollback strategy.
+  specs:
+    - Every requirement must have executable Given/When/Then scenarios.
+  tasks:
+    - Include documentation, contract tests, all local gates, and signed commits.

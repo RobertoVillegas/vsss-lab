@@ -20,7 +20,8 @@
 - Do not install CUDA, PyTorch, OpenCV-CUDA, ROS, or Gazebo globally.
 - Active artifacts must remain in Linux-native storage, never `/mnt/*`.
 
-## M0 boundary
+## Milestone boundaries
 
-M0 provides scaffolding and executable gates only. Do not implement Rapier, RL,
-self-play, ROS/Gazebo, remote protocols, or vision in this milestone.
+Use `openspec/changes/` to track the active milestone and its explicit
+non-goals. Do not pull work forward from later milestones. Contract changes
+require an accepted ADR, an OpenSpec delta, golden fixtures, and contract tests.

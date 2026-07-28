@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "tick": 42,
+  "simulation_time": 0.84,
+  "score_blue": 2,
+  "score_yellow": 1,
+  "ball": { "x": 0.25, "y": -0.5, "vx": 1.0, "vy": 0.0, "omega": 0.2 },
+  "robots": [
+    {
+      "id": "R0", "team": "blue",
+      "pose": { "x": -0.5, "y": 0.0, "theta": 0.0 },
+      "twist": { "vx": 0.0, "vy": 0.0, "omega": 0.0 },
+      "wheel_speed_left": 0.0, "wheel_speed_right": 0.0, "enabled": true
+    },
+    {
+      "id": "R1", "team": "blue",
+      "pose": { "x": -0.25, "y": 0.25, "theta": 0.0 },
+      "twist": { "vx": 0.0, "vy": 0.0, "omega": 0.0 },
+      "wheel_speed_left": 0.0, "wheel_speed_right": 0.0, "enabled": true
+    },
+    {
+      "id": "R2", "team": "blue",
+      "pose": { "x": -0.25, "y": -0.25, "theta": 0.0 },
+      "twist": { "vx": 0.0, "vy": 0.0, "omega": 0.0 },
+      "wheel_speed_left": 0.0, "wheel_speed_right": 0.0, "enabled": true
+    },
+    {
+      "id": "R3", "team": "yellow",
+      "pose": { "x": 0.5, "y": 0.0, "theta": 0.0 },
+      "twist": { "vx": 0.0, "vy": 0.0, "omega": 0.0 },
+      "wheel_speed_left": 0.0, "wheel_speed_right": 0.0, "enabled": true
+    },
+    {
+      "id": "R4", "team": "yellow",
+      "pose": { "x": 0.25, "y": 0.25, "theta": 0.0 },
+      "twist": { "vx": 0.0, "vy": 0.0, "omega": 0.0 },
+      "wheel_speed_left": 0.0, "wheel_speed_right": 0.0, "enabled": true
+    },
+    {
+      "id": "R5", "team": "yellow",
+      "pose": { "x": 0.25, "y": -0.25, "theta": 0.0 },
+      "twist": { "vx": 0.0, "vy": 0.0, "omega": 0.0 },
+      "wheel_speed_left": 0.0, "wheel_speed_right": 0.0, "enabled": true
+    }
+  ],
+  "events": 1
+}
