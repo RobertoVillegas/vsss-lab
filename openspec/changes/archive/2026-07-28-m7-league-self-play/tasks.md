@@ -19,4 +19,4 @@
 
 - [x] 4.1 Implement deterministic fixture manifests and non-regression promotion
 - [x] 4.2 Add run/tournament/promote/view commands and tests
-- [ ] 4.3 Run benchmarks and all gates, archive OpenSpec, sign commits, and push
+- [x] 4.3 Run benchmarks and all gates, archive OpenSpec, sign commits, and push
