@@ -26,7 +26,7 @@ def test_paired_semantic_evaluation_reports_trials_intervals_and_throughput() ->
                 seed=seed,
                 controlled_team=team,  # type: ignore[arg-type]
                 difficulty=SkillDifficulty(0.2, 0.2, 0.2, 0.2, 0.2),
-                horizon=2,
+                horizon=20,
                 holdout=True,
             ),
             STATE,

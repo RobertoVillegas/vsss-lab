@@ -461,6 +461,13 @@ def compile_skill_scenario(
     )
     validate_scenario(scenario, config)
     _validate_not_terminal(state, config)
+    _validate_reachable(state, primary, parameters, config)
+    if family in ("interception", "save_deflection"):
+        initial_threat = _trajectory_intersects_goal(state, own_goal_x, config)
+        if not initial_threat:
+            raise ValueError(f"{family} must begin with a goal-bound trajectory")
+    elif family == "clearance":
+        initial_threat = _trajectory_intersects_goal(state, own_goal_x, config)
     state_hash = scenario.digest
     context = SkillContext(
         family=family,
@@ -567,6 +574,51 @@ def _validate_not_terminal(state: dict[str, Any], config: dict[str, Any]) -> Non
     ball_radius = float(config["ball"]["radius"])
     if abs(float(state["ball"]["x"])) + ball_radius >= half_length:
         raise ValueError("semantic scenario starts at a goal boundary")
+
+
+def _validate_reachable(
+    state: dict[str, Any],
+    primary: dict[str, Any],
+    parameters: SkillScenarioParameters,
+    config: dict[str, Any],
+) -> None:
+    robot = config["robot"]
+    ball = config["ball"]
+    wheel = config["wheel"]
+    contact_distance = math.hypot(float(robot["length"]), float(robot["width"])) / 2 + float(
+        ball["radius"]
+    )
+    maximum_speed = float(config["max_wheel_speed"]) * float(wheel["radius"])
+    duration = parameters.horizon * float(config["control_period"])
+    pose = primary["pose"]
+    separation = math.dist(
+        (float(pose["x"]), float(pose["y"])),
+        (float(state["ball"]["x"]), float(state["ball"]["y"])),
+    )
+    ball_travel = (
+        math.hypot(
+            float(state["ball"]["vx"]),
+            float(state["ball"]["vy"]),
+        )
+        * duration
+    )
+    if separation > contact_distance + (maximum_speed * duration) + ball_travel:
+        raise ValueError("controlled robot cannot reach the ball within the horizon")
+
+
+def _trajectory_intersects_goal(
+    state: dict[str, Any],
+    goal_x: float,
+    config: dict[str, Any],
+) -> bool:
+    ball = state["ball"]
+    velocity_x = float(ball["vx"])
+    if abs(velocity_x) < 1e-9 or (goal_x - float(ball["x"])) * velocity_x <= 0:
+        return False
+    crossing_time = (goal_x - float(ball["x"])) / velocity_x
+    crossing_y = float(ball["y"]) + float(ball["vy"]) * crossing_time
+    aperture = float(config["field"]["goal_width"]) / 2 - float(config["ball"]["radius"])
+    return crossing_time >= 0.0 and abs(crossing_y) <= aperture
 
 
 def _lerp(start: float, end: float, amount: float) -> float:

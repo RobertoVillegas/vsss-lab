@@ -81,6 +81,22 @@ def test_difficulty_rejects_out_of_range_or_nonfinite_values() -> None:
         SkillDifficulty(ball_angle=float("nan"))
 
 
+def test_compiler_rejects_a_skill_horizon_that_is_physically_unreachable() -> None:
+    with pytest.raises(ValueError, match="cannot reach"):
+        compile_skill_scenario(
+            SkillScenarioParameters(
+                schema_version=1,
+                family="approach",
+                seed=9,
+                controlled_team="blue",
+                difficulty=SkillDifficulty(spawn_distance=1.0),
+                horizon=1,
+            ),
+            STATE,
+            CONFIG,
+        )
+
+
 def test_compiler_remains_valid_across_families_colors_and_many_seeds() -> None:
     digests = set()
     scenario_ids = set()
