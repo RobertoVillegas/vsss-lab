@@ -65,5 +65,5 @@
 - [ ] Document commands, study artifacts, dashboards, and rollback
 - [x] Add contract, determinism, resume, and failure-injection tests
 - [ ] Record CPU/CUDA throughput and total compute for every promoted study
-- [ ] Run doctor, build, test, lint, CUDA smoke, and strict OpenSpec validation
+- [x] Run doctor, build, test, lint, CUDA smoke, and strict OpenSpec validation
 - [ ] Commit signed Conventional Commits and push

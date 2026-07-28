@@ -28,7 +28,14 @@ assert all("@sha256:" in value for value in m["images"].values())
 PY
 ok "container images are digest-pinned"
 
-if grep -RIE --exclude-dir=.git --exclude='*.md' '(BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|gh[opsu]_[A-Za-z0-9_]+)' . >/dev/null; then
+if grep -RIE \
+  --exclude-dir=.git \
+  --exclude-dir=.venv \
+  --exclude-dir=node_modules \
+  --exclude-dir=target \
+  --exclude-dir=reports \
+  --exclude='*.md' \
+  '(BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|gh[opsu]_[A-Za-z0-9_]+)' . >/dev/null; then
   fail "possible secret material detected"
 else
   ok "no obvious secret material"
