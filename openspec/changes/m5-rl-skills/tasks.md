@@ -2,12 +2,12 @@
 
 - [x] 1.1 Specify M5 scope, curriculum, artifacts, and executable gates
 - [x] 1.2 Record the PPO artifact and checkpoint ADR
-- [ ] 1.3 Lock isolated PyTorch and TorchRL training dependencies
+- [x] 1.3 Lock isolated PyTorch and TorchRL training dependencies
 
 ## 2. Skill environment
 
-- [ ] 2.1 Implement native go-to-target task and C0–C5 reset distributions
-- [ ] 2.2 Add task, observation, reward, termination, and curriculum tests
+- [x] 2.1 Implement native go-to-target task and C0–C5 reset distributions
+- [x] 2.2 Add task, observation, reward, termination, and curriculum tests
 
 ## 3. PPO lifecycle
 
