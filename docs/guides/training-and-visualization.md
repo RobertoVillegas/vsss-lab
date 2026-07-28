@@ -13,6 +13,10 @@ Arguments are `run_dir`, `iterations`, and `capture_every`. One M7 iteration is
 one native C8 trajectory followed by one MAPPO optimization update; it is the
 meaningful unit to inspect rather than a supervised-learning epoch.
 
+The current default is shared-policy MAPPO: three decentralized actors share
+weights while a centralized critic is used during training. PPO/IPPO remain
+available for controlled ablations.
+
 Artifacts:
 
 ```text
@@ -54,3 +58,7 @@ just league-tournament \
 This writes a canonical report plus side-switched evaluation replays. Promotion
 is a separate explicit action driven by a fixture manifest; training never
 silently replaces the current main policy.
+
+Do not infer promotion quality from rollout return alone. Run the side-switched
+tournament and inspect its report; the first 50-iteration reference run is
+documented in `docs/evidence/m11-first-mappo-training-run.md`.
