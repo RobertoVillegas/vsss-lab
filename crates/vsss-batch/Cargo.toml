@@ -1,0 +1,15 @@
+[package]
+name = "vsss-batch"
+description = "Sequential M2 batch for independent VSSS physics worlds"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+vsss-physics-api = { path = "../vsss-physics-api" }
+vsss-spec = { path = "../vsss-spec" }
+
+[lints]
+workspace = true

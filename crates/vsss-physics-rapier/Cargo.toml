@@ -1,0 +1,19 @@
+[package]
+name = "vsss-physics-rapier"
+description = "Deterministic Rapier2D reference backend for VSSS Lab"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+rapier2d = { version = "0.34.0", features = ["enhanced-determinism"] }
+vsss-physics-api = { path = "../vsss-physics-api" }
+vsss-spec = { path = "../vsss-spec" }
+
+[dev-dependencies]
+vsss-batch = { path = "../vsss-batch" }
+
+[lints]
+workspace = true
