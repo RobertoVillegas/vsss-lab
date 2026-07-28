@@ -5,11 +5,13 @@ from __future__ import annotations
 import argparse
 import copy
 import json
-from dataclasses import asdict
+import signal
+import time
+from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
-from vsss_train.config import load_marl_config
+from vsss_train.config import MarlConfig, load_marl_config
 from vsss_train.marl_env import distill_dynamic_teacher
 from vsss_train.marl_ppo import MarlLearner
 
@@ -17,7 +19,7 @@ from vsss_league.promotion import FixtureResult, decide_promotion
 from vsss_league.registry import LeagueRegistry, PolicyEntry
 from vsss_league.replay import run_policy_replay
 from vsss_league.tournament import evaluate_candidate_vs_heuristic
-from vsss_league.training import train_iteration
+from vsss_league.training import IterationResult, train_iteration
 
 
 def parser() -> argparse.ArgumentParser:
@@ -133,63 +135,123 @@ def _run(arguments: argparse.Namespace) -> None:
         parent_key = registry.current_main().key
     metrics_path = run_dir / "metrics.jsonl"
     final_iteration = start_iteration + arguments.iterations - 1
-    for iteration in range(start_iteration, final_iteration + 1):
-        opponent = copy.deepcopy(learner.actor).eval()
-        save_checkpoint = (
-            iteration % arguments.checkpoint_every == 0 or iteration == final_iteration
-        )
-        checkpoint = checkpoint_dir / f"iteration-{iteration:06d}.pt" if save_checkpoint else None
-        result = train_iteration(
-            learner,
-            opponent,
-            config_json,
-            state_json,
-            iteration=iteration,
-            seed=config.seed + iteration,
-            opponent_id=parent_key,
-            checkpoint=checkpoint,
-        )
-        if checkpoint is not None:
-            entry = PolicyEntry.from_checkpoint(
-                policy_id=config.policy_id,
-                version=result.policy_version,
-                category="main",
-                status="candidate",
-                checkpoint=checkpoint,
-                algorithm=config.algorithm,
-                rating=1_000.0,
-                parent=parent_key,
-                created_at=_timestamp(),
-                training_iteration=iteration,
+    stop_requested = False
+    completed = 0
+    started_at = time.monotonic()
+
+    def request_stop(_signum: int, _frame: object) -> None:
+        nonlocal stop_requested
+        if not stop_requested:
+            stop_requested = True
+            print(
+                "\nStop requested; finishing the current iteration and saving a checkpoint…",
+                flush=True,
             )
-            registry.register(entry)
-            parent_key = entry.key
-        with metrics_path.open("a", encoding="utf-8") as metrics:
-            metrics.write(json.dumps(asdict(result), sort_keys=True, separators=(",", ":")) + "\n")
-        if iteration % arguments.capture_every == 0:
-            run_policy_replay(
-                learner.actor,
+
+    previous_sigint = signal.signal(signal.SIGINT, request_stop)
+    previous_sigterm = signal.signal(signal.SIGTERM, request_stop)
+    try:
+        for iteration in range(start_iteration, final_iteration + 1):
+            opponent = copy.deepcopy(learner.actor).eval()
+            save_checkpoint = (
+                iteration % arguments.checkpoint_every == 0 or iteration == final_iteration
+            )
+            checkpoint = (
+                checkpoint_dir / f"iteration-{iteration:06d}.pt" if save_checkpoint else None
+            )
+            result = train_iteration(
+                learner,
                 opponent,
                 config_json,
                 state_json,
-                seed=config.seed + 10_000 + iteration,
-                ticks=capture_frames,
-                replay_path=replay_dir / f"iteration-{iteration:06d}.jsonl",
-                blue_policy=f"{config.policy_id}@{result.policy_version}",
-                yellow_policy=f"{config.policy_id}@{result.policy_version - 1}",
+                iteration=iteration,
+                seed=config.seed + iteration,
+                opponent_id=parent_key,
+                checkpoint=checkpoint,
             )
+            if checkpoint is not None:
+                parent_key = _register_candidate(registry, config, result, checkpoint, parent_key)
+            with metrics_path.open("a", encoding="utf-8") as metrics:
+                metrics.write(
+                    json.dumps(asdict(result), sort_keys=True, separators=(",", ":")) + "\n"
+                )
+            if iteration % arguments.capture_every == 0:
+                run_policy_replay(
+                    learner.actor,
+                    opponent,
+                    config_json,
+                    state_json,
+                    seed=config.seed + 10_000 + iteration,
+                    ticks=capture_frames,
+                    replay_path=replay_dir / f"iteration-{iteration:06d}.jsonl",
+                    blue_policy=f"{config.policy_id}@{result.policy_version}",
+                    yellow_policy=f"{config.policy_id}@{result.policy_version - 1}",
+                )
+            if stop_requested and checkpoint is None:
+                checkpoint = checkpoint_dir / f"iteration-{iteration:06d}.pt"
+                learner.save(checkpoint)
+                result = replace(result, checkpoint=str(checkpoint.resolve()))
+                parent_key = _register_candidate(registry, config, result, checkpoint, parent_key)
+            completed += 1
+            elapsed = time.monotonic() - started_at
+            rate = completed / elapsed
+            remaining = arguments.iterations - completed
+            print(
+                f"iteration {iteration}/{final_iteration} · "
+                f"return {result.return_total:+.3f} · progress {result.progress:+.3f} · "
+                f"{rate:.2f} iter/s · ETA {_duration(remaining / rate)}"
+                f"{' · checkpoint' if checkpoint is not None else ''}",
+                flush=True,
+            )
+            if stop_requested:
+                break
+    finally:
+        signal.signal(signal.SIGINT, previous_sigint)
+        signal.signal(signal.SIGTERM, previous_sigterm)
+    actual_final = start_iteration + completed - 1
     print(
         json.dumps(
             {
                 "run_dir": str(run_dir.resolve()),
-                "iterations": arguments.iterations,
-                "final_iteration": final_iteration,
+                "iterations": completed,
+                "final_iteration": actual_final,
                 "latest_version": learner.policy_version,
                 "viewer_replays": str(replay_dir.resolve()),
+                "stopped": stop_requested,
             },
             sort_keys=True,
         )
     )
+
+
+def _register_candidate(
+    registry: LeagueRegistry,
+    config: MarlConfig,
+    result: IterationResult,
+    checkpoint: Path,
+    parent_key: str,
+) -> str:
+    entry = PolicyEntry.from_checkpoint(
+        policy_id=config.policy_id,
+        version=result.policy_version,
+        category="main",
+        status="candidate",
+        checkpoint=checkpoint,
+        algorithm=config.algorithm,
+        rating=1_000.0,
+        parent=parent_key,
+        created_at=_timestamp(),
+        training_iteration=result.iteration,
+    )
+    registry.register(entry)
+    return entry.key
+
+
+def _duration(seconds: float) -> str:
+    rounded = max(0, round(seconds))
+    hours, remainder = divmod(rounded, 3_600)
+    minutes, secs = divmod(remainder, 60)
+    return f"{hours:d}h {minutes:02d}m" if hours else f"{minutes:d}m {secs:02d}s"
 
 
 def _tournament(arguments: argparse.Namespace) -> None:

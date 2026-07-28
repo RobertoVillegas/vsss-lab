@@ -81,6 +81,13 @@ league-run run_dir="/home/rob/runs/vsss-lab-demo" iterations="3" capture_every="
 league-resume run_dir="/home/rob/runs/vsss-lab-demo" iterations="1000" capture_every="100" capture_seconds="60" checkpoint_every="100" config="experiments/configs/m6-mappo.toml":
   uv run --group train python -m vsss_league.cli run --resume --config "{{config}}" --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --run-dir "{{run_dir}}" --iterations {{iterations}} --capture-every {{capture_every}} --capture-seconds {{capture_seconds}} --checkpoint-every {{checkpoint_every}}
 
+league-live run_dir="/home/rob/runs/vsss-lab-live" iterations="1000" capture_every="100" capture_seconds="60" checkpoint_every="100" port="8765":
+  mkdir -p "{{run_dir}}"
+  just league-web "{{run_dir}}" "{{port}}" & viewer_pid=$!; trap 'kill "$viewer_pid" 2>/dev/null || true' EXIT; just league-run "{{run_dir}}" "{{iterations}}" "{{capture_every}}" "{{capture_seconds}}" "{{checkpoint_every}}"
+
+league-live-resume run_dir="/home/rob/runs/vsss-lab-live" iterations="1000" capture_every="100" capture_seconds="60" checkpoint_every="100" port="8765":
+  just league-web "{{run_dir}}" "{{port}}" & viewer_pid=$!; trap 'kill "$viewer_pid" 2>/dev/null || true' EXIT; just league-resume "{{run_dir}}" "{{iterations}}" "{{capture_every}}" "{{capture_seconds}}" "{{checkpoint_every}}"
+
 league-inspect run_dir="/home/rob/runs/vsss-lab-demo":
   uv run --group train python -m vsss_league.cli inspect --run-dir "{{run_dir}}"
 
