@@ -24,7 +24,12 @@ addopts = "--strict-config --strict-markers"
 [tool.ruff]
 target-version = "py313"
 line-length = 100
-extend-exclude = ["experiments", "runs", "checkpoints"]
+extend-exclude = [
+  "experiments",
+  "runs",
+  "checkpoints",
+  "docs/PRD_VSSS_Lab_Plataforma_RL_Multiagente.md",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "RUF"]
