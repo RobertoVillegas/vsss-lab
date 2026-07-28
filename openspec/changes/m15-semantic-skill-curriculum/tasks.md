@@ -70,5 +70,5 @@
 - [x] Document scenario authoring, predicate definitions, dashboards,
       evaluation commands, artifacts, limitations, and rollback
 - [x] Record CPU/CUDA frames/s, matches/s, resolved drills/s, and total compute
-- [ ] Run doctor, build, test, lint, CUDA smoke, and strict OpenSpec validation
-- [ ] Commit small signed Conventional Commits and push to main
+- [x] Run doctor, build, test, lint, CUDA smoke, and strict OpenSpec validation
+- [x] Commit small signed Conventional Commits and push to main
