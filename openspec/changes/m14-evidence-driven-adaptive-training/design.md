@@ -182,6 +182,102 @@ labels: canonical state produces geometry and labels, while any image generator
 is merely an appearance transform. Ordinary procedural rendering and
 camera-domain randomization must be benchmarked first.
 
+## Decision 8: build Ballchasing-style analytics outside the reward loop
+
+Ballchasing's transferable contribution is its replay-derived data model. It
+separates raw replay state from per-game, per-player, per-team, and grouped
+statistics, then exposes timelines, heatmaps, averages, totals, and tabular
+export. The inspected RLBot Championship 2024 group contains 78 games across
+four child groups. That is useful product evidence, but too small and
+physically different to define VSSS target distributions.
+
+VSSS derived analytics SHALL include:
+
+- possession intervals from one team's last valid touch until an opponent
+  touch, neutral reset, or goal;
+- ball time in defensive, neutral, and attacking thirds and halves;
+- distance to ball and teammates, time ahead of/behind the ball, and time
+  closest/farthest from it;
+- dynamic last-defender exposure and goals conceded while uncovered;
+- shots, goals, conversion, saves, clearances, passes, assists, interceptions,
+  and contact chains;
+- speed distribution, distance, stationary time, action delta, wheel effort,
+  and reversals;
+- double commits, congestion, role occupancy and transitions, possession
+  without progress, and unchallenged opponent possession.
+
+Metrics carry a definition version and sampling rate. They power viewer
+filters, heatmaps, checkpoint comparison, failure clustering, curriculum
+allocation, and promotion constraints. They do not become dense rewards by
+default: possession and touches are easy to farm without producing goals.
+
+Ballchasing defines possession as the interval after a team's touch until an
+opponent touch. VSSS adopts that base interval but adds neutral resets and goal
+boundaries. A pass is a same-team contact chain between distinct robots that
+creates measurable territorial or shot-value improvement before an opponent
+touch; an assist is a qualifying pass inside a bounded pre-goal window. These
+definitions are versioned and inspectable.
+
+## Decision 9: adapt RLGym and Nexto patterns at component boundaries
+
+Current RLGym decomposes an environment into transition engine, state mutator,
+observation builder, action parser, reward function, done conditions, shared
+information, and optional renderer. M14 makes the corresponding VSSS
+experiment boundaries explicit:
+
+| RLGym concept | VSSS responsibility |
+| --- | --- |
+| TransitionEngine | authoritative Rust physics and adjudication |
+| StateMutator | typed scenario generator and curriculum teacher |
+| ObsBuilder | versioned team-relative learner observation |
+| ActionParser | continuous wheels or tested action abstraction |
+| RewardFunction | versioned bounded reward DSL |
+| DoneCondition | goal, timeout, stagnation, and invalid-state termination |
+| Renderer | replay artifacts and independent web viewer |
+| SharedInfoProvider | typed rollout context outside canonical state |
+
+This mapping is conceptual; RLGym is not added as a dependency.
+
+RLGym and RLGymPPO_CPP use RocketSim, repeated actions, many parallel games,
+batched inference, no-touch truncation, goal termination, bounded checkpoint
+retention, and callbacks that keep metrics separate from rewards. VSSS adopts
+that separation, staged immutable experiment configs, historical evaluation,
+and inference-batch profiling rather than copying Rocket League parameters.
+
+The released Nexto deployment confirms useful implementation patterns: a
+lookup table of physically meaningful actions, batched observations normalized
+by physical maxima, canonical and inverted team views, previous actions in the
+observation, entity-shaped teammate/opponent input, and inspectable attention
+weights.
+
+Continuous wheel control remains the baseline. M14 may compare one symmetric
+wheel-action lattice or action-chunk parser at matched physical control
+frequency, but it starts a new lineage. Entity attention is a stronger near-term
+ablation than KAN because it directly targets permutation-safe coordination.
+GRU and entity attention are tested separately before they are combined.
+
+RLGym community experience also matches local failures: touch rewards become
+farmable, oversized goal rewards can drown early signals, and overly specific
+shaping fixes a playstyle. M14 uses separate skill-stage configs—reach/contact,
+useful ball motion, terminal play, then coordination—and promotes each through
+the independent league evaluation rather than silently mutating one lineage.
+
+Nexto is a baseline, not an oracle. Its reaction time, passive tendencies,
+discrete actions, 3D boost economy, and contacts differ from physical VSSS.
+Claims not supported by released training code remain hypotheses.
+
+## Decision 10: make external comparison a delivery gate
+
+Before each M14 block—analytics, curriculum, reward search, memory/attention,
+planner teachers, population training, or acceleration—the task owner SHALL
+review current primary documentation, maintained source, and recent research
+from at least two relevant external systems when available.
+
+The evidence note records URL, access date, version or commit, observed
+mechanism, local applicability, adopt/adapt/defer/reject decision, and a
+falsifiable experiment. Search popularity is discovery, not evidence, and an
+unmaintained example cannot alone justify a dependency.
+
 ## Transferable lessons from Kimi K3
 
 Kimi K3 is not evidence that VSSS needs an LLM. The applicable system patterns
@@ -236,6 +332,19 @@ Primary recent references:
   https://github.com/NVIDIA/warp
 - Newton Physics, GPU-accelerated simulation built on Warp:
   https://github.com/newton-physics/newton
+- Ballchasing replay analytics and API:
+  https://ballchasing.com/doc/_api
+- RLBot Championship 2024 replay group:
+  https://ballchasing.com/group/rlbot-championship-2024-3b0reqp6yu
+- RLGym architecture and training guide:
+  https://rlgym.org/Getting%20Started/overview/
+  and https://rlgym.org/Rocket%20League/training_an_agent/
+- RLGym Tools:
+  https://github.com/RLGym/rlgym-tools
+- RLGymPPO_CPP:
+  https://github.com/ZealanL/RLGymPPO_CPP
+- RLBot v5 Necto/Nexto deployment source:
+  https://github.com/VirxEC/NectoFamily
 
 Older papers are retained only as provenance for MAPPO, automatic environment
 design, population-based training, and Optuna-style black-box optimization; no
@@ -267,3 +376,7 @@ configuration.
   utilization, and total wall-clock cost.
 - Accelerator prototypes replay the same contact and goal corpus as Rapier and
   report parity failures separately from throughput.
+- Derived analytics reproduce golden replay fixtures at multiple sampling rates
+  within documented tolerance.
+- Every major block includes a dated comparative evidence note with explicit
+  adopt, adapt, defer, or reject decisions.

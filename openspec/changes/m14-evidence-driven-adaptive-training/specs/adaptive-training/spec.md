@@ -59,3 +59,41 @@ end-to-end training throughput improvement.
 - **WHEN** an accelerator prototype improves frames per second but disagrees
   with the golden contact or goal corpus
 - **THEN** it is rejected as a production backend and the mismatch is recorded
+
+### Requirement: Reward-independent replay analytics
+The system SHALL derive versioned per-match, per-team, and per-robot possession,
+pressure, positioning, movement, coordination, and event metrics from canonical
+artifacts without changing training reward or replay state.
+
+#### Scenario: Inspect a possession interval
+- **WHEN** one team touches the ball and retains the last valid touch until an
+  opponent contact
+- **THEN** the interval is attributed with its start, end, duration,
+  territorial progress, and terminating event
+
+#### Scenario: Diagnostic metric improves without terminal improvement
+- **WHEN** a candidate increases possession or touches but does not improve
+  paired terminal outcomes
+- **THEN** the metric is reported diagnostically and cannot independently
+  promote the candidate
+
+### Requirement: Explicit learner configuration boundaries
+The system SHALL version scenario mutation, observation building, action
+parsing, reward calculation, termination, and rendering independently while
+preserving authoritative physics ownership.
+
+#### Scenario: Compare an action abstraction
+- **WHEN** a discrete or chunked action parser is evaluated against continuous
+  wheel control
+- **THEN** it starts a distinct lineage and is compared at the same physical
+  control frequency and evaluation suite
+
+### Requirement: Current prior-art evidence
+Every major M14 implementation block SHALL include a dated review of maintained
+external systems and recent primary research with explicit adopt, adapt, defer,
+or reject decisions.
+
+#### Scenario: Begin a policy-architecture ablation
+- **WHEN** implementation of memory or entity attention starts
+- **THEN** its evidence note identifies current comparable implementations,
+  local differences, expected benefit, and a falsifiable acceptance gate

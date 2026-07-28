@@ -19,6 +19,8 @@ an established replacement for MLP or recurrent actors.
 
 - Define a deterministic evaluation suite independent from shaped training
   reward and latest-checkpoint order.
+- Add a Ballchasing-style derived analytics layer for possession, territorial
+  pressure, positioning, movement, coordination, and event attribution.
 - Add an automatic scenario curriculum driven by measured learning progress,
   with replay of failures and coverage of routine, frontier, and holdout cases.
 - Search bounded reward-component weights and selected learner
@@ -31,10 +33,14 @@ an established replacement for MLP or recurrent actors.
 - Maintain a small league of complementary checkpoints and distill only when
   the population demonstrates a reproducible advantage over the best single
   policy.
+- Benchmark RLGym/Nexto-inspired environment decomposition, batched entity
+  observations, action abstractions, staged skills, and historical ratings.
 - Benchmark a device-resident batched simulation prototype before considering
   NVIDIA Warp/Newton or another GPU physics path.
 - Record experiment lineage, objectives, uncertainty, compute, and promotion
   decisions as machine-readable artifacts.
+- Require a dated prior-art review before each major implementation block and
+  record which ideas were adopted, adapted, deferred, or rejected.
 
 ## PRD Milestone
 
@@ -52,3 +58,5 @@ evaluation are complete.
 - No online reward-weight mutation inside an active PPO lineage.
 - No promotion based on training return, a single seed, or the latest
   checkpoint alone.
+- No direct reward for Ballchasing-style diagnostic metrics without a separate
+  anti-farming ablation.
