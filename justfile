@@ -41,6 +41,16 @@ replay-render replay="reports/m4-scripted.jsonl" output="reports/m4-scripted.svg
 replay-view-native replay="reports/m4-scripted.jsonl":
   cargo run -p vsss-viewer-2d -- "{{replay}}"
 
+replay-view-live target="127.0.0.1:42042":
+  cargo run -p vsss-viewer-2d -- --listen "{{target}}"
+
+match-live ticks="10000" replay="reports/m4-live.jsonl" target="127.0.0.1:42042":
+  mkdir -p "$(dirname "{{replay}}")"
+  uv run python -m vsss_eval.cli --config tests/golden/m1_match_config.json --state tests/golden/m1_match_state.json --ticks {{ticks}} --seed 0 --replay "{{replay}}" --live-target "{{target}}"
+
+viewer-wasm-check:
+  cargo check -p vsss-viewer-2d --target wasm32-unknown-unknown
+
 benchmark-observer ticks="2000" repeats="5" sample_every="4":
   uv run python -m tools.benchmark_observer --ticks {{ticks}} --repeats {{repeats}} --sample-every {{sample_every}}
 

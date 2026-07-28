@@ -3955,6 +3955,7 @@ name = "vsss-viewer-2d"
 version = "0.0.0"
 dependencies = [
  "bevy",
+ "flate2",
  "serde",
  "serde_json",
 ]

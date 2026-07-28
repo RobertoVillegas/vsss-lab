@@ -24,9 +24,9 @@
 
 - [x] 4.1 Add a leaf Bevy viewer crate without changing core crate dependencies
 - [x] 4.2 Implement native replay pause, seek, exact step, and speed controls
-- [ ] 4.3 Add identifiers, headings, velocities, actions, trajectories, rewards,
+- [x] 4.3 Add identifiers, headings, velocities, actions, trajectories, rewards,
   events, and dropped-frame overlays
-- [ ] 4.4 Add a bounded live connection and reuse the replay scene projection
+- [x] 4.4 Add a bounded live connection and reuse the replay scene projection
 - [x] 4.5 Verify headless parser/playback tests and document the WASM/client path
 
 ## 5. Evidence and delivery

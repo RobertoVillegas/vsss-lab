@@ -1,8 +1,10 @@
 """M4 scripted controller and match regression tests."""
 
 import json
+import socket
 import threading
 import time
+import zlib
 from pathlib import Path
 
 import numpy as np
@@ -11,6 +13,7 @@ from vsss_env._native import BatchSimulator
 from vsss_eval import (
     LatestFrameSink,
     MetricsSink,
+    UdpFrameSink,
     inspect_replay,
     render_svg,
     replay_frames,
@@ -134,3 +137,28 @@ def test_slow_live_consumer_never_blocks_match(tmp_path: Path) -> None:
     assert live.published == 500
     assert live.dropped > 0
     assert consumed < live.published
+
+
+def test_udp_live_sink_sends_self_describing_frame(tmp_path: Path) -> None:
+    receiver = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    receiver.bind(("127.0.0.1", 0))
+    receiver.settimeout(1.0)
+    target = receiver.getsockname()
+    live = UdpFrameSink(json.loads(CONFIG), (str(target[0]), int(target[1])), sample_every=4)
+    run_scripted_match(
+        CONFIG,
+        STATE,
+        1,
+        tmp_path / "udp.jsonl",
+        observers=(live,),
+    )
+    datagram = receiver.recv(1_400)
+    assert datagram.startswith(b"VSS1")
+    packet = json.loads(zlib.decompress(datagram[4:]))
+    live.close()
+    receiver.close()
+    assert packet["type"] == "visual_frame"
+    assert packet["sequence"] == 0
+    assert packet["sample_every"] == 4
+    assert packet["config"]["field"]["length"] == 1.5
+    assert packet["frame"]["snapshot"]["tick"] == 43

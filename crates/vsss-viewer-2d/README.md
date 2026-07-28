@@ -23,7 +23,24 @@ indicators, ball velocity, recent ball trajectory, score, events, tick, and
 simulation time. The existing SVG renderer remains the deterministic headless
 path.
 
-This devbox is headless, so native window execution belongs on a client with a
-display. A WASM target is planned after live transport is stable; the viewer
-crate intentionally contains no physics and can reuse the same playback state
-and scene systems there.
+For a native live view, start the listener before the match producer:
+
+```bash
+just replay-view-live 127.0.0.1:42042
+just match-live 10000 reports/m4-live.jsonl 127.0.0.1:42042
+```
+
+Live packets are sampled, compressed below the local MTU, sequenced, and lossy.
+The title reports gaps detected by the receiver and local producer send errors.
+The full JSONL replay remains the authoritative lossless record.
+
+This devbox is headless, so window execution belongs on a graphical client. The
+same crate passes:
+
+```bash
+just viewer-wasm-check
+```
+
+Browser replay rendering therefore compiles today. UDP live sockets are native
+only; a later WebSocket adapter can feed the same `TickRecord` on the web
+without changing physics or scene projection.

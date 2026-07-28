@@ -1,6 +1,9 @@
 """Backend-neutral visual frames and observer delivery semantics."""
 
-from dataclasses import dataclass
+import json
+import socket
+import zlib
+from dataclasses import asdict, dataclass
 from threading import Lock
 from typing import Any, Protocol
 
@@ -101,3 +104,55 @@ class MetricsSink:
         self.frames += 1
         self.goals += int(bool(frame.events & 0b11))
         self.last_tick = frame.tick
+
+
+class UdpFrameSink:
+    """Non-blocking lossy local transport for live visual frames."""
+
+    def __init__(
+        self,
+        config: dict[str, Any],
+        target: tuple[str, int],
+        *,
+        sample_every: int = 4,
+    ) -> None:
+        if sample_every <= 0:
+            raise ValueError("sample_every must be positive")
+        self.sample_every = sample_every
+        self._config = config
+        self._target = target
+        self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self._socket.setblocking(False)
+        self.sequence = 0
+        self.sent = 0
+        self.send_errors = 0
+
+    def publish(self, frame: VisualFrame) -> None:
+        """Send one self-describing datagram or count a local send failure."""
+        payload = json.dumps(
+            {
+                "type": "visual_frame",
+                "version": 1,
+                "sequence": self.sequence,
+                "sample_every": self.sample_every,
+                "send_errors": self.send_errors,
+                "config": self._config,
+                "frame": asdict(frame),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        packet = b"VSS1" + zlib.compress(payload, level=1)
+        self.sequence += 1
+        if len(packet) > 1_400:
+            self.send_errors += 1
+            return
+        try:
+            self._socket.sendto(packet, self._target)
+            self.sent += 1
+        except (BlockingIOError, OSError):
+            self.send_errors += 1
+
+    def close(self) -> None:
+        """Close the transport socket."""
+        self._socket.close()

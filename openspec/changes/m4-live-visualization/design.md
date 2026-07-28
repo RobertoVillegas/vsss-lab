@@ -105,5 +105,5 @@ Existing replay JSONL, canonical snapshots, and physics APIs remain readable.
 
 - Choose the long-term replay container (FlatBuffers versus MCAP) at M8.
 - Benchmark the acceptable watched-world count and default sampling interval.
-- Decide whether the first remote browser transport is WebSocket or Rerun gRPC
-  after the local viewer contract is stable.
+- Choose WebSocket or Rerun gRPC for authenticated remote browser transport.
+  M4.1 uses compressed, sequenced, loopback UDP only for native local viewing.
