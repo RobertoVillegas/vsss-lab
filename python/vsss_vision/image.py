@@ -191,6 +191,7 @@ class BallImagePipeline:
         )
         segmented = time.perf_counter_ns()
         associated = time.perf_counter_ns()
+        estimate: BallEstimate | None
         if measurement is not None:
             if self._filter is None:
                 self._filter = BallKalmanFilter.initialize(

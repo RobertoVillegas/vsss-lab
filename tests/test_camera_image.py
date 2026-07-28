@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Any, cast
 
 import numpy as np
 import pytest
@@ -60,7 +61,7 @@ def test_orange_ball_detection_does_not_fabricate_missing_ball() -> None:
 def test_ros_image_adapter_requires_no_ros_runtime_dependency() -> None:
     message = ImageMessage(Header(Stamp(4, 500_000_000)), 2, 1, 6, bytes(range(6)))
 
-    image = decode_ros_image(message, source_sequence=9)
+    image = decode_ros_image(cast(Any, message), source_sequence=9)
 
     assert image.capture_time == pytest.approx(4.5)
     assert image.source_sequence == 9

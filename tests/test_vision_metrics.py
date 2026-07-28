@@ -12,11 +12,11 @@ def _write_jsonl(path: Path, records: list[dict[str, object]]) -> None:
 def test_reports_estimation_prediction_and_interception_error(tmp_path: Path) -> None:
     replay = tmp_path / "capture.jsonl"
     analysis = tmp_path / "capture.analysis.jsonl"
-    header = {
+    header: dict[str, object] = {
         "type": "header",
         "config": {"control_period": 0.1},
     }
-    perception = {
+    perception: dict[str, object] = {
         "ball_estimate": {
             "state": [0.1, 0, 0, 0.0, 0, 0],
             "effective_time": 0.0,

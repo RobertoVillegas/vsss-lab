@@ -100,11 +100,8 @@ def test_future_truth_cannot_change_present_state_prediction() -> None:
     present = estimate(x=0.1, vx=0.4, y=-0.2, vy=0.1)
     first = collision_aware_ball_prediction(present, generated_time=1.02)
 
-    future_truth_that_the_policy_cannot_read = {
-        "ball": {"x": -0.7, "y": 0.6, "vx": -3.0, "vy": 2.0},
-        "simulation_time": 2.0,
-    }
-    future_truth_that_the_policy_cannot_read["ball"]["x"] = 0.7
+    future_ball = {"x": -0.7, "y": 0.6, "vx": -3.0, "vy": 2.0}
+    future_ball["x"] = 0.7
     second = collision_aware_ball_prediction(present, generated_time=1.02)
 
     assert first == second

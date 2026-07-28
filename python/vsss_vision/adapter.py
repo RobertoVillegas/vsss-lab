@@ -58,7 +58,7 @@ class PredictiveObservationAdapter:
                 (0.0,) * self.feature_width,
             )
             return PolicyVisionRecord(decision_time, estimate, prediction, None, features)
-        values = []
+        values: list[float] = []
         for offset in self.offsets:
             index = min(
                 range(len(prediction.samples)),
