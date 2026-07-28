@@ -4211,6 +4211,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "vsss-controller"
+version = "0.0.0"
+dependencies = [
+ "thiserror 2.0.19",
+ "vsss-protocol",
+ "vsss-spec",
+]
+
+[[package]]
 name = "vsss-match-server"
 version = "0.0.0"
 dependencies = [
