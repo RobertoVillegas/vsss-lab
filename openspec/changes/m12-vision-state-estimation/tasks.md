@@ -38,7 +38,7 @@
 
 ## 5. Replay viewer
 
-- [ ] 5.1 Render selectable truth, measured, estimated, and predicted layers
+- [x] 5.1 Render selectable truth, measured, estimated, and predicted layers
 - [ ] 5.2 Render path samples at labeled future offsets and an uncertainty band
 - [ ] 5.3 Render goalkeeper interception point and time
 - [ ] 5.4 Render accepted/rejected measurements, estimate age, visibility, and

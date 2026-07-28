@@ -5,9 +5,15 @@ import type { ReplayFrame, ReplayHeader } from "./types";
 interface Props {
   header: ReplayHeader;
   frame: ReplayFrame;
+  layers: {
+    truth: boolean;
+    measured: boolean;
+    estimated: boolean;
+    predicted: boolean;
+  };
 }
 
-export function FieldCanvas({ header, frame }: Props) {
+export function FieldCanvas({ header, frame, layers }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
 
@@ -139,11 +145,55 @@ export function FieldCanvas({ header, frame }: Props) {
       for (const y of [-0.40, 0, 0.40]) drawCross(x, y);
     }
 
+    const perception = frame.perception;
+    const prediction = perception?.ball_prediction;
+    if (layers.predicted && prediction && prediction.samples.length > 1) {
+      context.beginPath();
+      prediction.samples.forEach((sample, index) => {
+        const [sampleX, sampleY] = point(sample[1], sample[2]);
+        if (index === 0) context.moveTo(sampleX, sampleY);
+        else context.lineTo(sampleX, sampleY);
+      });
+      context.strokeStyle = prediction.stale ? "rgba(255, 184, 77, 0.6)" : "rgba(72, 224, 255, 0.8)";
+      context.lineWidth = 2;
+      context.setLineDash([6, 5]);
+      context.stroke();
+      context.setLineDash([]);
+      prediction.samples.forEach((sample, index) => {
+        if (index === 0 || index % 2 !== 0) return;
+        const [sampleX, sampleY] = point(sample[1], sample[2]);
+        context.fillStyle = "rgba(132, 234, 255, 0.9)";
+        context.font = "10px ui-monospace, monospace";
+        context.fillText(`+${sample[0].toFixed(1)}s`, sampleX, sampleY - 8);
+      });
+    }
+    const estimate = perception?.ball_estimate;
+    if (layers.estimated && estimate) {
+      const [estimateX, estimateY] = point(estimate.state[0], estimate.state[3]);
+      context.beginPath();
+      context.arc(estimateX, estimateY, Math.max(8, header.config.ball.radius * scale * 1.5), 0, Math.PI * 2);
+      context.strokeStyle = estimate.measurement_accepted ? "#48e0ff" : "#ffb84d";
+      context.lineWidth = 2;
+      context.stroke();
+    }
+    const measuredBall = perception?.camera.ball;
+    if (layers.measured && measuredBall) {
+      const [measuredX, measuredY] = point(measuredBall.x, measuredBall.y);
+      context.strokeStyle = "rgba(255, 255, 255, 0.75)";
+      context.lineWidth = 1;
+      context.beginPath();
+      context.moveTo(measuredX - 5, measuredY);
+      context.lineTo(measuredX + 5, measuredY);
+      context.moveTo(measuredX, measuredY - 5);
+      context.lineTo(measuredX, measuredY + 5);
+      context.stroke();
+    }
+
     const robotWidth = header.config.robot.length * scale;
     const robotHeight = header.config.robot.width * scale;
     context.font = "600 11px ui-monospace, monospace";
     context.textAlign = "center";
-    for (const robot of frame.snapshot.robots) {
+    for (const robot of layers.truth ? frame.snapshot.robots : []) {
       if (!robot.enabled) continue;
       const [x, y] = point(robot.pose.x, robot.pose.y);
       context.save();
@@ -181,17 +231,19 @@ export function FieldCanvas({ header, frame }: Props) {
       context.fillText(robot.id, x, y - robotHeight / 2 - 7);
     }
 
-    const [ballX, ballY] = point(frame.snapshot.ball.x, frame.snapshot.ball.y);
-    context.beginPath();
-    context.arc(ballX, ballY, Math.max(5, header.config.ball.radius * scale), 0, Math.PI * 2);
-    context.fillStyle = "#ff7547";
-    context.shadowColor = "#ff5228";
-    context.shadowBlur = 14;
-    context.fill();
-    context.shadowBlur = 0;
-    context.strokeStyle = "#321108";
-    context.stroke();
-  }, [frame, header, size]);
+    if (layers.truth) {
+      const [ballX, ballY] = point(frame.snapshot.ball.x, frame.snapshot.ball.y);
+      context.beginPath();
+      context.arc(ballX, ballY, Math.max(5, header.config.ball.radius * scale), 0, Math.PI * 2);
+      context.fillStyle = "#ff7547";
+      context.shadowColor = "#ff5228";
+      context.shadowBlur = 14;
+      context.fill();
+      context.shadowBlur = 0;
+      context.strokeStyle = "#321108";
+      context.stroke();
+    }
+  }, [frame, header, layers, size]);
 
   return <canvas aria-label="Recorded VSSS field" ref={canvasRef} />;
 }

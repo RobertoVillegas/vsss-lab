@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -11,6 +12,14 @@ import numpy as np
 import torch
 from vsss_train.marl import SharedActor, build_team_observation
 from vsss_train.marl_env import MarlMatchEnv
+from vsss_vision import (
+    BallKalmanFilter,
+    CameraPerturbationProfile,
+    EstimatorCalibration,
+    RobotEkf,
+    SyntheticCamera,
+    collision_aware_ball_prediction,
+)
 
 
 def run_policy_replay(
@@ -32,6 +41,10 @@ def run_policy_replay(
     blue_device = next(blue.parameters()).device
     observation = environment.reset(seed)
     config = json.loads(config_json)
+    camera = SyntheticCamera(CameraPerturbationProfile(), seed=seed + 50_000)
+    calibration = EstimatorCalibration()
+    ball_filter: BallKalmanFilter | None = None
+    robot_filters: dict[int, RobotEkf] = {}
     replay_path.parent.mkdir(parents=True, exist_ok=True)
     final_checksum = ""
     with replay_path.open("w", encoding="utf-8", newline="\n") as replay:
@@ -75,6 +88,28 @@ def run_policy_replay(
             snapshot["score_yellow"] = goals_yellow
             snapshot["tick"] = (index + 1) * environment.action_repeat
             snapshot["simulation_time"] = (index + 1) * float(config["control_period"])
+            camera_frame = camera.observe(snapshot)
+            if camera_frame.ball is not None:
+                if ball_filter is None:
+                    ball_filter = BallKalmanFilter.initialize(camera_frame.ball, calibration)
+                ball_estimate = ball_filter.update(camera_frame.ball)
+                ball_prediction = collision_aware_ball_prediction(
+                    ball_estimate,
+                    generated_time=camera_frame.arrival_time,
+                )
+            else:
+                ball_estimate = None
+                ball_prediction = None
+            robot_estimates = []
+            for measurement in camera_frame.robots:
+                marker_id = measurement.association.marker_id
+                if marker_id is None:
+                    continue
+                estimator = robot_filters.get(marker_id)
+                if estimator is None:
+                    estimator = RobotEkf.initialize(measurement, calibration)
+                    robot_filters[marker_id] = estimator
+                robot_estimates.append(estimator.update(measurement))
             canonical = json.dumps(snapshot, sort_keys=True, separators=(",", ":"))
             final_checksum = hashlib.sha256(canonical.encode()).hexdigest()
             index += 1
@@ -88,6 +123,17 @@ def run_policy_replay(
                     "events": int(info["events"]),
                     "checksum": final_checksum,
                     "snapshot": snapshot,
+                    "perception": {
+                        "policy_visible": False,
+                        "camera": asdict(camera_frame),
+                        "ball_estimate": (
+                            asdict(ball_estimate) if ball_estimate is not None else None
+                        ),
+                        "robot_estimates": [asdict(estimate) for estimate in robot_estimates],
+                        "ball_prediction": (
+                            asdict(ball_prediction) if ball_prediction is not None else None
+                        ),
+                    },
                     "rewards": [reward.total] * 3 + [-reward.total] * 3,
                 },
             )

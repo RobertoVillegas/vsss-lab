@@ -21,6 +21,9 @@ class FieldPredictionModel:
     model_id: str = "m12-field-v1"
 
 
+DEFAULT_FIELD_PREDICTION_MODEL = FieldPredictionModel()
+
+
 def analytic_ball_prediction(
     estimate: BallEstimate,
     *,
@@ -53,7 +56,7 @@ def collision_aware_ball_prediction(
     estimate: BallEstimate,
     *,
     generated_time: float,
-    model: FieldPredictionModel = FieldPredictionModel(),
+    model: FieldPredictionModel = DEFAULT_FIELD_PREDICTION_MODEL,
     horizon: float = 1.0,
     interval: float = 0.1,
     integration_step: float = 0.005,

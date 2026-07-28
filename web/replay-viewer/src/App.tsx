@@ -24,6 +24,12 @@ export default function App() {
   const [followLatest, setFollowLatest] = useState(true);
   const [loop, setLoop] = useState(true);
   const [filter, setFilter] = useState("all");
+  const [visionLayers, setVisionLayers] = useState({
+    truth: true,
+    measured: true,
+    estimated: true,
+    predicted: true,
+  });
   const frameRef = useRef(0);
 
   const indexQuery = useQuery({
@@ -193,6 +199,24 @@ export default function App() {
           </div>
 
           <div className="section-rule" />
+          <p className="side-heading">VISION LAYERS</p>
+          {(["truth", "measured", "estimated", "predicted"] as const).map((layer) => (
+            <label className="loop-toggle" key={layer}>
+              <input
+                type="checkbox"
+                checked={visionLayers[layer]}
+                onChange={(event) => {
+                  setVisionLayers((current) => ({ ...current, [layer]: event.target.checked }));
+                }}
+              />
+              {layer.toUpperCase()}
+            </label>
+          ))}
+          <small>
+            Prediction is causal
+            {frame?.perception?.policy_visible ? " and policy-visible" : " observer-only"}
+          </small>
+          <div className="section-rule" />
           <p className="side-heading">POLICY MATCHUP</p>
           <Policy team="BLUE" value={replay?.header.policies.blue} />
           <Policy team="YELLOW" value={replay?.header.policies.yellow} yellow />
@@ -211,7 +235,9 @@ export default function App() {
         <section className="stage">
           {error ? <div className="empty-state"><strong>Replay unavailable</strong><span>{String(error)}</span></div> : null}
           {loading ? <div className="loading">Loading recorded frames…</div> : null}
-          {replay && frame && !error ? <FieldCanvas header={replay.header} frame={frame} /> : null}
+          {replay && frame && !error ? (
+            <FieldCanvas header={replay.header} frame={frame} layers={visionLayers} />
+          ) : null}
           <span className="recorded-badge">{followLatest ? "● LIVE INSPECT" : "● RECORDED"}</span>
         </section>
 

@@ -75,6 +75,21 @@ export interface ReplayFrame {
   rewards: number[];
   actions: number[][];
   snapshot: Snapshot;
+  perception?: {
+    policy_visible: boolean;
+    camera: {
+      ball: { x: number; y: number } | null;
+    };
+    ball_estimate: {
+      state: [number, number, number, number, number, number];
+      measurement_accepted: boolean;
+    } | null;
+    ball_prediction: {
+      samples: [number, number, number][];
+      stale: boolean;
+      model_id: string;
+    } | null;
+  };
 }
 
 export interface Replay {
