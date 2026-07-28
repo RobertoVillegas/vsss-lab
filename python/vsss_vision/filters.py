@@ -9,6 +9,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from vsss_vision.contracts import (
+    Association,
     BallEstimate,
     BallMeasurement,
     EstimatorCalibration,
@@ -33,13 +34,16 @@ class BallKalmanFilter:
     state: FloatArray
     covariance: FloatArray
     effective_time: float
+    source_sequence: int
 
     @classmethod
     def initialize(
         cls, measurement: BallMeasurement, calibration: EstimatorCalibration
     ) -> BallKalmanFilter:
         state = np.array([measurement.x, 0.0, 0.0, measurement.y, 0.0, 0.0])
-        return cls(calibration, state, np.eye(6), measurement.capture_time)
+        return cls(
+            calibration, state, np.eye(6), measurement.capture_time, measurement.source_sequence
+        )
 
     def update(self, measurement: BallMeasurement) -> BallEstimate:
         dt = measurement.capture_time - self.effective_time
@@ -76,6 +80,7 @@ class BallKalmanFilter:
             self.state = predicted
             self.covariance = predicted_covariance
         self.effective_time = measurement.capture_time
+        self.source_sequence = measurement.source_sequence
         return BallEstimate(
             effective_time=self.effective_time,
             update_time=measurement.arrival_time,
@@ -86,6 +91,36 @@ class BallKalmanFilter:
             rejection_reason=None if accepted else "innovation_gate",
         )
 
+    def predict_only(self, effective_time: float, update_time: float) -> BallEstimate | None:
+        dt = effective_time - self.effective_time
+        if dt < 0.0:
+            raise ValueError("ball prediction time must not move backwards")
+        if dt > self.calibration.maximum_prediction_age:
+            return None
+        transition = np.array(
+            [
+                [1.0, dt, 0.5 * dt * dt, 0.0, 0.0, 0.0],
+                [0.0, 1.0, dt, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 1.0, dt, 0.5 * dt * dt],
+                [0.0, 0.0, 0.0, 0.0, 1.0, dt],
+                [0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+            ]
+        )
+        process = np.eye(6) * self.calibration.ball_process_variance * max(dt, 1e-6)
+        self.state = transition @ self.state
+        self.covariance = transition @ self.covariance @ transition.T + process
+        self.effective_time = effective_time
+        return BallEstimate(
+            effective_time=effective_time,
+            update_time=update_time,
+            source_sequence=self.source_sequence,
+            state=tuple(float(value) for value in self.state),  # type: ignore[arg-type]
+            covariance=_covariance_tuple(self.covariance),
+            measurement_accepted=False,
+            rejection_reason="measurement_missing",
+        )
+
 
 @dataclass
 class RobotEkf:
@@ -93,13 +128,22 @@ class RobotEkf:
     state: FloatArray
     covariance: FloatArray
     effective_time: float
+    source_sequence: int
+    association: Association
 
     @classmethod
     def initialize(
         cls, measurement: RobotMeasurement, calibration: EstimatorCalibration
     ) -> RobotEkf:
         state = np.array([measurement.x, measurement.y, measurement.theta, 0.0, 0.0])
-        return cls(calibration, state, np.eye(5), measurement.capture_time)
+        return cls(
+            calibration,
+            state,
+            np.eye(5),
+            measurement.capture_time,
+            measurement.source_sequence,
+            measurement.association,
+        )
 
     def update(self, measurement: RobotMeasurement) -> RobotEstimate:
         dt = measurement.capture_time - self.effective_time
@@ -152,6 +196,8 @@ class RobotEkf:
             self.state = predicted
             self.covariance = predicted_covariance
         self.effective_time = measurement.capture_time
+        self.source_sequence = measurement.source_sequence
+        self.association = measurement.association
         return RobotEstimate(
             effective_time=self.effective_time,
             update_time=measurement.arrival_time,
@@ -161,4 +207,40 @@ class RobotEkf:
             association=measurement.association,
             measurement_accepted=accepted,
             rejection_reason=None if accepted else "innovation_gate",
+        )
+
+    def predict_only(self, effective_time: float, update_time: float) -> RobotEstimate | None:
+        dt = effective_time - self.effective_time
+        if dt < 0.0:
+            raise ValueError("robot prediction time must not move backwards")
+        if dt > self.calibration.maximum_prediction_age:
+            return None
+        x, y, theta, velocity, omega = self.state
+        self.state = np.array(
+            [
+                x + velocity * math.cos(theta) * dt,
+                y + velocity * math.sin(theta) * dt,
+                wrap_angle(theta + omega * dt),
+                velocity,
+                omega,
+            ]
+        )
+        jacobian = np.eye(5)
+        jacobian[0, 2] = -velocity * math.sin(theta) * dt
+        jacobian[0, 3] = math.cos(theta) * dt
+        jacobian[1, 2] = velocity * math.cos(theta) * dt
+        jacobian[1, 3] = math.sin(theta) * dt
+        jacobian[2, 4] = dt
+        process = np.eye(5) * self.calibration.robot_process_variance * max(dt, 1e-6)
+        self.covariance = jacobian @ self.covariance @ jacobian.T + process
+        self.effective_time = effective_time
+        return RobotEstimate(
+            effective_time=effective_time,
+            update_time=update_time,
+            source_sequence=self.source_sequence,
+            state=tuple(float(value) for value in self.state),  # type: ignore[arg-type]
+            covariance=_covariance_tuple(self.covariance),
+            association=self.association,
+            measurement_accepted=False,
+            rejection_reason="measurement_missing",
         )

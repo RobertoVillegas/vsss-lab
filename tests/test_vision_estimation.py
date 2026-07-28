@@ -71,3 +71,19 @@ def test_measurements_must_be_capture_ordered() -> None:
         assert str(error) == "ball measurements must be ordered by capture time"
     else:
         raise AssertionError("out-of-order measurement was accepted")
+
+
+def test_dropout_prediction_is_bounded_by_calibration_age() -> None:
+    calibration = EstimatorCalibration(maximum_prediction_age=0.25)
+    ball = BallKalmanFilter.initialize(ball_measurement(0, 0.0, 0.0, 0.0), calibration)
+    robot = RobotEkf.initialize(robot_measurement(0, 0.0, 0.0, 0.0, 0.0), calibration)
+
+    ball_prediction = ball.predict_only(0.2, 0.22)
+    robot_prediction = robot.predict_only(0.2, 0.22)
+
+    assert ball_prediction is not None
+    assert robot_prediction is not None
+    assert ball_prediction.rejection_reason == "measurement_missing"
+    assert robot_prediction.rejection_reason == "measurement_missing"
+    assert ball.predict_only(0.5, 0.52) is None
+    assert robot.predict_only(0.5, 0.52) is None

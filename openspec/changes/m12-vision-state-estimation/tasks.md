@@ -11,7 +11,7 @@
 
 - [x] 2.1 Implement a CPU ball constant-acceleration Kalman filter
 - [x] 2.2 Implement a CPU differential-drive robot EKF with wrapped angles
-- [ ] 2.3 Implement innovation gating, rejection diagnostics, and bounded
+- [x] 2.3 Implement innovation gating, rejection diagnostics, and bounded
   prediction-only dropout handling
 - [x] 2.4 Implement confidence-aware marker association input without binding
   marker identity to policy role

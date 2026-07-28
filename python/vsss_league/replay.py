@@ -14,8 +14,10 @@ from vsss_train.marl import SharedActor, build_team_observation
 from vsss_train.marl_env import MarlMatchEnv
 from vsss_vision import (
     BallKalmanFilter,
+    BallEstimate,
     CameraPerturbationProfile,
     EstimatorCalibration,
+    Prediction,
     RobotEkf,
     SyntheticCamera,
     collision_aware_ball_prediction,
@@ -89,6 +91,8 @@ def run_policy_replay(
             snapshot["tick"] = (index + 1) * environment.action_repeat
             snapshot["simulation_time"] = (index + 1) * float(config["control_period"])
             camera_frame = camera.observe(snapshot)
+            ball_estimate: BallEstimate | None
+            ball_prediction: Prediction | None
             if camera_frame.ball is not None:
                 if ball_filter is None:
                     ball_filter = BallKalmanFilter.initialize(camera_frame.ball, calibration)
@@ -98,18 +102,43 @@ def run_policy_replay(
                     generated_time=camera_frame.arrival_time,
                 )
             else:
-                ball_estimate = None
-                ball_prediction = None
+                ball_estimate = (
+                    ball_filter.predict_only(
+                        camera_frame.capture_time,
+                        camera_frame.arrival_time,
+                    )
+                    if ball_filter is not None
+                    else None
+                )
+                ball_prediction = (
+                    collision_aware_ball_prediction(
+                        ball_estimate,
+                        generated_time=camera_frame.arrival_time,
+                    )
+                    if ball_estimate is not None
+                    else None
+                )
             robot_estimates = []
+            measured_markers: set[int] = set()
             for measurement in camera_frame.robots:
                 marker_id = measurement.association.marker_id
                 if marker_id is None:
                     continue
+                measured_markers.add(marker_id)
                 estimator = robot_filters.get(marker_id)
                 if estimator is None:
                     estimator = RobotEkf.initialize(measurement, calibration)
                     robot_filters[marker_id] = estimator
                 robot_estimates.append(estimator.update(measurement))
+            for marker_id, estimator in robot_filters.items():
+                if marker_id in measured_markers:
+                    continue
+                estimate = estimator.predict_only(
+                    camera_frame.capture_time,
+                    camera_frame.arrival_time,
+                )
+                if estimate is not None:
+                    robot_estimates.append(estimate)
             canonical = json.dumps(snapshot, sort_keys=True, separators=(",", ":"))
             final_checksum = hashlib.sha256(canonical.encode()).hexdigest()
             index += 1
