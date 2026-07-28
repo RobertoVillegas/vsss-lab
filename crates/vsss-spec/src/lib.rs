@@ -1,17 +1,26 @@
-//! Canonical VSSS contracts.
+//! Canonical, backend-independent contracts for VSSS Lab.
 //!
-//! M0 intentionally exposes no domain model. M1 will introduce units, geometry,
-//! entities, actions, events, reflection, and serialization behind reviewed ADRs.
+//! All public values use explicit SI units. The types in this crate must remain
+//! independent from physics engines, Python, ROS, and learning frameworks.
 
-/// Identifies the current repository milestone without defining domain behavior.
-pub const BOOTSTRAP_MILESTONE: &str = "M0";
+pub mod actions;
+pub mod config;
+pub mod entities;
+pub mod events;
+pub mod geometry;
+pub mod reflection;
+pub mod serialization;
+pub mod units;
+mod validation;
 
-#[cfg(test)]
-mod tests {
-    use super::BOOTSTRAP_MILESTONE;
+pub use actions::{ControlMode, RobotAction};
+pub use config::{BackendKind, MatchConfig, RandomizationConfig, ResetRules};
+pub use entities::{BallState, MatchState, Pose2, RobotId, RobotState, Team, Twist2};
+pub use events::EventFlags;
+pub use geometry::{BallProperties, FieldGeometry, RobotGeometry, WheelGeometry};
+pub use reflection::{FieldDescriptor, FieldKind, TypeDescriptor, canonical_types};
+pub use units::{Angle, AngularVelocity, Distance, Force, LinearVelocity, Mass, Seconds, Torque};
+pub use validation::{Validate, ValidationError};
 
-    #[test]
-    fn milestone_is_explicit() {
-        assert_eq!(BOOTSTRAP_MILESTONE, "M0");
-    }
-}
+/// Current canonical contract version.
+pub const SCHEMA_VERSION: u32 = 1;
