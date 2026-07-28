@@ -1,17 +1,19 @@
-## ADDED Requirements
+# controller-sdk Specification
 
-### Requirement: Typed controller lifecycle
-Rust and Python SDKs SHALL expose typed reset, observation/action, event, result,
-heartbeat, and error behavior while hiding wire framing.
+## Requirements
 
-#### Scenario: Implement a Python controller
-- **WHEN** a developer supplies the lifecycle callbacks
-- **THEN** the SDK completes negotiation and exchanges typed messages with the Rust server
+### Requirement: Typed Rust and Python lifecycle
+The system SHALL provide Rust and Python controller SDKs for handshake,
+capabilities, reset, observation/action, heartbeat, event, and result handling.
 
-### Requirement: Cross-language semantic parity
-Rust and Python SDKs SHALL produce and consume the same protocol golden fixtures
-and enforce the same action bounds, sequence, and deadline semantics.
+#### Scenario: Implement a controller
+- **WHEN** a developer supplies a typed action callback
+- **THEN** the SDK handles framing, validation, assignment, and transport
 
-#### Scenario: Round-trip a golden observation
-- **WHEN** either SDK decodes and re-encodes the accepted observation fixture
-- **THEN** both expose equivalent canonical values and compatible bytes
+### Requirement: Logical identity is transport-stable
+Controller identity SHALL remain independent from temporary side, tactical role,
+and physical visual marker.
+
+#### Scenario: Switch sides
+- **WHEN** a controller is reassigned from blue to yellow
+- **THEN** its transport and policy identity remain unchanged

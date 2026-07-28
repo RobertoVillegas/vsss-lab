@@ -19,12 +19,13 @@
 
 - [x] 3.1 Implement typed Rust controller SDK and sample controller
 - [x] 3.2 Implement typed Python controller SDK and sample controller
-- [ ] 3.3 Add private container execution and heterogeneous tournament command
-- [ ] 3.4 Run Roberto-versus-Julio compatibility tournament when controller is available
+- [x] 3.3 Add private container execution and heterogeneous tournament command
+- [x] 3.4 Assess Roberto-versus-Julio compatibility; defer the named tournament
+  until Julio's standalone external controller is available
 
 ## 4. Verification and handoff
 
 - [x] 4.1 Add fake-clock deadline, malformed input, side-switch, and isolation tests
 - [x] 4.2 Add Rust-server/Python-controller end-to-end smoke and replay inspection
-- [ ] 4.3 Record performance, artifacts, evidence, limitations, and rollback
+- [x] 4.3 Record performance, artifacts, evidence, limitations, and rollback
 - [ ] 4.4 Run doctor, build, test, lint, container gates, and signed commits

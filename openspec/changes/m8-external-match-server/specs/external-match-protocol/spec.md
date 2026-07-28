@@ -1,26 +1,21 @@
-## ADDED Requirements
+# external-match-protocol Specification
 
-### Requirement: Versioned typed envelope
-The protocol SHALL encode every controller message in a verified FlatBuffers
-envelope containing protocol version, match ID, controller slot, sequence,
-server tick, timestamp, deadline, and one typed payload.
+## Requirements
 
-#### Scenario: Decode a supported controller action
-- **WHEN** the server receives a valid action envelope from a negotiated protocol version
-- **THEN** it exposes the typed bounded action and complete ordering metadata
+### Requirement: Versioned heterogeneous wire contract
+The system SHALL exchange verified, size-bounded FlatBuffers envelopes whose
+protocol version, match, slot, sequence, tick, deadline, and payload kind are
+validated before use.
 
-### Requirement: Compatible schema evolution
-Protocol schemas SHALL evolve by additive fields with stable field IDs and
-defaults, and SHALL remain conformant with the previous accepted schema.
+#### Scenario: Reject incompatible input
+- **WHEN** a controller sends an incompatible, malformed, stale, future, or
+  wrong-slot envelope
+- **THEN** the server rejects and records it without mutating match state
 
-#### Scenario: Validate an additive schema revision
-- **WHEN** a new optional field is appended with a compatible default
-- **THEN** previous golden buffers remain readable and FlatBuffers conformity passes
+### Requirement: Additive protocol evolution
+The protocol SHALL preserve stable field identifiers and gate schema changes
+with conformity checks and committed cross-language fixtures.
 
-### Requirement: Strict message validation
-The server SHALL reject malformed, oversized, duplicate, stale, future,
-wrong-slot, and unsupported-version messages with an auditable reason.
-
-#### Scenario: Receive a stale sequence
-- **WHEN** a controller sends a sequence not greater than its last accepted sequence
-- **THEN** the server rejects it without changing the pending action
+#### Scenario: Regenerate bindings
+- **WHEN** bindings are regenerated from the committed schema
+- **THEN** Rust and Python decode the same golden envelopes
