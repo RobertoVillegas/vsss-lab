@@ -8,9 +8,16 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "2.0"
 tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "time"] }
+vsss-physics-api = { path = "../vsss-physics-api" }
 vsss-protocol = { path = "../vsss-protocol" }
+vsss-spec = { path = "../vsss-spec" }
 zeromq = { version = "0.6.0", default-features = false, features = ["tokio-runtime", "tcp-transport"] }
+
+[dev-dependencies]
+vsss-physics-rapier = { path = "../vsss-physics-rapier" }
 
 [lints]
 workspace = true

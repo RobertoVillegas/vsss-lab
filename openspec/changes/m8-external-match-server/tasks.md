@@ -9,7 +9,7 @@
 
 ## 2. Authoritative server
 
-- [ ] 2.1 Implement pure fixed-tick match state machine with injected clock
+- [x] 2.1 Implement pure fixed-tick match state machine with injected clock
 - [ ] 2.2 Implement slot negotiation, capabilities, sequence, and message validation
 - [ ] 2.3 Implement deadline fallback, heartbeat lease, disconnect, and forfeit policy
 - [ ] 2.4 Integrate canonical backend, replay, events, result, and checksums
