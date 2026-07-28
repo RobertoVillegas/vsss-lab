@@ -1,550 +1,393 @@
 # VSSS Lab
 
-A modular platform for high-throughput Very Small Size Soccer simulation,
-multi-agent reinforcement learning, self-play, and reproducible competition.
+VSSS Lab is an open research platform for training, evaluating, and visualizing
+multi-agent reinforcement-learning policies for Very Small Size Soccer.
 
-The implemented M0–M13 path includes canonical contracts, deterministic Rapier
-physics, Python batch environments, scripted and RL baselines, MAPPO, league
-self-play, replay viewers, an external FlatBuffers/ZeroMQ match server, reference
-calibration, an opt-in ROS 2/Gazebo validation backend, and seeded domain
-randomization. M12 adds the calibrated physical field and vision diagnostics;
-M13 adds directional rewards, an exploration floor, staged self-play, and
-terminal checkpoint ranking. Hardware integration remains future work.
+It combines a fast deterministic simulator, GPU-accelerated learning, experiment
+tracking, replay inspection, and robotics integration boundaries in one
+reproducible workspace. The goal is not only to obtain policies that score, but
+to study coordination, defense, passing, robustness, and the path from
+simulation to physical robots.
 
-## What the project is
+## What it is
 
-VSSS Lab is an Apache-2.0 research and engineering platform for training a team
-of three differential-drive robots to play Very Small Size Soccer. It combines:
+Very Small Size Soccer is a compact robot-soccer problem with continuous
+control, collisions, partial information, adversarial play, and cooperation
+between teammates. Those properties make it a useful test bed for multi-agent
+reinforcement learning (MARL).
 
-- a deterministic 2D Rapier physics engine written in Rust;
-- native batched simulation exposed to Python through PyO3;
-- Gymnasium and PettingZoo-compatible environment adapters;
-- scripted controllers, PPO skills, shared-policy IPPO/MAPPO, and league tools;
-- a centralized critic for training and decentralized team observations at run
-  time;
-- fast headless training, optional CUDA learning, checkpoints, tournaments,
-  replays, and a browser-based inspection studio;
-- a ROS 2/Gazebo validation path plus camera estimation and causal ball
-  prediction for eventual sim-to-real work.
+VSSS Lab provides:
 
-The simulator runs virtual time faster than real time. Physics remains on native
-CPU workers because Rapier advances many small independent worlds; PyTorch uses
-CUDA for neural inference and optimization. The replay viewer is an observer
-and never slows or changes the training environment.
+- a headless 2D physics engine designed for high-throughput training;
+- a shared-policy MAPPO training pipeline with centralized value estimation;
+- parallel environments and CUDA-backed neural-network optimization;
+- replay capture and a browser-based match inspector;
+- live metrics, checkpoint ranking, and experiment comparison;
+- camera-state estimation and prediction boundaries for sim-to-real work;
+- ROS 2 and Gazebo integration points for robotics validation.
 
-## Current status
+The simulator and viewer are deliberately separate. Training can run as fast as
+the machine allows without rendering, while recorded state and action events can
+be inspected later—or followed live—without changing simulation semantics.
 
-M0 through M11 are implemented. M12 and M13 are usable but not yet closed:
+## Architecture
 
-| Milestone | Implemented | Still required to close it |
+```text
+                         ┌──────────────────────────────┐
+                         │  Experiment configuration    │
+                         │  seeds · rewards · curriculum│
+                         └──────────────┬───────────────┘
+                                        │
+              ┌─────────────────────────▼─────────────────────────┐
+              │                Python learning layer              │
+              │  MAPPO · rollout batching · checkpoints · metrics│
+              │             PyTorch / TorchRL / CUDA              │
+              └──────────────┬───────────────────┬────────────────┘
+                             │ PyO3 batches      │ artifacts
+              ┌──────────────▼────────────┐      ▼
+              │   Rust simulation core    │  runs/<experiment>/
+              │ Rapier2D · rules · rewards│  metrics · replays
+              │ fixed-step · Rayon worlds │  checkpoints · config
+              └──────────────┬────────────┘      │
+                             │ state/events      │ HTTP
+              ┌──────────────▼────────────┐      ▼
+              │ Robotics integration      │  Web replay viewer
+              │ camera · estimator · ROS 2│  playback · charts
+              │ prediction · Gazebo       │  filters · actions
+              └───────────────────────────┘
+```
+
+The main boundaries are:
+
+1. **Simulation:** Rust owns authoritative physics, field geometry, collision
+   resolution, match rules, observations, and reward signals.
+2. **Learning:** Python owns policies, critics, rollout assembly, optimization,
+   curricula, evaluation, and checkpoint lifecycle.
+3. **Observability:** structured artifacts are the contract between training and
+   the web viewer, charts, TensorBoard, and offline analysis.
+4. **Robotics:** estimated camera state enters through an explicit adapter rather
+   than being coupled to the training simulator.
+
+## Technology and tooling
+
+| Area | Technology | Role |
 | --- | --- | --- |
-| M12 · vision and hardware | calibrated synthetic camera, CPU ball filter and robot EKF, association confidence, causal trajectory/interception prediction, ROS camera ingestion, viewer layers and CPU profiling hooks | record policy-visible estimates at every decision, run the predictive-feature ablation, publish hidden-truth accuracy/latency thresholds, benchmark a recorded camera, and produce hardware-in-the-loop safety evidence |
-| M13 · coordinated learning | directional reward, dynamic attacker, regularization, exploration floor, heuristic curriculum, deterministic self/historical/heuristic population, terminal checkpoint ranking, automated run comparison, TensorBoard and in-viewer charts | complete a fresh 50M-step run, compare it against run 0002 across multiple seeds, promote the best checkpoint, and archive the milestone |
+| Physics | Rust, Rapier2D, Rayon | deterministic simulation and parallel worlds |
+| Native bindings | PyO3, maturin | batched Rust/Python interface |
+| Learning | Python, PyTorch, TorchRL | MAPPO rollout and optimization |
+| Acceleration | CUDA | policy inference and gradient updates |
+| Environment management | mise, uv | pinned tools and Python dependencies |
+| Rust workspace | Cargo | native builds, tests, formatting, linting |
+| Web viewer | React, TypeScript, Vite, Bun | replay and live-training inspection |
+| Metrics | Recharts, TensorBoard, Rich | browser charts and terminal telemetry |
+| Task runner | just | stable developer and experiment commands |
+| Containers | Docker Compose | CPU, CUDA, and integration smoke environments |
+| Robotics | ROS 2, Gazebo | integration and hardware-facing validation |
 
-The initial platform Definition of Done is substantially implemented, but the
-project does not yet claim a validated physical-robot policy. The remaining
-critical path is measurement and evaluation rather than another physics rewrite:
+`mise` selects tool versions, `uv` owns Python resolution, Cargo owns the Rust
+workspace, and Bun owns the viewer lockfile. The repository does not rely on
+GitHub Actions; validation is explicit and local.
 
-1. finish and compare the fresh M13 training run;
-2. complete the M12 predictive-observation ablation and camera evidence;
-3. validate a selected policy in Gazebo using the same contracts;
-4. add hardware-in-the-loop safety limits and test with the real overhead
-   camera and robots;
-5. publish reproducible multi-seed algorithm baselines and a promoted model.
+## Simulation and robotics model
 
-## Quick start
+The simulation core uses a fixed physics step of 5 ms and a 20 ms control
+period. Separating those clocks gives collision resolution enough temporal
+resolution while keeping policy decisions aligned with realistic robot control.
+Training runs in virtual time, so it can execute much faster than a real match.
+
+The field includes playable boundaries, goals, chamfered corners, robot and ball
+dimensions, damping, friction, differential-drive controls, goal detection only
+after the complete ball crosses the line, and a short post-goal closure period.
+Robots and the ball are prevented from occupying physically impossible
+overlapping states.
+
+For camera-driven operation, the platform defines a causal state-estimation
+path: detections are filtered into position and velocity estimates, then
+projected forward to compensate for observation and actuation latency. Prediction
+visualization represents the estimated ball trajectory; it is an inspection aid,
+not privileged future information supplied to the policy.
+
+## Learning system
+
+The default learner is multi-agent proximal policy optimization (MAPPO):
+
+- one policy is shared by the three allied robots;
+- each actor receives its local, role-aware observation;
+- a centralized critic uses joint training information;
+- actions are continuous left/right wheel commands;
+- rollout collection runs many simulation worlds in parallel;
+- policy inference and optimization use CUDA when available;
+- deterministic physics remains CPU-based and parallelized with Rayon.
+
+CUDA accelerates the neural part of the workload. It does not automatically move
+Rapier physics onto the GPU, so throughput depends on both CPU simulation and GPU
+batch efficiency.
+
+Training begins with a heuristic bootstrap and then transitions to self-play.
+The opponent population mixes the current policy, recent historical
+checkpoints, and a heuristic opponent. This reduces overfitting to a single
+mirror opponent and makes regressions easier to detect.
+
+## Observations, actions, and roles
+
+Observations describe the ball, goals, teammates, opponents, robot motion, and
+role context in normalized field coordinates. Policies act through bounded
+differential wheel commands rather than teleportation or direct velocity
+assignment.
+
+Roles provide a coordination prior—such as pressure, support, and defense—without
+hard-coding a complete strategy. The replay viewer exposes each actor's current
+action, wheel intensity, speed, and role so learned behavior can be inspected at
+the same timestamp as the match.
+
+## Reward design
+
+The reward is intentionally decomposed instead of relying only on goals:
+
+- goals and concessions provide the strongest terminal signal;
+- directional ball progress rewards movement toward the opponent goal and
+  penalizes danger toward the own goal;
+- defense rewards useful coverage and intervention;
+- spacing and congestion terms discourage persistent clustering;
+- pass-like teammate transitions provide a small cooperation signal;
+- inactivity, unnecessary wheel effort, and abrupt control changes are
+  regularized;
+- episode duration is bounded so deadlocks cannot dominate data collection.
+
+Directional progress uses the ball velocity relative to each goal:
+
+```text
+tanh(cos(ball_velocity, opponent_goal - ball))
+  - tanh(cos(ball_velocity, own_goal - ball))
+```
+
+Goals remain substantially more valuable than shaping terms. Passing and
+defensive rewards are evidence that useful play occurred, not substitutes for
+winning. This prevents policies from farming safe intermediate behavior while
+avoiding decisive play.
+
+## Observability and evaluation
+
+Every run is self-contained:
+
+```text
+run/
+├── checkpoints/     policy and optimizer snapshots
+├── replays/         lazily loaded captured matches
+├── metrics.jsonl    append-only training metrics
+├── run.json         status and latest-artifact pointers
+└── configuration    reproducibility metadata
+```
+
+The terminal dashboard reports environment steps, completed matches,
+frames/second, matches/second, return, losses, entropy, and checkpoint status.
+The browser viewer adds:
+
+- play, pause, seek, rewind, skip, loop, and speed controls;
+- lazy replay discovery and loading;
+- filters for goals, wins, losses, draws, passes, and other events;
+- synchronized robot actions and state;
+- ball trajectory inspection;
+- live polling for newly captured iterations and checkpoints;
+- in-project metric charts backed by the same run artifacts.
+
+TensorBoard remains available as a specialized optional view. Checkpoints should
+be selected through seeded evaluation against a population—not by choosing the
+largest training return or simply taking the last file.
+
+## Inspirations and references
+
+VSSS Lab is informed by public simulators, robot-soccer tooling, and MARL
+research. These projects are references and comparison points, not code or model
+weight dependencies:
+
+- [Julio de la Torre's simulation_vsss](https://github.com/juliodltv/simulation_vsss)
+  and [pSim documentation](https://juliodltv.github.io/pSim/) for VSSS field,
+  control, visualization, and reinforcement-learning ideas;
+- [RocketSim](https://github.com/ZealanL/RocketSim) and
+  [RLGym](https://rlgym.org/) for high-throughput headless simulation and
+  learning-oriented environment design;
+- [RLBot v5](https://wiki.rlbot.org/v5/) for bot interfaces, match orchestration,
+  and reproducible evaluation;
+- [Necto](https://github.com/Rolv-Arild/Necto) for population-based
+  Rocket League learning patterns;
+- [PettingZoo](https://pettingzoo.farama.org/) for multi-agent environment
+  conventions;
+- [TorchRL](https://docs.pytorch.org/rl/) and
+  [BenchMARL](https://github.com/facebookresearch/BenchMARL) for current MARL
+  abstractions and reproducible baselines;
+- [HARL](https://github.com/PKU-MARL/HARL) for heterogeneous-agent algorithm
+  comparisons.
+
+Rocket League and VSSS differ significantly in dynamics, dimensionality, action
+space, and embodiment. Their training architecture and evaluation practices can
+transfer; their learned weights and task-specific rewards generally cannot.
+
+## Research direction
+
+The present architecture supports controlled comparisons beyond shared-policy
+MAPPO, including recurrent policies, heterogeneous-agent learners,
+counterfactual credit assignment, prioritized opponent sampling, league
+exploiters, and additional centralized-training/decentralized-execution
+baselines.
+
+Claims of improvement should be based on multiple seeds and fixed evaluation
+populations. Useful measures include win/draw/loss rate, goal differential,
+touches, useful passes, defensive interventions, congestion, inactivity,
+smoothness, robustness to latency/noise, and wall-clock sample throughput.
+
+## Getting started
+
+The supported development environment is Linux:
 
 ```bash
-git clone git@github.com:RobertoVillegas/vsss-lab.git
+git clone https://github.com/RobertoVillegas/vsss-lab.git
 cd vsss-lab
+
 just doctor
 just bootstrap
 just build
 just test
 ```
 
-`mise` pins Python, Rust, uv, Ruff, and just. `uv.lock` is required so mise can source
-the uv-managed `.venv` using `python.uv_venv_auto = "source"`.
-
-## Containers
+For CUDA training, verify that the NVIDIA driver is available to Linux before
+starting a long run:
 
 ```bash
-just container-cpu
 just cuda-smoke
-just ros-gazebo-smoke
 ```
 
-Docker Desktop with its WSL2 backend is the only supported daemon on devbox-gpu.
-Container bases are pinned by digest and run as a non-root user.
+## Train and inspect a run
 
-## Validation milestones
+Start a 50-million-environment-step training run with automatic run naming,
+replay capture every 25 learner iterations, 60-second captures, checkpoints every
+25 iterations, automatic CUDA selection, and 64 parallel worlds:
 
 ```bash
-# Independent Rust and Python controllers
-just external-tournament reports/m8/external-match.jsonl 50
-just external-container-smoke
-
-# Reference physics and backend portability
-just calibrate-reference reports/m9/calibration.json
-just backend-bridge-smoke
-
-# Paired held-out robustness suite
-just ood-evaluate reports/m11/ood.json
+just league-live-steps 50000000 25 60 25 auto 64
 ```
 
-The ROS/Gazebo profile is a higher-fidelity validation target, not the training
-hot loop. Evidence and limitations for each milestone live under
-`docs/evidence/` and `docs/calibration/`.
+The command allocates a directory such as
+`~/runs/vsss-training-run-0001`, starts the private viewer at
+`http://127.0.0.1:8765`, and runs training in the foreground. CUDA is selected
+when available; otherwise the command reports that it is using CPU.
 
-## Persistent paths
-
-Active repositories, builds, data, runs, checkpoints, and replays live respectively
-under `/home/rob/src`, `/home/rob/work`, `/home/rob/data`, `/home/rob/runs`,
-`/home/rob/checkpoints`, and `/home/rob/replays`. Never place active workloads in
-`/mnt/c`, `/mnt/d`, or `/mnt/g`.
-
-See `AGENTS.md`, `CONTRIBUTING.md`, and `platform/manifest.json` before changing the
-workspace.
-
-## Inspect a training run
-
-`league-run` remains headless so rendering never slows the learner. After it
-captures iterations, launch the run-wide browser viewer:
+Training persists independently of replay consumption. The viewer only reads
+artifacts and can be started later:
 
 ```bash
-just league-web /home/rob/runs/vsss-first
+just league-web ~/runs/vsss-training-run-0001
 ```
 
-Open <http://127.0.0.1:8765> in Windows. The viewer polls the run every two
-seconds, follows and loops the latest completed capture, and reports the latest
-checkpoint and metric. Selecting an older iteration pauses live-follow until
-`Follow latest` is pressed. It can also play/pause, seek, step one recorded
-frame, or skip 100 frames in either direction.
-
-The `TRAINING METRICS` tab provides synchronized Recharts curves for return,
-progress, policy/value loss, entropy, throughput, match terminations, and actor
-exploration. The server returns a bounded, evenly sampled metric history, so a
-long run does not load every replay or an unbounded time series.
-
-New runs also write TensorBoard-compatible events under
-`RUN_DIR/tensorboard/`. TensorBoard is optional: the built-in graphs are the
-default experience and require only the replay viewer.
+Optional TensorBoard:
 
 ```bash
-# Built-in replay plus training charts
-just league-web /home/rob/runs/vsss-training-run-0003
-
-# Optional full TensorBoard UI
-just league-tensorboard /home/rob/runs/vsss-training-run-0003
-
-# Start both read-only observers together
-just league-observe /home/rob/runs/vsss-training-run-0003
+just league-tensorboard ~/runs/vsss-training-run-0001
 ```
 
-TensorBoard runs separately on <http://127.0.0.1:6006>. Keeping it outside the
-viewer avoids iframe, port, and lifecycle coupling while preserving its richer
-plugin ecosystem. `metrics.jsonl` remains the canonical machine-readable run
-record; TensorBoard events are derived observability.
-
-Playback at 1× follows the recorded simulation clock (20 ms control periods,
-50 Hz in the reference config). The 4× default is an inspection convenience and
-does not change training or policy inference speed. Slow robot motion at 1× is a
-property of the captured policy/actions, not a slowed simulator.
-
-Long runs can be resumed without repeating bootstrap. The iteration count is
-additional work; checkpoints and 60-second captures can be spaced independently:
+To expose both observability views together:
 
 ```bash
-just league-live-steps 20000000 25 60 25 auto 64
+just league-observe ~/runs/vsss-training-run-0001
 ```
 
-New runs use `experiments/configs/m13-mappo-directional.toml`. Its dense signal
-rewards ball velocity toward the opponent goal and the dynamically selected
-attacker moving toward the ball. It no longer rewards mere proximity, which can
-teach a robot to camp beside the ball. A bounded time cost encourages terminal
-goals, while small wheel-effort, action-change, congestion, and defensive terms
-regularize play. The first 250 PPO iterations face the dynamic heuristic before
-switching to self-play. Policy standard deviation is clamped to a configured
-floor so a long run cannot silently collapse all exploration.
+Use Linux-native paths for active runs. Keeping high-frequency training artifacts
+under `/home/...` rather than Windows-mounted paths such as `/mnt/c`, `/mnt/d`,
+or `/mnt/g` avoids WSL filesystem overhead.
 
-This is a new reward fingerprint: start a fresh automatic run rather than
-resuming an M12 checkpoint. Historical M12 checkpoints remain loadable with
-their original config and can be ranked by actual terminal results:
+## Resume and evaluate
+
+Resume an interrupted run:
+
+```bash
+just league-resume \
+  ~/runs/vsss-training-run-0001 \
+  2500 25 60 25 auto 64
+```
+
+Rank checkpoints with repeated seeded matches:
 
 ```bash
 just league-rank-checkpoints \
-  /home/rob/runs/vsss-training-run-0002 \
-  500,750,1000,1500,2250,2750,3052 \
-  experiments/configs/m12-mappo-coordinated.toml \
-  10 \
-  reports/checkpoint-ranking.json
+  ~/runs/vsss-training-run-0001 \
+  24 experiments/configs/m12-mappo-coordinated.toml \
+  11,23,37 \
+  ~/runs/vsss-training-run-0001/checkpoint-ranking.json
 ```
 
-The ranker plays every checkpoint from reflected field setups against the same
-heuristic and orders win/loss balance, goal difference, then mean progress. Do
-not select a deployment policy solely because it is the latest checkpoint.
-
-The trainer reports return, progress, throughput, ETA, and checkpoint writes.
-`Ctrl+C` requests a clean stop: the current iteration finishes and the latest
-policy is checkpointed before exit. Training and viewing are independent:
+Compare two completed runs:
 
 ```bash
-# Terminal 1: training only
-just league-resume /home/rob/runs/vsss-long 2500 25 60 25 auto 64
-
-# Terminal 2: optional read-only viewer
-just league-web /home/rob/runs/vsss-long
-
-# Or target environment steps and launch the viewer together
-just league-live-steps 20000000 25 60 25 auto 64
+just league-compare-runs \
+  ~/runs/baseline \
+  ~/runs/candidate \
+  ~/runs/comparison.json
 ```
 
-The trailing values select `device` and vectorized environment count. `auto`
-selects CUDA when available and prints an explicit CPU fallback warning
-otherwise. The expanded command always displays the named CLI flags
-`--device` and `--num-envs`; use `cpu` deliberately for the current small-network
-baseline when maximum measured throughput matters.
+Graceful interruption preserves the latest checkpoint and run metadata. A resumed
+run restores policy, optimizer, counters, and population state.
 
-The CUDA/Rapier default is 64 worlds. A match ends on a goal or after 30
-simulated seconds; PPO updates consume 256 control steps and persistent matches
-span updates. Independent Rapier worlds are stepped inside one native batch and
-use adaptive Rayon parallelism at 32 or more worlds.
+## Containers and local validation
 
-Environment steps are the primary training-budget unit. The 20M preset is about
-1,221 PPO updates, while the dashboard also reports completed matches and
-matches/s for sporting interpretation.
-
-Training uses Rich on an interactive terminal: a stable progress bar remains at
-the bottom while current/rolling return, progress, PPO losses, device, vector
-worlds, frames/s, and the latest checkpoint remain tabulated above it. Logs and
-warnings are emitted above the live display. Redirected output automatically
-uses one aligned text row per completed iteration.
-
-Fast simulation intentionally computes virtual time faster than wall time while
-preserving the 5 ms physics step and 20 ms control period. A 60-second replay is
-always 60 simulated seconds even when the host produces it in a few seconds.
-
-See `docs/calibration/m11-wheel-action-scale.md` and
-`docs/evidence/m13-directional-reward.md` before comparing old checkpoints or
-planning a physical-robot deployment.
-
-The native WSLg viewer remains available for a single iteration:
+CPU container gate:
 
 ```bash
-just league-view /home/rob/runs/vsss-first 0010
+just container-cpu
 ```
 
-## Tooling
+CUDA smoke gate:
 
-The repository is intentionally reproducible and uses one selected tool per
-job:
+```bash
+just cuda-smoke
+```
 
-| Tool | Role |
-| --- | --- |
-| `mise` | pins Python, Rust, uv, Ruff, just and project tasks |
-| `uv` | resolves the Python environments and locked training dependencies |
-| Cargo | builds/tests the Rust workspace and PyO3 extension |
-| `maturin` | installs the mixed Rust/Python package into `.venv` |
-| Bun | installs and builds the React/Vite replay viewer |
-| `just` | exposes stable human-facing workflows |
-| Docker Compose | validates CPU, CUDA and ROS/Gazebo profiles |
-| PyTorch/TorchRL | policy, critic, tensor trajectories and CUDA optimization |
-| Rich | stable terminal progress and current/rolling metrics |
-| TensorBoard/Recharts | optional full telemetry UI and built-in run charts |
+ROS 2 and Gazebo integration smoke gate:
 
-Normal validation is:
+```bash
+just ros-gazebo-smoke
+```
+
+Normal repository validation:
 
 ```bash
 just doctor
 just build
 just test
 just lint
-just container-cpu
-just cuda-smoke
 ```
-
-Dependencies are pinned in `uv.lock`, `Cargo.lock` and `bun.lock`. Container
-bases are digest-pinned. Active runs and builds belong on Linux-native storage;
-placing them under `/mnt/c`, `/mnt/d` or `/mnt/g` causes avoidable I/O and
-filesystem-notification overhead.
-
-## Architecture and implementation
-
-```text
-experiment TOML
-      │
-      ▼
-Python league/trainer ─────► PyTorch MAPPO actor + centralized critic (CUDA)
-      │                                  │
-      │ batched actions                  │ checkpoints
-      ▼                                  ▼
-PyO3 batch boundary ◄────── Rust/Rapier deterministic worlds
-      │
-      ├──► metrics.jsonl ───► built-in Recharts dashboard
-      ├──► TensorBoard events ─► optional TensorBoard UI
-      ├──► sampled replay events ─► browser/native replay viewers
-      └──► registry/checkpoints ─► tournament and promotion gates
-
-ROS 2/Gazebo/camera adapters consume the same canonical state/action contracts
-as a slower validation plane; they do not enter the training hot loop.
-```
-
-The Rust workspace owns units, canonical state, deterministic fixed-step
-physics, collision/goal rules, snapshots, batch stepping, FlatBuffers protocol,
-the external match server and native viewer. Python owns environment composition,
-observations, rewards, learning, league orchestration, evaluation, vision and
-research workflows. The browser reads recorded observer data; it never calls
-the policy or physics engine.
-
-Important boundaries:
-
-- simulation truth, camera measurements, estimated state, and future prediction
-  are distinct versioned records;
-- a visual robot marker identifies a physical player but never assigns a fixed
-  tactical policy role;
-- renderer and telemetry failures cannot alter physics or learning;
-- experiment values are fingerprinted into checkpoints, so incompatible reward
-  configurations cannot be resumed silently;
-- the fast simulator and ROS/Gazebo implement the same state/action concepts
-  rather than becoming two independent training backends.
-
-## Physics, field and controls
-
-The reference field, goals, chamfered corners, robot and ball dimensions come
-from the canonical match configuration and were calibrated against Julio De La
-Torre's VSSS simulator. Rapier uses a 5 ms physics step; policies act every
-20 ms by default. Differential-drive wheel commands pass through acceleration
-limits, damping/friction and collision response. Tests block sustained
-robot/robot overlap, robot/ball engulfment, false goals from partial line
-crossing, and robots escaping through goal geometry.
-
-A goal is valid only when the ball crosses the goal plane according to the
-canonical radius-aware rule. The replay includes a short post-goal grace period
-for visual closure, but the learning episode has a terminal goal outcome.
-Scoreless horizons and stagnant-ball states are separate terminal reasons.
-
-Fast training intentionally advances simulated time faster than wall time.
-Playback at 1× represents the recorded physical clock, so one simulated second
-has the same motion scale as one real second even if training generated it much
-faster.
-
-## Observations, actions and roles
-
-Each robot receives an agent-centric observation containing normalized local
-state and relative ball/teammate/opponent information. It emits continuous
-left/right wheel commands. The shared actor is permutation-safe: physical ID,
-team marker and array slot do not permanently mean attacker, defender or
-goalkeeper.
-
-Roles are state-dependent. M13 chooses the closest teammate only for its
-attacker-alignment reward at the current step; defensive coverage similarly
-uses the best-positioned teammate. This produces dynamic role pressure without
-training three identity-specific policies. The centralized critic can use team
-context during learning, while execution remains decentralized.
-
-M12 adds an optional policy-visible perception record: timestamped camera
-detections, association confidence, Kalman/EKF estimated state, covariance,
-staleness and collision-aware ball projection. Prediction uses only the present
-estimate and field physics; future simulator truth is explicitly excluded and
-covered by a mutation test.
-
-## Algorithm and curriculum
-
-The main M13 learner is shared-policy MAPPO:
-
-- three decentralized actor decisions with shared parameters;
-- one centralized value function during training;
-- Gaussian continuous actions passed through `tanh`;
-- generalized advantage estimation, clipped PPO updates, entropy bonus and
-  gradient clipping;
-- a configurable minimum actor `log_std` clamped after optimizer steps to avoid
-  silent exploration collapse;
-- persistent vector worlds whose matches span PPO rollout boundaries;
-- complete actor, critic, optimizer, random-state and policy-version
-  checkpoints.
-
-The first 250 PPO iterations play against the deterministic dynamic heuristic.
-Later iterations deterministically sample a configured population for each
-update:
-
-- 50% frozen copy of the current learner;
-- 35% uniform historical checkpoint from the latest 16 eligible versions;
-- 15% dynamic heuristic.
-
-The checkpoint most recently produced by the learner is excluded from the
-historical branch because the current-policy branch already covers it.
-Historical actors are inference-only, cached, configuration-verified and loaded
-without changing trainer RNG state. Dedicated exploiters and rating-aware
-sampling remain future league improvements.
-
-New automatic runs use:
-
-```text
-experiments/configs/m13-mappo-directional.toml
-```
-
-The config selects 64 worlds, a 128-unit actor, 256 control decisions per
-rollout, a 1,500-decision match horizon, CUDA when available, and the M13 reward
-and population fingerprint. Override device/world count through the trailing
-`just` arguments; `auto` reports an explicit CPU fallback.
-
-## Reward design
-
-M13's primary dense signal is bounded ball-direction alignment:
-
-```text
-tanh(cos(ball velocity, opponent goal - ball))
-- tanh(cos(ball velocity, own goal - ball))
-```
-
-The dynamically closest robot receives a penalty-only velocity alignment toward
-the ball. Goals remain the dominant ±10 sparse objective. A full scoreless
-horizon accumulates one bounded time penalty; action change, wheel effort,
-teammate congestion, and defensive coverage are smaller regularizers.
-
-Mere proximity to the ball is deliberately not rewarded. The completed 50M M12
-run showed that proximity/raw progress could produce camping, clustering,
-saturated controls and possession that did not terminate in goals. This design
-adapts the bounded directional equations and shared-policy collision warning
-from Julio De La Torre's 2024 thesis while retaining MAPPO and dynamic roles
-rather than copying its fixed-role MATD3 setup.
-
-Reward changes are part of the checkpoint fingerprint. Start a new run when the
-reward contract changes; do not force an incompatible resume.
-
-## Metrics, replays and checkpoint selection
-
-Each run contains:
-
-| Artifact | Purpose |
-| --- | --- |
-| `metrics.jsonl` | canonical per-iteration result, losses, terminal counts, cumulative work, throughput and exploration |
-| `tensorboard/` | derived TensorBoard event files for new runs |
-| `checkpoints/` | resumable policy/critic/optimizer snapshots |
-| `replays/` | sampled, labeled match captures loaded only when selected |
-| `registry.json` | versioned policy lineage and league metadata |
-| `viewer.log` / `tensorboard.log` | observer-process diagnostics |
-
-Do not deploy the latest checkpoint automatically. Select candidates with fixed
-seeds, reflected sides, terminal goals, historical opponents, and the scripted
-heuristic:
-
-```bash
-just league-rank-checkpoints \
-  /home/rob/runs/vsss-training-run-0002 \
-  500,750,1000,1500,2250,2750,3052 \
-  experiments/configs/m12-mappo-coordinated.toml \
-  10 \
-  reports/checkpoint-ranking.json
-```
-
-In the first historical sample, iteration 2750 produced a 5-5-0 W-D-L record
-against the heuristic while the final iteration 3052 produced 3-6-1. Checkpoint
-recency and training return are therefore insufficient promotion criteria. A
-real promotion also needs multiple seeds, permutation, OOD and Gazebo gates.
-
-After the fresh M13 run, generate the fixed comparison artifact:
-
-```bash
-just league-compare-runs \
-  /home/rob/runs/vsss-training-run-0002 \
-  /home/rob/runs/vsss-training-run-0003 \
-  reports/m13/run-comparison.json
-```
-
-It reports steps, matches, goal/draw/stagnation rates, rolling return/progress,
-throughput, final actor exploration and teammate-clustering rate from evenly
-sampled replay frames. Run 0002 uses its recorded 3,973 frames/s baseline
-because historical JSONL did not yet contain wall-clock telemetry.
-
-## Inspirations and public references
-
-The project reuses principles, measurements and public interfaces—not opaque
-third-party model weights:
-
-- [Julio De La Torre's simulation_vsss](https://github.com/juliodltv/simulation_vsss)
-  and thesis: VSSS geometry/assets, differential-drive reference behavior,
-  camera markers, Kalman/EKF estimation, reward pitfalls, directional shaping
-  and MATD3 comparison.
-- [pSim](https://juliodltv.github.io/pSim/usage/): compact VSSS simulation API
-  and scenario ergonomics used as a reference, not a second hot-loop backend.
-- [RocketSim](https://github.com/ZealanL/RocketSim): evidence that a specialized
-  standalone headless physics engine can generate experience much faster than
-  a rendered game.
-- [RLGym](https://rlgym.org/Getting%20Started/quickstart/): separable
-  observations/actions/rewards/resets, accelerated PPO collection and early
-  termination of unproductive episodes.
-- [RLBot v5](https://wiki.rlbot.org/v5/framework/architecture/): match
-  orchestration, language-neutral server/client boundaries, live packets and
-  controller inputs. RLBot is deployment infrastructure, not an RL trainer.
-- [Necto/Nexto](https://github.com/Rolv-Arild/Necto): distributed fast
-  self-play, general reward shaping, live graphs, population training and
-  optional replay pretraining.
-- [PettingZoo](https://pettingzoo.farama.org/): public simultaneous-action MARL
-  semantics.
-- [TorchRL](https://docs.pytorch.org/rl/): tensor-native trajectories and
-  multi-agent learning components.
-- [BenchMARL](https://github.com/facebookresearch/BenchMARL): reproducible
-  PyTorch/TorchRL comparisons across algorithms, models and seeds.
-- [HARL](https://github.com/PKU-MARL/HARL): reference HAPPO/HATRPO and
-  heterogeneous-agent implementations.
-
-Rocket League model weights are not directly reusable: cars have boost, aerial
-motion, different contacts, observations and actions. Useful transfers are
-evaluation discipline, league diversity, reward restraint, replay pretraining,
-timeouts and distributed experience collection. RLBot's supplied ball
-prediction is analogous to VSSS Lab's causal physics projection, not a learned
-peek at future simulator state.
-
-## MARL research direction
-
-There is no universal “SOTA” algorithm across cooperative continuous-control
-games; environment and evaluation protocol can reverse rankings. The
-recommended sequence for this project is:
-
-1. finish shared MAPPO as the trusted, multi-seed M13 baseline;
-2. add recurrent MAPPO/GRU for camera delay, occlusion and partial
-   observability;
-3. add MASAC as an off-policy continuous-control baseline to measure sample
-   efficiency;
-4. benchmark Deep Sets/GNN or a multi-agent transformer only after MLP/GRU
-   baselines are stable;
-5. test HAPPO/HARL as an ablation rather than a default, because VSSS uses
-   homogeneous robots and deliberately shares actor weights;
-6. add rating/performance-aware historical sampling and fixed exploiters before
-   scaling network size or distributed infrastructure.
-
-BenchMARL is the preferred external comparison harness because it already
-standardizes MAPPO, IPPO, MASAC, MADDPG, QMIX, multiple model families and
-multi-seed reporting. Integrating its evaluation format is more valuable now
-than replacing the readable in-repo learner.
 
 ## Repository map
 
-| Path | Purpose |
-| --- | --- |
-| `crates/` | Rust contracts, Rapier physics, batching, protocol, match server and native viewer |
-| `python/vsss_env/` | PyO3-facing environment and public adapters |
-| `python/vsss_train/` | PPO/MAPPO models, trajectory schema and optimizer |
-| `python/vsss_league/` | self-play, registry, tournaments, promotion, telemetry and run CLI |
-| `python/vsss_vision/` | camera ingestion, association, filters and prediction |
-| `web/replay-viewer/` | React/Vite replay and training-metrics studio |
-| `experiments/configs/` | versioned, fingerprinted experiment definitions |
-| `tests/golden/` | canonical field and match fixtures |
-| `containers/` | CPU, CUDA and ROS/Gazebo development profiles |
-| `docs/` | ADRs, calibration reports, evidence and the full product PRD |
+```text
+crates/                 Rust simulation, physics, rules, and native bindings
+python/                 learning, league orchestration, evaluation, and adapters
+experiments/configs/    versioned experiment configurations
+web/replay-viewer/      React replay and metrics application
+tools/                  run allocation, replay serving, and developer utilities
+tests/                  golden states and cross-layer integration coverage
+containers/             CPU, CUDA, and robotics container definitions
+docs/                   product, design, research, and evidence documents
+compose.yaml            local container orchestration
+Justfile                supported developer and experiment commands
+mise.toml               pinned toolchain and environment tasks
+pyproject.toml          Python project and dependency groups
+Cargo.toml              Rust workspace
+```
 
-## Known limitations
+## Scope and limitations
 
-- historical rollout sampling is uniform within a recent bounded window; it
-  does not yet use opponent win rates, prioritized fictitious self-play or fixed
-  exploiters;
-- the 50M M13 comparison has not been run, so its reward changes are tested but
-  not yet empirically promoted;
-- physics collection remains CPU-bound even when PyTorch reports CUDA;
-- runs created before this telemetry integration cannot reconstruct historical
-  actor exploration or wall-clock throughput;
-- the camera path has deterministic fixtures and ROS ingestion but no completed
-  physical-camera accuracy envelope or robot hardware safety gate;
-- no Rocket League/third-party model is bundled, and no result here should be
-  described as universal MARL SOTA.
+VSSS Lab is a research platform, not a certified competition robot stack.
+Physical deployment still requires team-specific camera calibration,
+communications, motor control, safety constraints, and validation against real
+hardware.
+
+Physics throughput remains partly CPU-bound even during CUDA training. Simulation
+parameters approximate VSSS dynamics but must be system-identified for a
+particular robot. Population sampling currently favors a recent historical
+window rather than a full prioritized league. Finally, reported results are
+meaningful only with their configuration, seeds, evaluation opponents, hardware,
+and software revision.
+
+## License
+
+See [LICENSE](LICENSE) and [NOTICE](NOTICE).
