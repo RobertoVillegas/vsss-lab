@@ -5,9 +5,9 @@
 
 ## 2. Observations and models
 
-- [ ] 2.1 Implement canonical agent observations with Deep Sets aggregation
-- [ ] 2.2 Implement shared actor, IPPO critic, and MAPPO centralized critic
-- [ ] 2.3 Add identity and permutation contract tests
+- [x] 2.1 Implement canonical agent observations with Deep Sets aggregation
+- [x] 2.2 Implement shared actor, IPPO critic, and MAPPO centralized critic
+- [x] 2.3 Add identity and permutation contract tests
 
 ## 3. Learning and curriculum
 
