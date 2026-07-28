@@ -49,8 +49,9 @@ class GoToTargetEnv:
         state_json: str,
         *,
         stage: int = 0,
-        max_steps: int = 300,
+        max_steps: int = 3_000,
         success_radius: float = 0.09,
+        action_repeat: int = 4,
     ) -> None:
         if stage not in range(len(STAGES)):
             raise ValueError("stage must be in [0, 5]")
@@ -60,6 +61,7 @@ class GoToTargetEnv:
         self.stage = stage
         self.max_steps = max_steps
         self.success_radius = success_radius
+        self.action_repeat = action_repeat
         self._steps = 0
         self._distance = 0.0
 
@@ -101,6 +103,8 @@ class GoToTargetEnv:
         actions = np.zeros((1, 6, 2), dtype=np.float32)
         actions[0, 0] = np.clip(action, -1.0, 1.0)
         state = self._native.step(actions)[0]
+        for _ in range(self.action_repeat - 1):
+            state = self._native.step(actions)[0]
         self._steps += 1
         distance = self._target_distance(state)
         success = distance <= self.success_radius

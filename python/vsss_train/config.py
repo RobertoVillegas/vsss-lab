@@ -16,8 +16,10 @@ class TrainConfig:
     seed: int = 7
     device: str = "cpu"
     hidden_size: int = 64
-    rollout_steps: int = 256
-    updates: int = 20
+    warmup_samples: int = 32_768
+    warmup_epochs: int = 20
+    rollout_steps: int = 4_096
+    updates: int = 10
     epochs: int = 4
     minibatch_size: int = 64
     learning_rate: float = 3e-4
@@ -30,7 +32,7 @@ class TrainConfig:
     eval_episodes: int = 20
     eval_every: int = 5
     initial_stage: int = 0
-    max_episode_steps: int = 300
+    max_episode_steps: int = 3_000
     success_radius: float = 0.09
 
     def __post_init__(self) -> None:
@@ -40,6 +42,8 @@ class TrainConfig:
             raise ValueError("initial_stage must be in [0, 5]")
         positive = (
             self.hidden_size,
+            self.warmup_samples,
+            self.warmup_epochs,
             self.rollout_steps,
             self.updates,
             self.epochs,

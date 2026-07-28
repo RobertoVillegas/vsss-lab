@@ -22,9 +22,10 @@ serving.
 2. Policy observations are robot-centric `[target_dx, target_dy, cos(theta),
    sin(theta), vx, vy, omega]`, normalized by field dimensions and limits. This
    avoids physical robot identity and match metadata.
-3. The policy is a small Gaussian actor plus critic. Rollouts use TensorDict;
-   GAE and clipped PPO optimization follow current TorchRL conventions while
-   keeping the loss implementation explicit and testable.
+3. The policy is a small Gaussian actor plus critic. It is initialized by
+   distilling the trusted M4 geometric skill, then refined on-policy. Rollouts
+   use TensorDict; GAE and clipped PPO optimization follow current TorchRL
+   conventions while keeping the loss implementation explicit and testable.
 4. C0–C5 progressively expand target distance, bearing, initial heading, and
    start position. Promotion requires the configured success rate on fixed
    evaluation seeds; C5's normative gate is at least 95%.
@@ -35,6 +36,8 @@ serving.
    under `experiments/configs`; run data and checkpoints remain outside Git.
 7. CPU is the correctness baseline. CUDA is selectable only when available and
    is not an M5 acceptance requirement.
+8. One policy action is held for four 5 ms physics ticks, matching the canonical
+   20 ms control period and avoiding redundant neural-network inference.
 
 ## Risks / Trade-offs
 

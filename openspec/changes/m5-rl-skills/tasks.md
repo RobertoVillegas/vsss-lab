@@ -11,12 +11,12 @@
 
 ## 3. PPO lifecycle
 
-- [ ] 3.1 Implement TensorDict rollout, GAE, clipped PPO, and deterministic evaluation
-- [ ] 3.2 Implement config loading, JSONL metrics, checkpoint/save, and exact resume
-- [ ] 3.3 Add CLI and local train/evaluate/smoke commands
+- [x] 3.1 Implement TensorDict rollout, GAE, clipped PPO, and deterministic evaluation
+- [x] 3.2 Implement config loading, JSONL metrics, checkpoint/save, and exact resume
+- [x] 3.3 Add CLI and local train/evaluate/smoke commands
 
 ## 4. Verification
 
-- [ ] 4.1 Add deterministic smoke, checkpoint equivalence, metrics, and threshold tests
+- [x] 4.1 Add deterministic smoke, checkpoint equivalence, metrics, and threshold tests
 - [ ] 4.2 Run OpenSpec, doctor, lint, build, test, and M5 skill gates
 - [ ] 4.3 Record evidence and limitations, sign small commits, and push

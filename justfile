@@ -54,6 +54,15 @@ viewer-wasm-check:
 benchmark-observer ticks="2000" repeats="5" sample_every="4":
   uv run python -m tools.benchmark_observer --ticks {{ticks}} --repeats {{repeats}} --sample-every {{sample_every}}
 
+train-skill config="experiments/configs/m5-go-to-target.toml" checkpoint="/home/rob/checkpoints/m5-go-to-target.pt" metrics="reports/m5-go-to-target.jsonl":
+  uv run --group train python -m vsss_train.cli train --config "{{config}}" --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --checkpoint "{{checkpoint}}" --metrics "{{metrics}}"
+
+evaluate-skill config="experiments/configs/m5-go-to-target.toml" checkpoint="/home/rob/checkpoints/m5-go-to-target.pt" episodes="100":
+  uv run --group train python -m vsss_train.cli evaluate --config "{{config}}" --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --checkpoint "{{checkpoint}}" --stage 5 --episodes {{episodes}}
+
+m5-smoke:
+  uv run --group train pytest -q tests/test_rl_skills.py
+
 clean:
   cargo clean
   rm -rf .venv .pytest_cache .mypy_cache .ruff_cache
