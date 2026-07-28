@@ -5,6 +5,7 @@ members = [
     "crates/vsss-physics-rapier",
     "crates/vsss-python",
     "crates/vsss-spec",
+    "crates/vsss-viewer-2d",
 ]
 resolver = "3"
 

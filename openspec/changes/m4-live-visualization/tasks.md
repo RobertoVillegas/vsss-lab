@@ -22,8 +22,8 @@
 
 ## 4. Interactive viewer
 
-- [ ] 4.1 Add a leaf Bevy viewer crate without changing core crate dependencies
-- [ ] 4.2 Implement native replay pause, seek, exact step, and speed controls
+- [x] 4.1 Add a leaf Bevy viewer crate without changing core crate dependencies
+- [x] 4.2 Implement native replay pause, seek, exact step, and speed controls
 - [ ] 4.3 Add identifiers, headings, velocities, actions, trajectories, rewards,
   events, and dropped-frame overlays
 - [ ] 4.4 Add a bounded live connection and reuse the replay scene projection

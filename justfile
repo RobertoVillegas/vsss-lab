@@ -38,6 +38,9 @@ replay-view replay="reports/m4-scripted.jsonl":
 replay-render replay="reports/m4-scripted.jsonl" output="reports/m4-scripted.svg":
   uv run python -m tools.replay_viewer.view "{{replay}}" --svg "{{output}}"
 
+replay-view-native replay="reports/m4-scripted.jsonl":
+  cargo run -p vsss-viewer-2d -- "{{replay}}"
+
 clean:
   cargo clean
   rm -rf .venv .pytest_cache .mypy_cache .ruff_cache
