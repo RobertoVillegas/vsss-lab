@@ -83,7 +83,7 @@ class MarlConfig:
     algorithm: Literal["ippo", "mappo"] = "mappo"
     seed: int = 7
     device: Literal["auto", "cpu", "cuda"] = "auto"
-    num_envs: int = 16
+    num_envs: int = 64
     hidden_size: int = 64
     learning_rate: float = 3e-4
     gamma: float = 0.99
@@ -96,7 +96,8 @@ class MarlConfig:
     minibatch_size: int = 256
     policy_id: str = "blue-shared"
     curriculum_stage: Literal[7, 8] = 7
-    horizon: int = 1_000
+    horizon: int = 1_500
+    rollout_steps: int = 256
     action_repeat: int = 4
     action_delta_coefficient: float = 0.01
 
@@ -111,6 +112,8 @@ class MarlConfig:
             raise ValueError("device must be auto, cpu, or cuda")
         if self.num_envs <= 0:
             raise ValueError("num_envs must be positive")
+        if self.horizon <= 0 or self.rollout_steps <= 0:
+            raise ValueError("horizon and rollout_steps must be positive")
         if self.action_delta_coefficient < 0.0:
             raise ValueError("action_delta_coefficient must be non-negative")
 

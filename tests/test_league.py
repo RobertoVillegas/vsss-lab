@@ -10,7 +10,7 @@ from vsss_league.ratings import elo_update
 from vsss_league.registry import LeagueRegistry, PolicyCategory, PolicyEntry
 from vsss_league.replay import run_policy_replay
 from vsss_league.tournament import TournamentReport, evaluate_candidate_vs_heuristic
-from vsss_league.training import train_iteration
+from vsss_league.training import create_rollout_session, train_iteration
 from vsss_train.config import MarlConfig
 from vsss_train.marl import SharedActor
 from vsss_train.marl_ppo import MarlLearner
@@ -143,6 +143,7 @@ def test_real_self_play_iteration_updates_version_and_checkpoint(tmp_path: Path)
         epochs=1,
         minibatch_size=6,
         horizon=4,
+        rollout_steps=4,
         action_repeat=1,
     )
     learner = MarlLearner(config)
@@ -160,8 +161,49 @@ def test_real_self_play_iteration_updates_version_and_checkpoint(tmp_path: Path)
     )
     assert result.policy_version == learner.policy_version == 1
     assert result.frames == 4
+    assert result.matches == 1
     assert checkpoint.is_file()
     assert all(torch.isfinite(torch.tensor(value)) for value in result.losses.values())
+
+
+def test_match_persists_across_short_ppo_rollouts() -> None:
+    config = MarlConfig(
+        device="cpu",
+        num_envs=1,
+        hidden_size=8,
+        epochs=1,
+        minibatch_size=6,
+        horizon=6,
+        rollout_steps=4,
+        action_repeat=1,
+    )
+    learner = MarlLearner(config)
+    opponent = SharedActor(hidden_size=8)
+    session = create_rollout_session(config, CONFIG, STATE)
+    first = train_iteration(
+        learner,
+        opponent,
+        CONFIG,
+        STATE,
+        iteration=1,
+        seed=101,
+        opponent_id="history@0",
+        checkpoint=None,
+        session=session,
+    )
+    second = train_iteration(
+        learner,
+        opponent,
+        CONFIG,
+        STATE,
+        iteration=2,
+        seed=102,
+        opponent_id="history@0",
+        checkpoint=None,
+        session=session,
+    )
+    assert first.matches == 0
+    assert second.matches == 1
 
 
 def test_learned_policy_replay_is_viewer_compatible(tmp_path: Path) -> None:

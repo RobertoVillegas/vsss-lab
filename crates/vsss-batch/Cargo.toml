@@ -8,6 +8,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+rayon = "1.11.0"
 vsss-physics-api = { path = "../vsss-physics-api" }
 vsss-spec = { path = "../vsss-spec" }
 

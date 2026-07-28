@@ -10,8 +10,9 @@ from pathlib import Path
 import torch
 from tensordict import TensorDict
 from torch.distributions import Normal
+from vsss_train.config import MarlConfig
 from vsss_train.marl import SharedActor, TeamBatch, build_team_observation, stack_team_batches
-from vsss_train.marl_env import FloatArray, MarlMatchEnv
+from vsss_train.marl_env import FloatArray, VectorMarlMatchEnv
 from vsss_train.marl_ppo import (
     TRAJECTORY_SCHEMA,
     MarlLearner,
@@ -27,10 +28,35 @@ class IterationResult:
     opponent: str
     seed: int
     frames: int
+    matches: int
     return_total: float
     progress: float
     checkpoint: str | None
     losses: dict[str, float]
+
+
+@dataclass
+class RolloutSession:
+    """Persistent vector worlds so matches span multiple PPO updates."""
+
+    environment: VectorMarlMatchEnv
+    episode_counts: list[int]
+    initialized: bool = False
+
+
+def create_rollout_session(config: MarlConfig, config_json: str, state_json: str) -> RolloutSession:
+    return RolloutSession(
+        VectorMarlMatchEnv(
+            config_json,
+            state_json,
+            num_envs=config.num_envs,
+            stage=8,
+            horizon=config.horizon,
+            action_repeat=config.action_repeat,
+            action_delta_coefficient=config.action_delta_coefficient,
+        ),
+        [0] * config.num_envs,
+    )
 
 
 def collect_self_play_trajectory(
@@ -41,28 +67,25 @@ def collect_self_play_trajectory(
     *,
     seed: int,
     opponent_id: str,
-) -> tuple[TeamTrajectory, float, float]:
+    session: RolloutSession | None = None,
+) -> tuple[TeamTrajectory, float, float, int]:
     """Collect fixed-horizon vector self-play on the learner device."""
     if opponent is not None:
         opponent = opponent.to(learner.device)
-    environments = [
-        MarlMatchEnv(
-            config_json,
-            state_json,
-            stage=8,
-            horizon=learner.config.horizon,
-            action_repeat=learner.config.action_repeat,
-            action_delta_coefficient=learner.config.action_delta_coefficient,
-        )
-        for _ in range(learner.config.num_envs)
-    ]
-    observations_by_world = [
-        environment.reset(seed + world) for world, environment in enumerate(environments)
-    ]
-    for environment in environments:
-        environment.mark_progress_origin()
+    session = session or create_rollout_session(learner.config, config_json, state_json)
+    environment = session.environment
+    if session.initialized:
+        observations_by_world = [
+            build_team_observation(state, team=0) for state in environment.states
+        ]
+    else:
+        observations_by_world = [
+            environment.reset(world, seed + world) for world in range(learner.config.num_envs)
+        ]
+        session.initialized = True
+    environment.mark_progress_origin()
     observation = stack_team_batches(observations_by_world).to(learner.device)
-    initial_snapshot = environments[0].snapshot()
+    initial_snapshot = environment.snapshot(0)
     observations: list[TeamBatch] = []
     actions: list[torch.Tensor] = []
     log_probabilities: list[torch.Tensor] = []
@@ -73,60 +96,56 @@ def collect_self_play_trajectory(
     ticks: list[torch.Tensor] = []
     returns = [0.0] * learner.config.num_envs
     completed_progress = [0.0] * learner.config.num_envs
-    episode_counts = [0] * learner.config.num_envs
-    for step in range(learner.config.horizon):
+    completed_matches = 0
+    for step in range(learner.config.rollout_steps):
         with torch.no_grad():
             mean, log_std = learner.actor(observation)
             distribution = Normal(mean, log_std.exp())
             raw_action = distribution.sample()  # type: ignore[no-untyped-call]
             log_probability = distribution.log_prob(raw_action).sum(-1)  # type: ignore[no-untyped-call]
             value = learner.critic(observation)
-            opponent_actions: list[FloatArray | None]
+            opponent_actions: FloatArray | None
             if opponent is not None:
                 opponent_observation = stack_team_batches(
-                    [
-                        build_team_observation(environment.state, team=1)
-                        for environment in environments
-                    ]
+                    [build_team_observation(state, team=1) for state in environment.states]
                 ).to(learner.device)
-                opponent_batch = opponent.deterministic_action(opponent_observation).cpu().numpy()
-                opponent_actions = [
-                    opponent_batch[world] for world in range(learner.config.num_envs)
-                ]
+                opponent_actions = opponent.deterministic_action(opponent_observation).cpu().numpy()
             else:
-                opponent_actions = [None] * learner.config.num_envs
+                opponent_actions = None
         observations.append(observation)
         actions.append(raw_action)
         log_probabilities.append(log_probability)
         values.append(value)
         ticks.append(
             torch.tensor(
-                [[int(environment.state[1])] * 3 for environment in environments],
+                [[int(state[1])] * 3 for state in environment.states],
                 dtype=torch.int64,
                 device=learner.device,
             )
         )
         blue_actions = torch.tanh(raw_action).cpu().numpy()
-        next_observations: list[TeamBatch] = []
-        step_rewards: list[float] = []
-        step_terminated: list[bool] = []
-        for world, environment in enumerate(environments):
-            next_observation, reward, done, info = environment.step(
-                blue_actions[world],
-                opponent_actions[world],
-            )
-            returns[world] += reward.total
-            is_terminated = bool(int(info["events"]) & 0b11)
-            step_rewards.append(reward.total)
-            step_terminated.append(is_terminated)
+        next_observation, step_rewards, step_done, step_events = environment.step(
+            blue_actions, opponent_actions
+        )
+        returns = [
+            total + float(reward) for total, reward in zip(returns, step_rewards, strict=True)
+        ]
+        progress_scores = environment.progress_scores()
+        reset_occurred = False
+        for world, done in enumerate(step_done):
             if done:
-                completed_progress[world] += environment.progress_score()
-                episode_counts[world] += 1
-                next_observation = environment.reset(
-                    seed + (episode_counts[world] + 1) * learner.config.num_envs + world
+                completed_progress[world] += float(progress_scores[world])
+                session.episode_counts[world] += 1
+                completed_matches += 1
+                environment.reset(
+                    world,
+                    seed + (session.episode_counts[world] + 1) * learner.config.num_envs + world,
                 )
-                environment.mark_progress_origin()
-            next_observations.append(next_observation)
+                reset_occurred = True
+        if reset_occurred:
+            next_observation = stack_team_batches(
+                [build_team_observation(state, team=0) for state in environment.states]
+            )
         rewards.append(
             torch.tensor(
                 [[reward] * 3 for reward in step_rewards],
@@ -136,7 +155,7 @@ def collect_self_play_trajectory(
         )
         terminated.append(
             torch.tensor(
-                [[value] * 3 for value in step_terminated],
+                [[bool(event & 0b11)] * 3 for event in step_events],
                 dtype=torch.bool,
                 device=learner.device,
             )
@@ -144,12 +163,12 @@ def collect_self_play_trajectory(
         truncated.append(
             torch.full(
                 (learner.config.num_envs, 3),
-                step == learner.config.horizon - 1,
+                step == learner.config.rollout_steps - 1,
                 dtype=torch.bool,
                 device=learner.device,
             )
         )
-        observation = stack_team_batches(next_observations).to(learner.device)
+        observation = next_observation.to(learner.device)
     batch = stack_team_batches(observations)
     data = TensorDict(
         {
@@ -179,12 +198,19 @@ def collect_self_play_trajectory(
     )
     progress = (
         sum(
-            completed + environment.progress_score()
-            for completed, environment in zip(completed_progress, environments, strict=True)
+            completed + float(current)
+            for completed, current in zip(
+                completed_progress, environment.progress_scores(), strict=True
+            )
         )
         / learner.config.num_envs
     )
-    return TeamTrajectory(metadata, data), sum(returns) / learner.config.num_envs, progress
+    return (
+        TeamTrajectory(metadata, data),
+        sum(returns) / learner.config.num_envs,
+        progress,
+        completed_matches,
+    )
 
 
 def train_iteration(
@@ -197,14 +223,16 @@ def train_iteration(
     seed: int,
     opponent_id: str,
     checkpoint: Path | None,
+    session: RolloutSession | None = None,
 ) -> IterationResult:
-    trajectory, total_return, progress = collect_self_play_trajectory(
+    trajectory, total_return, progress, completed_matches = collect_self_play_trajectory(
         learner,
         opponent,
         config_json,
         state_json,
         seed=seed,
         opponent_id=opponent_id,
+        session=session,
     )
     losses = learner.optimize(trajectory)
     if checkpoint is not None:
@@ -215,6 +243,7 @@ def train_iteration(
         opponent=opponent_id,
         seed=seed,
         frames=len(trajectory.data) * learner.config.num_envs,
+        matches=completed_matches,
         return_total=total_return,
         progress=progress,
         checkpoint=str(checkpoint.resolve()) if checkpoint is not None else None,

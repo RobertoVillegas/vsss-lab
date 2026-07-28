@@ -6,7 +6,7 @@ rollout/optimize iterations. The viewer is outside the training hot loop.
 ## Start a run
 
 ```sh
-just league-run /home/rob/runs/vsss-first 10 1 60 100 auto 16
+just league-run /home/rob/runs/vsss-first 10 1 60 100 auto 64
 ```
 
 Arguments are, in order, `run_dir`, `iterations`, `capture_every`,
@@ -26,6 +26,25 @@ host, one 16-world/48,000-frame iteration measured about 1,832 frames/s on CUDA
 and 2,748 frames/s on CPU. The small network does not yet amortize CUDA transfer
 and launch costs, so CUDA support is functional rather than a throughput claim.
 Parallel native physics stepping is the next performance optimization.
+
+That optimization landed in M12.1: a single native batch now owns all worlds,
+releases the GIL, and schedules batches of at least 32 worlds through Rayon.
+On the same host, a full 64-world CUDA iteration sustained about 4,195 frames/s
+while another 16-world training process was active. A controlled short-rollout
+sweep measured approximately 1,731, 5,172, and 7,074 frames/s at 16, 64, and
+256 worlds respectively. Sixty-four is the default balance between throughput,
+GPU batch size, memory, and policy-update frequency.
+
+Episodes last at most 1,500 control steps (30 simulated seconds), while PPO
+updates consume 256 steps. Vector worlds persist across updates. Prefer a
+completed-match target when planning a run:
+
+```sh
+just league-live-matches /home/rob/runs/vsss-100k 100000 25 60 25 auto 64
+```
+
+The terminal reports completed matches and matches/s. An iteration is an
+optimizer update, not a match.
 
 Artifacts:
 

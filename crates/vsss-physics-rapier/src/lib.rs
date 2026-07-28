@@ -45,6 +45,7 @@ impl RapierBackend {
             let body = RigidBodyBuilder::dynamic()
                 .translation(Vector::new(robot.pose.x.get(), robot.pose.y.get()))
                 .rotation(robot.pose.theta.get())
+                .ccd_enabled(true)
                 .linear_damping(0.4)
                 .angular_damping(0.4)
                 .build();
@@ -71,7 +72,7 @@ impl RapierBackend {
         let ball_handle = bodies.insert(ball_body);
         colliders.insert_with_parent(
             ColliderBuilder::ball(config.ball.radius.get())
-                .density(config.ball.mass.get())
+                .mass(config.ball.mass.get())
                 .friction(config.friction)
                 .restitution(config.restitution)
                 .build(),
@@ -197,7 +198,11 @@ impl PhysicsBackend for RapierBackend {
         self.apply_actions(actions);
         let parameters = IntegrationParameters {
             dt: self.config.timestep.get(),
-            num_solver_iterations: self.config.backend_substeps.into(),
+            contact_softness: SpringCoefficients::new(1_000.0, 1.0),
+            normalized_allowed_linear_error: 0.0001,
+            normalized_max_corrective_velocity: 100.0,
+            normalized_prediction_distance: 0.005,
+            num_solver_iterations: self.config.backend_substeps.max(4).into(),
             ..IntegrationParameters::default()
         };
         self.pipeline.step(

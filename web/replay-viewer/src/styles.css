@@ -1,7 +1,9 @@
 :root {
   color: #e8f3ee;
   background: #07100d;
-  font-family: "Segoe UI", Inter, system-ui, sans-serif;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: "tnum" 1, "zero" 1;
   font-synthesis: none;
 }
 
@@ -87,7 +89,7 @@ select { appearance: none; border: 1px solid #315044; border-radius: 3px; backgr
 .recorded-badge { position: absolute; top: 18px; right: 20px; padding: 6px 8px; border: 1px solid rgba(255,117,71,.35); border-radius: 2px; color: #ff8a62; background: rgba(7,16,13,.7); font: 9px "Cascadia Mono", "DM Mono", monospace; letter-spacing: .1em; }
 .loading, .empty-state { position: absolute; inset: 0; display: grid; place-content: center; color: #7f998e; font: 12px "Cascadia Mono", "DM Mono", monospace; }
 .empty-state { gap: 8px; text-align: center; }
-.empty-state strong { color: #e8f3ee; font: 600 17px "Segoe UI", Inter, system-ui, sans-serif; }
+.empty-state strong { color: #e8f3ee; font-size: 17px; font-weight: 600; }
 
 .transport { padding: 16px 26px 18px; border-top: 1px solid #20332c; background: rgba(7,16,13,.95); }
 .timeline-row { display: grid; grid-template-columns: 82px minmax(0, 1fr) 64px; align-items: center; gap: 14px; color: #82998f; font: 10px "Cascadia Mono", "DM Mono", monospace; }

@@ -28,6 +28,7 @@ class TrainingDashboard:
     total_iterations: int
     device: str
     num_envs: int
+    target_matches: int | None = None
     console: Console = field(default_factory=Console)
 
     def __post_init__(self) -> None:
@@ -38,6 +39,8 @@ class TrainingDashboard:
         self._frame_rate = 0.0
         self._iteration_rate = 0.0
         self._checkpoint = "—"
+        self._matches = 0
+        self._match_rate = 0.0
         self._progress = Progress(
             TextColumn("[bold green]{task.description}"),
             BarColumn(),
@@ -47,7 +50,10 @@ class TrainingDashboard:
             console=self.console,
             expand=True,
         )
-        self._task = self._progress.add_task("training", total=self.total_iterations)
+        self._task = self._progress.add_task(
+            "matches" if self.target_matches is not None else "training",
+            total=self.target_matches or self.total_iterations,
+        )
         self._live = Live(
             Group(self._table(), self._progress),
             console=self.console,
@@ -79,6 +85,8 @@ class TrainingDashboard:
         completed: int,
         iteration_rate: float,
         frame_rate: float,
+        matches: int,
+        match_rate: float,
         checkpoint: bool,
     ) -> None:
         self._latest = result
@@ -86,10 +94,15 @@ class TrainingDashboard:
         self._progress_values.append(result.progress)
         self._iteration_rate = iteration_rate
         self._frame_rate = frame_rate
+        self._matches = matches
+        self._match_rate = match_rate
         self._status = "checkpointed" if checkpoint else "running"
         if checkpoint and result.checkpoint is not None:
             self._checkpoint = result.checkpoint.rsplit("/", maxsplit=1)[-1]
-        self._progress.update(self._task, completed=completed)
+        progress_completed = (
+            min(matches, self.target_matches) if self.target_matches is not None else completed
+        )
+        self._progress.update(self._task, completed=progress_completed)
         if self.interactive:
             self.refresh()
         else:
@@ -97,6 +110,7 @@ class TrainingDashboard:
                 f"{result.iteration:>6}/{self.start_iteration + self.total_iterations - 1:<6} "
                 f"return {result.return_total:+8.3f}  progress {result.progress:+8.3f}  "
                 f"{iteration_rate:5.2f} iter/s  {frame_rate:9,.0f} frames/s"
+                f"  {match_rate:6.2f} matches/s"
                 f"{'  checkpoint' if checkpoint else ''}"
             )
 
@@ -128,6 +142,11 @@ class TrainingDashboard:
             f"{self._iteration_rate:.2f} iter/s",
         )
         table.add_row("experience", f"{self._frame_rate:,.0f} frames/s", "")
+        table.add_row(
+            "matches",
+            f"{self._matches:,}",
+            f"{self._match_rate:.2f} matches/s",
+        )
         table.add_row(
             "return",
             f"{latest.return_total:+.4f}" if latest is not None else "—",

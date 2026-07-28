@@ -44,12 +44,17 @@ select CUDA when available and visibly warn when falling back to CPU.
 - **THEN** training continues on CPU and emits a visible fallback warning
 
 ### Requirement: Vector-world network batching
-The runner SHALL batch shared actor, critic, and PPO tensor operations across a
-configurable positive number of independent worlds.
+The runner SHALL own configurable independent worlds in one native batch and
+batch shared actor, critic, and PPO tensor operations across them.
 
 #### Scenario: Collect sixteen worlds
-- **WHEN** a rollout uses sixteen vector worlds
+- **WHEN** a rollout explicitly requests sixteen vector worlds
 - **THEN** its trajectory retains time, world, and three-agent batch dimensions
+
+#### Scenario: Collect sixty-four worlds
+- **WHEN** a rollout uses the default 64 vector worlds
+- **THEN** its trajectory retains time, world, and three-agent batch dimensions
+  while native physics steps the worlds without per-world Python calls
 
 ### Requirement: Long-run terminal observability
 An interactive run SHALL keep a progress bar below current and rolling training
@@ -68,4 +73,13 @@ actions independently from physical actuator dynamics.
 #### Scenario: Abrupt consecutive actions
 - **WHEN** action-delta regularization is positive and commands change abruptly
 - **THEN** the reward includes the configured negative action-delta term
+
+### Requirement: Persistent match-target training
+The runner SHALL keep 30-second matches alive across shorter PPO rollouts and
+SHALL support stopping after a requested number of completed matches.
+
+#### Scenario: Train for one hundred thousand matches
+- **WHEN** a run targets 100,000 matches
+- **THEN** progress reports completed matches and matches/s and the final policy
+  is checkpointed after reaching or exceeding the target
 

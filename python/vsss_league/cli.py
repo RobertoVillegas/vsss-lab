@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import math
 import signal
 import time
 from dataclasses import asdict, replace
@@ -20,7 +21,11 @@ from vsss_league.promotion import FixtureResult, decide_promotion
 from vsss_league.registry import LeagueRegistry, PolicyEntry
 from vsss_league.replay import run_policy_replay
 from vsss_league.tournament import evaluate_candidate_vs_heuristic
-from vsss_league.training import IterationResult, train_iteration
+from vsss_league.training import (
+    IterationResult,
+    create_rollout_session,
+    train_iteration,
+)
 
 
 def parser() -> argparse.ArgumentParser:
@@ -32,6 +37,7 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--match-state", type=Path, required=True)
     run.add_argument("--run-dir", type=Path, required=True)
     run.add_argument("--iterations", type=int, default=3)
+    run.add_argument("--matches", type=int)
     run.add_argument("--capture-every", type=int, default=1)
     run.add_argument("--capture-seconds", type=float, default=60.0)
     run.add_argument("--checkpoint-every", type=int, default=100)
@@ -80,12 +86,14 @@ def main() -> None:
 def _run(arguments: argparse.Namespace) -> None:
     if (
         arguments.iterations <= 0
+        or (arguments.matches is not None and arguments.matches <= 0)
         or arguments.capture_every <= 0
         or arguments.capture_seconds <= 0
         or arguments.checkpoint_every <= 0
     ):
         raise ValueError(
-            "iterations, capture-every, capture-seconds, and checkpoint-every must be positive"
+            "iterations, matches, capture-every, capture-seconds, and checkpoint-every "
+            "must be positive"
         )
     run_dir: Path = arguments.run_dir
     checkpoint_dir = run_dir / "checkpoints"
@@ -142,16 +150,24 @@ def _run(arguments: argparse.Namespace) -> None:
         start_iteration = 1
         parent_key = registry.current_main().key
     metrics_path = run_dir / "metrics.jsonl"
-    final_iteration = start_iteration + arguments.iterations - 1
+    requested_iterations = arguments.iterations
+    if arguments.matches is not None:
+        requested_iterations = math.ceil(arguments.matches / config.num_envs) * math.ceil(
+            config.horizon / config.rollout_steps
+        )
+    final_iteration = start_iteration + requested_iterations - 1
     stop_requested = False
     completed = 0
     total_frames = 0
+    total_matches = 0
     started_at = time.monotonic()
+    rollout_session = create_rollout_session(config, config_json, state_json)
     dashboard = TrainingDashboard(
         start_iteration=start_iteration,
-        total_iterations=arguments.iterations,
+        total_iterations=requested_iterations,
         device=learner.device.type,
         num_envs=config.num_envs,
+        target_matches=arguments.matches,
     )
     dashboard.start()
     if config.device == "auto" and learner.device.type == "cpu":
@@ -185,7 +201,16 @@ def _run(arguments: argparse.Namespace) -> None:
                 seed=config.seed + iteration,
                 opponent_id=parent_key,
                 checkpoint=checkpoint,
+                session=rollout_session,
             )
+            reached_match_target = (
+                arguments.matches is not None
+                and total_matches + result.matches >= arguments.matches
+            )
+            if reached_match_target and checkpoint is None:
+                checkpoint = checkpoint_dir / f"iteration-{iteration:06d}.pt"
+                learner.save(checkpoint)
+                result = replace(result, checkpoint=str(checkpoint.resolve()))
             if checkpoint is not None:
                 parent_key = _register_candidate(registry, config, result, checkpoint, parent_key)
             with metrics_path.open("a", encoding="utf-8") as metrics:
@@ -211,6 +236,7 @@ def _run(arguments: argparse.Namespace) -> None:
                 parent_key = _register_candidate(registry, config, result, checkpoint, parent_key)
             completed += 1
             total_frames += result.frames
+            total_matches += result.matches
             elapsed = time.monotonic() - started_at
             rate = completed / elapsed
             frame_rate = total_frames / elapsed
@@ -219,9 +245,13 @@ def _run(arguments: argparse.Namespace) -> None:
                 completed=completed,
                 iteration_rate=rate,
                 frame_rate=frame_rate,
+                matches=total_matches,
+                match_rate=total_matches / elapsed,
                 checkpoint=checkpoint is not None,
             )
             if stop_requested:
+                break
+            if reached_match_target:
                 break
     finally:
         signal.signal(signal.SIGINT, previous_sigint)
@@ -233,6 +263,7 @@ def _run(arguments: argparse.Namespace) -> None:
             {
                 "run_dir": str(run_dir.resolve()),
                 "iterations": completed,
+                "matches": total_matches,
                 "final_iteration": actual_final,
                 "latest_version": learner.policy_version,
                 "viewer_replays": str(replay_dir.resolve()),

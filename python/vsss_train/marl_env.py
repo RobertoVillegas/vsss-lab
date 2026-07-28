@@ -81,32 +81,7 @@ class MarlMatchEnv:
         self._previous_blue_actions = np.zeros((3, 2), dtype=np.float32)
 
     def reset(self, seed: int) -> TeamBatch:
-        rng = np.random.default_rng(seed)
-        snapshot = copy.deepcopy(self._template)
-        snapshot.update(tick=0, simulation_time=0.0, score_blue=0, score_yellow=0, events=0)
-        snapshot["ball"].update(
-            x=float(rng.uniform(-0.15, 0.25)),
-            y=float(rng.uniform(-0.35, 0.35)),
-            vx=0.0,
-            vy=0.0,
-            omega=0.0,
-        )
-        starts = (
-            (-0.52, 0.0),
-            (-0.35, 0.30),
-            (-0.35, -0.30),
-            (0.52, 0.0),
-            (0.35, 0.30),
-            (0.35, -0.30),
-        )
-        for robot, (x, y) in zip(snapshot["robots"], starts, strict=True):
-            robot["pose"].update(
-                x=float(x + rng.uniform(-0.04, 0.04)),
-                y=float(y + rng.uniform(-0.04, 0.04)),
-                theta=float(rng.uniform(-0.25, 0.25)),
-            )
-            robot["twist"].update(vx=0.0, vy=0.0, omega=0.0)
-            robot.update(wheel_speed_left=0.0, wheel_speed_right=0.0)
+        snapshot = _seeded_snapshot(self._template, seed)
         self._native.restore(0, json.dumps(snapshot, separators=(",", ":")))
         self.state = self._native.step(np.zeros((1, 6, 2), dtype=np.float32))[0]
         self.steps = 0
@@ -182,6 +157,150 @@ class MarlMatchEnv:
             )
             for slot in range(3)
         )
+
+
+class VectorMarlMatchEnv:
+    """One native parallel batch of independent C7/C8 worlds."""
+
+    def __init__(
+        self,
+        config_json: str,
+        state_json: str,
+        *,
+        num_envs: int,
+        stage: int,
+        horizon: int,
+        action_repeat: int,
+        action_delta_coefficient: float,
+    ) -> None:
+        if stage not in (7, 8):
+            raise ValueError("stage must be C7 or C8")
+        self._config = json.loads(config_json)
+        self._template = json.loads(state_json)
+        self._native = BatchSimulator(config_json, state_json, num_envs)
+        self._yellow = DynamicTeamController(3, -1)
+        self._max_wheel_speed = float(self._config["max_wheel_speed"])
+        self.num_envs = num_envs
+        self.stage = stage
+        self.horizon = horizon
+        self.action_repeat = action_repeat
+        self.action_delta_coefficient = action_delta_coefficient
+        self.states = np.zeros((num_envs, BatchSimulator.state_width()), dtype=np.float32)
+        self.steps = np.zeros(num_envs, dtype=np.int64)
+        self._ball_x = np.zeros(num_envs, dtype=np.float32)
+        self._closest = np.zeros(num_envs, dtype=np.float32)
+        self._initial_ball_x = np.zeros(num_envs, dtype=np.float32)
+        self._initial_closest = np.zeros(num_envs, dtype=np.float32)
+        self._previous_blue_actions = np.zeros((num_envs, 3, 2), dtype=np.float32)
+
+    def reset(self, world: int, seed: int) -> TeamBatch:
+        snapshot = _seeded_snapshot(self._template, seed)
+        self.states[world] = self._native.restore_state(
+            world, json.dumps(snapshot, separators=(",", ":"))
+        )
+        self.steps[world] = 0
+        self._ball_x[world] = self.states[world, 5]
+        self._closest[world] = _closest_blue_distance(self.states[world])
+        self._initial_ball_x[world] = self._ball_x[world]
+        self._initial_closest[world] = self._closest[world]
+        self._previous_blue_actions[world].fill(0.0)
+        return build_team_observation(self.states[world], team=0)
+
+    def step(
+        self,
+        blue_actions: FloatArray,
+        opponent_actions: FloatArray | None,
+    ) -> tuple[TeamBatch, FloatArray, NDArray[np.bool_], NDArray[np.int64]]:
+        normalized_blue = np.clip(blue_actions, -1.0, 1.0)
+        action_delta = normalized_blue - self._previous_blue_actions
+        actions = np.zeros((self.num_envs, 6, 2), dtype=np.float32)
+        actions[:, :3] = normalized_blue * self._max_wheel_speed
+        if opponent_actions is not None:
+            actions[:, 3:] = np.clip(opponent_actions, -1.0, 1.0) * self._max_wheel_speed
+            self.states = self._native.step_repeated(actions, self.action_repeat)
+        elif self.stage == 8:
+            for _ in range(self.action_repeat):
+                for world in range(self.num_envs):
+                    actions[world, 3:] = (
+                        self._yellow.actions(self.states[world]) * self._max_wheel_speed
+                    )
+                self.states = self._native.step(actions)
+        else:
+            self.states = self._native.step_repeated(actions, self.action_repeat)
+        self.steps += 1
+        ball_x = self.states[:, 5]
+        closest = np.asarray(
+            [_closest_blue_distance(state) for state in self.states],
+            dtype=np.float32,
+        )
+        events = self.states[:, -1].astype(np.int64)
+        rewards = (
+            4.0 * (ball_x - self._ball_x)
+            + 2.0 * (self._closest - closest)
+            + 10.0 * ((events & 1) != 0)
+            - 10.0 * ((events & 2) != 0)
+            - self.action_delta_coefficient * np.square(action_delta).mean(axis=(1, 2))
+        ).astype(np.float32)
+        self._previous_blue_actions = normalized_blue.copy()
+        self._ball_x = ball_x.copy()
+        self._closest = closest
+        done = (self.steps >= self.horizon) | ((events & 0b11) != 0)
+        observations = stack_team_batches(
+            [build_team_observation(state, team=0) for state in self.states]
+        )
+        return observations, rewards, done, events
+
+    def mark_progress_origin(self) -> None:
+        self._initial_closest = self._closest.copy()
+        self._initial_ball_x = self._ball_x.copy()
+
+    def progress_scores(self) -> FloatArray:
+        return (
+            2.0 * (self._initial_closest - self._closest) + (self._ball_x - self._initial_ball_x)
+        ).astype(np.float32)
+
+    def snapshot(self, world: int) -> dict[str, Any]:
+        return cast(dict[str, Any], json.loads(self._native.snapshots()[world]))
+
+
+def _seeded_snapshot(template: dict[str, Any], seed: int) -> dict[str, Any]:
+    rng = np.random.default_rng(seed)
+    snapshot = copy.deepcopy(template)
+    snapshot.update(tick=0, simulation_time=0.0, score_blue=0, score_yellow=0, events=0)
+    snapshot["ball"].update(
+        x=float(rng.uniform(-0.15, 0.25)),
+        y=float(rng.uniform(-0.35, 0.35)),
+        vx=0.0,
+        vy=0.0,
+        omega=0.0,
+    )
+    starts = (
+        (-0.52, 0.0),
+        (-0.35, 0.30),
+        (-0.35, -0.30),
+        (0.52, 0.0),
+        (0.35, 0.30),
+        (0.35, -0.30),
+    )
+    for robot, (x, y) in zip(snapshot["robots"], starts, strict=True):
+        robot["pose"].update(
+            x=float(x + rng.uniform(-0.04, 0.04)),
+            y=float(y + rng.uniform(-0.04, 0.04)),
+            theta=float(rng.uniform(-0.25, 0.25)),
+        )
+        robot["twist"].update(vx=0.0, vy=0.0, omega=0.0)
+        robot.update(wheel_speed_left=0.0, wheel_speed_right=0.0)
+    return snapshot
+
+
+def _closest_blue_distance(state: FloatArray) -> float:
+    return min(
+        math.hypot(
+            float(state[5] - state[ROBOT_BASE + slot * ROBOT_WIDTH + 2]),
+            float(state[6] - state[ROBOT_BASE + slot * ROBOT_WIDTH + 3]),
+        )
+        for slot in range(3)
+    )
 
 
 def distill_dynamic_teacher(

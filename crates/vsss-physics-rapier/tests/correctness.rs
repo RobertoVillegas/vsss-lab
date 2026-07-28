@@ -111,3 +111,76 @@ fn resetting_one_batch_world_preserves_neighbor() {
     assert_eq!(batch.world(0).snapshot(), neighbor);
     assert_eq!(batch.world(1).snapshot().tick, 42);
 }
+
+#[test]
+fn parallel_repeated_batch_matches_independent_worlds() {
+    let actions = [RobotAction::wheel_velocity(AngularVelocity(8.0), AngularVelocity(12.0)); 6];
+    let mut expected_worlds = (0..64).map(|_| world()).collect::<Vec<_>>();
+    for backend in &mut expected_worlds {
+        for _ in 0..4 {
+            backend.step(&actions).unwrap();
+        }
+    }
+    let mut batch = PhysicsBatch::new((0..64).map(|_| world()).collect());
+    let actual = batch.step_repeated(&[actions; 64], 4).unwrap();
+    assert_eq!(
+        actual,
+        expected_worlds
+            .iter()
+            .map(PhysicsBackend::snapshot)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn sustained_head_on_commands_do_not_overlap_robots() {
+    let mut backend = world();
+    let mut snapshot = backend.snapshot();
+    snapshot.robots[0].pose.x = Distance(-0.10);
+    snapshot.robots[0].pose.y = Distance(0.0);
+    snapshot.robots[0].pose.theta = Angle(0.0);
+    snapshot.robots[1].pose.x = Distance(0.10);
+    snapshot.robots[1].pose.y = Distance(0.0);
+    snapshot.robots[1].pose.theta = Angle(core::f32::consts::PI);
+    backend.restore(&snapshot).unwrap();
+    let mut actions = stopped();
+    actions[0] = RobotAction::wheel_velocity(AngularVelocity(30.0), AngularVelocity(30.0));
+    actions[1] = RobotAction::wheel_velocity(AngularVelocity(30.0), AngularVelocity(30.0));
+
+    let mut minimum_separation = f32::MAX;
+    for _ in 0..1_000 {
+        let state = backend.step(&actions).unwrap();
+        minimum_separation = minimum_separation
+            .min((state.robots[1].pose.x.get() - state.robots[0].pose.x.get()).abs());
+    }
+
+    assert!(minimum_separation >= 0.0739, "{minimum_separation}");
+}
+
+#[test]
+fn sustained_robot_command_does_not_engulf_ball() {
+    let mut backend = world();
+    let mut snapshot = backend.snapshot();
+    snapshot.robots[0].pose.x = Distance(-0.10);
+    snapshot.robots[0].pose.y = Distance(0.0);
+    snapshot.robots[0].pose.theta = Angle(0.0);
+    snapshot.ball.x = Distance(0.0);
+    snapshot.ball.y = Distance(0.0);
+    snapshot.ball.vx.0 = 0.0;
+    snapshot.ball.vy.0 = 0.0;
+    backend.restore(&snapshot).unwrap();
+    let mut actions = stopped();
+    actions[0] = RobotAction::wheel_velocity(AngularVelocity(30.0), AngularVelocity(30.0));
+
+    let mut minimum_separation = f32::MAX;
+    for _ in 0..1_000 {
+        let state = backend.step(&actions).unwrap();
+        minimum_separation = minimum_separation.min(
+            (state.ball.x.get() - state.robots[0].pose.x.get())
+                .hypot(state.ball.y.get() - state.robots[0].pose.y.get()),
+        );
+    }
+
+    let required = 0.075 / 2.0 + 0.0215 - 0.0011;
+    assert!(minimum_separation >= required, "{minimum_separation}");
+}

@@ -1,5 +1,6 @@
-//! Sequential independent-world batch used by M2.
+//! Parallel independent-world batch used by training and evaluation.
 
+use rayon::prelude::*;
 use vsss_physics_api::{PhysicsBackend, PhysicsError};
 use vsss_spec::{MatchState, RobotAction};
 
@@ -8,7 +9,9 @@ pub struct PhysicsBatch<B> {
     worlds: Vec<B>,
 }
 
-impl<B: PhysicsBackend> PhysicsBatch<B> {
+const PARALLEL_WORLD_THRESHOLD: usize = 32;
+
+impl<B: PhysicsBackend + Send> PhysicsBatch<B> {
     /// Creates a non-empty batch.
     ///
     /// # Panics
@@ -43,10 +46,61 @@ impl<B: PhysicsBackend> PhysicsBatch<B> {
     /// Panics unless exactly one action set is provided per world.
     pub fn step(&mut self, actions: &[[RobotAction; 6]]) -> Result<Vec<MatchState>, PhysicsError> {
         assert_eq!(actions.len(), self.worlds.len(), "one action set per world");
+        if self.worlds.len() < PARALLEL_WORLD_THRESHOLD {
+            return self
+                .worlds
+                .iter_mut()
+                .zip(actions)
+                .map(|(world, action)| world.step(action))
+                .collect();
+        }
         self.worlds
-            .iter_mut()
-            .zip(actions)
+            .par_iter_mut()
+            .zip(actions.par_iter())
             .map(|(world, action)| world.step(action))
+            .collect::<Vec<_>>()
+            .into_iter()
+            .collect()
+    }
+
+    /// Advances every world multiple steps while scheduling each world once.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first backend error in stable world and repeat order.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless exactly one action set is provided per world or `repeats`
+    /// is zero.
+    pub fn step_repeated(
+        &mut self,
+        actions: &[[RobotAction; 6]],
+        repeats: usize,
+    ) -> Result<Vec<MatchState>, PhysicsError> {
+        assert_eq!(actions.len(), self.worlds.len(), "one action set per world");
+        assert!(repeats > 0, "repeats must be positive");
+        let advance = |world: &mut B, action: &[RobotAction; 6]| {
+            let mut state = world.step(action)?;
+            for _ in 1..repeats {
+                state = world.step(action)?;
+            }
+            Ok(state)
+        };
+        if self.worlds.len() < PARALLEL_WORLD_THRESHOLD {
+            return self
+                .worlds
+                .iter_mut()
+                .zip(actions)
+                .map(|(world, action)| advance(world, action))
+                .collect();
+        }
+        self.worlds
+            .par_iter_mut()
+            .zip(actions.par_iter())
+            .map(|(world, action)| advance(world, action))
+            .collect::<Vec<_>>()
+            .into_iter()
             .collect()
     }
 
