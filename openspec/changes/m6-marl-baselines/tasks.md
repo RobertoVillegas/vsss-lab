@@ -18,5 +18,5 @@
 ## 4. Verification
 
 - [x] 4.1 Add CLI/configs and executable M6 smoke/identity/evaluation gates
-- [ ] 4.2 Record benchmark evidence and known limitations
+- [x] 4.2 Record benchmark evidence and known limitations
 - [ ] 4.3 Run all gates, sign small commits, archive OpenSpec, and push

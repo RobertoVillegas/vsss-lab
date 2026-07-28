@@ -32,6 +32,10 @@ class TeamBatch(NamedTuple):
     def permute_agents(self, order: Tensor) -> TeamBatch:
         return TeamBatch(*(field.index_select(0, order) for field in self))
 
+    def select_batch(self, indices: Tensor) -> TeamBatch:
+        """Select leading batch entries while retaining the complete agent group."""
+        return TeamBatch(*(field.index_select(0, indices) for field in self))
+
     def permute_entities(self, teammate_order: Tensor, opponent_order: Tensor) -> TeamBatch:
         return TeamBatch(
             self.self_features,
@@ -41,6 +45,18 @@ class TeamBatch(NamedTuple):
             self.teammates.index_select(1, teammate_order),
             self.opponents.index_select(1, opponent_order),
         )
+
+
+def stack_team_batches(observations: list[TeamBatch]) -> TeamBatch:
+    """Stack observations along a new leading batch dimension."""
+    if not observations:
+        raise ValueError("cannot stack an empty observation list")
+    return TeamBatch(
+        *(
+            torch.stack([getattr(observation, name) for observation in observations])
+            for name in TeamBatch._fields
+        )
+    )
 
 
 def _robot(state: FloatArray, slot: int) -> FloatArray:

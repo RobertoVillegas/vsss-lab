@@ -72,6 +72,9 @@ evaluate-marl config="experiments/configs/m6-mappo.toml" checkpoint="/home/rob/c
 m6-smoke:
   uv run --group train pytest -q tests/test_marl.py
 
+benchmark-marl iterations="2000":
+  uv run --group train python -m tools.benchmark_marl --iterations {{iterations}}
+
 clean:
   cargo clean
   rm -rf .venv .pytest_cache .mypy_cache .ruff_cache

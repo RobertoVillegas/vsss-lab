@@ -129,35 +129,45 @@ class MarlLearner:
 
         totals = {"policy_loss": 0.0, "value_loss": 0.0, "entropy": 0.0}
         steps = 0
+        generator = torch.Generator().manual_seed(self.config.seed + self.policy_version)
+        time_steps_per_batch = max(1, self.config.minibatch_size // 3)
         for _ in range(self.config.epochs):
-            mean, log_std = self.actor(observation)
-            distribution = Normal(mean, log_std.exp())
-            log_probability = distribution.log_prob(data["action"]).sum(-1)  # type: ignore[no-untyped-call]
-            ratio = (log_probability - data["sample_log_prob"]).exp()
-            clipped = ratio.clamp(
-                1.0 - self.config.clip_epsilon,
-                1.0 + self.config.clip_epsilon,
-            )
-            policy_loss = -torch.minimum(ratio * advantage, clipped * advantage).mean()
-            value = self.critic(observation)
-            value_loss = 0.5 * (value - value_target).square().mean()
-            entropy = distribution.entropy().sum(-1).mean()  # type: ignore[no-untyped-call]
-            loss = (
-                policy_loss
-                + self.config.value_coefficient * value_loss
-                - self.config.entropy_coefficient * entropy
-            )
-            self.optimizer.zero_grad(set_to_none=True)
-            loss.backward()
-            nn.utils.clip_grad_norm_(
-                (*self.actor.parameters(), *self.critic.parameters()),
-                self.config.max_grad_norm,
-            )
-            self.optimizer.step()
-            totals["policy_loss"] += float(policy_loss.detach())
-            totals["value_loss"] += float(value_loss.detach())
-            totals["entropy"] += float(entropy.detach())
-            steps += 1
+            permutation = torch.randperm(len(data), generator=generator)
+            for indices in permutation.split(time_steps_per_batch):  # type: ignore[no-untyped-call]
+                sample = data[indices]
+                sample_observation = observation.select_batch(indices)
+                sample_advantage = advantage[indices]
+                mean, log_std = self.actor(sample_observation)
+                distribution = Normal(mean, log_std.exp())
+                log_probability = distribution.log_prob(sample["action"]).sum(-1)  # type: ignore[no-untyped-call]
+                ratio = (log_probability - sample["sample_log_prob"]).exp()
+                clipped = ratio.clamp(
+                    1.0 - self.config.clip_epsilon,
+                    1.0 + self.config.clip_epsilon,
+                )
+                policy_loss = -torch.minimum(
+                    ratio * sample_advantage,
+                    clipped * sample_advantage,
+                ).mean()
+                value = self.critic(sample_observation)
+                value_loss = 0.5 * (value - value_target[indices]).square().mean()
+                entropy = distribution.entropy().sum(-1).mean()  # type: ignore[no-untyped-call]
+                loss = (
+                    policy_loss
+                    + self.config.value_coefficient * value_loss
+                    - self.config.entropy_coefficient * entropy
+                )
+                self.optimizer.zero_grad(set_to_none=True)
+                loss.backward()
+                nn.utils.clip_grad_norm_(
+                    (*self.actor.parameters(), *self.critic.parameters()),
+                    self.config.max_grad_norm,
+                )
+                self.optimizer.step()
+                totals["policy_loss"] += float(policy_loss.detach())
+                totals["value_loss"] += float(value_loss.detach())
+                totals["entropy"] += float(entropy.detach())
+                steps += 1
         self.policy_version += 1
         return {name: value / steps for name, value in totals.items()}
 

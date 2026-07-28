@@ -14,7 +14,12 @@ from numpy.typing import NDArray
 from vsss_baselines import DynamicTeamController
 from vsss_env._native import BatchSimulator
 
-from vsss_train.marl import SharedActor, TeamBatch, build_team_observation
+from vsss_train.marl import (
+    SharedActor,
+    TeamBatch,
+    build_team_observation,
+    stack_team_batches,
+)
 from vsss_train.ppo import seed_everything
 
 FloatArray = NDArray[np.float32]
@@ -152,15 +157,6 @@ class MarlMatchEnv:
         )
 
 
-def _stack_observations(observations: list[TeamBatch]) -> TeamBatch:
-    return TeamBatch(
-        *(
-            torch.stack([getattr(observation, name) for observation in observations])
-            for name in TeamBatch._fields
-        )
-    )
-
-
 def distill_dynamic_teacher(
     actor: SharedActor,
     config_json: str,
@@ -179,14 +175,14 @@ def distill_dynamic_teacher(
     for sample_seed in range(seed, seed + samples):
         observations.append(env.reset(sample_seed))
         actions.append(torch.from_numpy(teacher.actions(env.state).copy()))
-    batch = _stack_observations(observations)
+    batch = stack_team_batches(observations)
     targets = torch.stack(actions)
     optimizer = torch.optim.Adam(actor.parameters(), lr=1e-3)
     loss = torch.zeros(())
     generator = torch.Generator().manual_seed(seed)
     for _ in range(epochs):
         for indices in torch.randperm(samples, generator=generator).split(256):  # type: ignore[no-untyped-call]
-            mean, _ = actor(TeamBatch(*(field[indices] for field in batch)))
+            mean, _ = actor(batch.select_batch(indices))
             loss = (torch.tanh(mean) - targets[indices]).square().mean()
             optimizer.zero_grad(set_to_none=True)
             loss.backward()  # type: ignore[no-untyped-call]
