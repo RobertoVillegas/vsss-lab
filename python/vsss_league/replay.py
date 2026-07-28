@@ -21,6 +21,7 @@ from vsss_vision import (
     RobotEkf,
     SyntheticCamera,
     collision_aware_ball_prediction,
+    goalkeeper_interception,
 )
 
 
@@ -139,6 +140,9 @@ def run_policy_replay(
                 )
                 if estimate is not None:
                     robot_estimates.append(estimate)
+            interception = (
+                goalkeeper_interception(ball_prediction) if ball_prediction is not None else None
+            )
             canonical = json.dumps(snapshot, sort_keys=True, separators=(",", ":"))
             final_checksum = hashlib.sha256(canonical.encode()).hexdigest()
             index += 1
@@ -161,6 +165,9 @@ def run_policy_replay(
                         "robot_estimates": [asdict(estimate) for estimate in robot_estimates],
                         "ball_prediction": (
                             asdict(ball_prediction) if ball_prediction is not None else None
+                        ),
+                        "goalkeeper_interception": (
+                            asdict(interception) if interception is not None else None
                         ),
                     },
                     "rewards": [reward.total] * 3 + [-reward.total] * 3,

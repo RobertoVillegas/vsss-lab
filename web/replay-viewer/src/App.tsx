@@ -134,6 +134,14 @@ export default function App() {
     () => frame?.rewards.reduce((sum, value) => sum + value, 0) ?? 0,
     [frame],
   );
+  const vision = frame?.perception;
+  const visibleMarkers = vision?.camera.robots.length ?? 0;
+  const meanAssociationConfidence = visibleMarkers
+    ? (vision?.camera.robots.reduce(
+        (total, robot) => total + robot.association.confidence,
+        0,
+      ) ?? 0) / visibleMarkers
+    : 0;
 
   return (
     <main className="app-shell">
@@ -216,6 +224,45 @@ export default function App() {
             Prediction is causal
             {frame?.perception?.policy_visible ? " and policy-visible" : " observer-only"}
           </small>
+          <dl className="details">
+            <div>
+              <dt>Ball estimate</dt>
+              <dd>
+                {vision?.ball_estimate
+                  ? vision.ball_estimate.measurement_accepted
+                    ? "ACCEPTED"
+                    : vision.ball_estimate.rejection_reason?.toUpperCase() ?? "REJECTED"
+                  : "UNAVAILABLE"}
+              </dd>
+            </div>
+            <div>
+              <dt>Estimate age</dt>
+              <dd>
+                {vision?.ball_estimate
+                  ? `${((vision.ball_estimate.update_time - vision.ball_estimate.effective_time) * 1000).toFixed(1)}ms`
+                  : "—"}
+              </dd>
+            </div>
+            <div><dt>Visible markers</dt><dd>{visibleMarkers}/6</dd></div>
+            <div>
+              <dt>Association</dt>
+              <dd>{visibleMarkers ? meanAssociationConfidence.toFixed(3) : "—"}</dd>
+            </div>
+            <div>
+              <dt>Ambiguous</dt>
+              <dd>
+                {vision?.camera.robots.filter((robot) => robot.association.ambiguous).length ?? 0}
+              </dd>
+            </div>
+            <div>
+              <dt>GK intercept</dt>
+              <dd>
+                {vision?.goalkeeper_interception
+                  ? `${vision.goalkeeper_interception.team.toUpperCase()} +${vision.goalkeeper_interception.elapsed.toFixed(2)}s`
+                  : "—"}
+              </dd>
+            </div>
+          </dl>
           <div className="section-rule" />
           <p className="side-heading">POLICY MATCHUP</p>
           <Policy team="BLUE" value={replay?.header.policies.blue} />

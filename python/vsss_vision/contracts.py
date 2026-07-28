@@ -84,6 +84,16 @@ class Prediction:
 
 
 @dataclass(frozen=True)
+class Interception:
+    team: str
+    elapsed: float
+    x: float
+    y: float
+    model_id: str
+    schema_version: int = SCHEMA_VERSION
+
+
+@dataclass(frozen=True)
 class EstimatorCalibration:
     calibration_id: str = "m12-reference-v1"
     ball_process_variance: float = 0.08

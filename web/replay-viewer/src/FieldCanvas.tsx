@@ -206,6 +206,23 @@ export function FieldCanvas({ header, frame, layers }: Props) {
       context.lineTo(measuredX, measuredY + 5);
       context.stroke();
     }
+    const interception = perception?.goalkeeper_interception;
+    if (layers.predicted && interception) {
+      const [interceptionX, interceptionY] = point(interception.x, interception.y);
+      context.save();
+      context.translate(interceptionX, interceptionY);
+      context.rotate(Math.PI / 4);
+      context.fillStyle = interception.team === "blue" ? "#49a7ff" : "#ffd84a";
+      context.fillRect(-5, -5, 10, 10);
+      context.restore();
+      context.fillStyle = "rgba(244, 255, 250, 0.9)";
+      context.font = "10px ui-monospace, monospace";
+      context.fillText(
+        `${interception.team.toUpperCase()} GK +${interception.elapsed.toFixed(2)}s`,
+        interceptionX,
+        interceptionY - 10,
+      );
+    }
 
     const robotWidth = header.config.robot.length * scale;
     const robotHeight = header.config.robot.width * scale;

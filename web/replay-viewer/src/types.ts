@@ -78,16 +78,35 @@ export interface ReplayFrame {
   perception?: {
     policy_visible: boolean;
     camera: {
+      capture_time: number;
+      arrival_time: number;
       ball: { x: number; y: number } | null;
+      robots: {
+        association: {
+          marker_id: number | null;
+          confidence: number;
+          ambiguous: boolean;
+        };
+      }[];
     };
     ball_estimate: {
+      effective_time: number;
+      update_time: number;
       state: [number, number, number, number, number, number];
       measurement_accepted: boolean;
+      rejection_reason: string | null;
     } | null;
     ball_prediction: {
       samples: [number, number, number][];
       uncertainty: [number, number, number][];
       stale: boolean;
+      model_id: string;
+    } | null;
+    goalkeeper_interception: {
+      team: "blue" | "yellow";
+      elapsed: number;
+      x: number;
+      y: number;
       model_id: string;
     } | null;
   };

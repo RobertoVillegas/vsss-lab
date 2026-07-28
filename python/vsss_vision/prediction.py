@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
-from vsss_vision.contracts import BallEstimate, Prediction
+from vsss_vision.contracts import BallEstimate, Interception, Prediction
 
 
 @dataclass(frozen=True)
@@ -187,3 +187,28 @@ def segment_interception(
                 )
         previous = current
     return None
+
+
+def goalkeeper_interception(
+    prediction: Prediction,
+    model: FieldPredictionModel = DEFAULT_FIELD_PREDICTION_MODEL,
+    *,
+    line_inset: float = 0.07,
+) -> Interception | None:
+    candidates = []
+    half_goal = model.goal_width / 2.0
+    for team, sign in (("blue", -1.0), ("yellow", 1.0)):
+        x = sign * (model.length / 2.0 - line_inset)
+        crossing = segment_interception(prediction, (x, -half_goal), (x, half_goal))
+        if crossing is not None:
+            elapsed, crossing_x, crossing_y = crossing
+            candidates.append(
+                Interception(
+                    team=team,
+                    elapsed=elapsed,
+                    x=crossing_x,
+                    y=crossing_y,
+                    model_id=prediction.model_id,
+                )
+            )
+    return min(candidates, key=lambda candidate: candidate.elapsed, default=None)

@@ -1,8 +1,10 @@
+import pytest
 from vsss_vision import (
     BallEstimate,
     FieldPredictionModel,
     analytic_ball_prediction,
     collision_aware_ball_prediction,
+    goalkeeper_interception,
     segment_interception,
 )
 
@@ -106,3 +108,20 @@ def test_future_truth_cannot_change_present_state_prediction() -> None:
     second = collision_aware_ball_prediction(present, generated_time=1.02)
 
     assert first == second
+
+
+def test_goalkeeper_interception_selects_first_goal_line_crossing() -> None:
+    prediction = analytic_ball_prediction(
+        estimate(vx=1.0),
+        generated_time=1.0,
+        damping=0.0001,
+        horizon=1.0,
+        interval=0.01,
+    )
+
+    interception = goalkeeper_interception(prediction)
+
+    assert interception is not None
+    assert interception.team == "yellow"
+    assert interception.x == pytest.approx(0.68)
+    assert interception.elapsed == pytest.approx(0.68, abs=0.01)

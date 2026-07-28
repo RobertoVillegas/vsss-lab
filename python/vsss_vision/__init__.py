@@ -6,6 +6,7 @@ from vsss_vision.contracts import (
     BallEstimate,
     BallMeasurement,
     EstimatorCalibration,
+    Interception,
     Prediction,
     RobotEstimate,
     RobotMeasurement,
@@ -15,6 +16,7 @@ from vsss_vision.prediction import (
     FieldPredictionModel,
     analytic_ball_prediction,
     collision_aware_ball_prediction,
+    goalkeeper_interception,
     segment_interception,
 )
 
@@ -27,6 +29,7 @@ __all__ = [
     "CameraPerturbationProfile",
     "EstimatorCalibration",
     "FieldPredictionModel",
+    "Interception",
     "Prediction",
     "RobotEkf",
     "RobotEstimate",
@@ -34,5 +37,6 @@ __all__ = [
     "SyntheticCamera",
     "analytic_ball_prediction",
     "collision_aware_ball_prediction",
+    "goalkeeper_interception",
     "segment_interception",
 ]
