@@ -184,6 +184,7 @@ La plataforma debe permitir responder preguntas como:
 - núcleo físico dedicado al dominio;
 - timestep fijo;
 - cero rendering en el hot loop;
+- snapshots visuales muestreados hacia observers opcionales;
 - simulación batch;
 - estructuras de memoria contiguas;
 - feedback frecuente desde la política;
@@ -202,7 +203,7 @@ ObsBuilder        -> ObservationBuilder
 ActionParser      -> ActionAdapter
 RewardFunction    -> RewardTerm / RewardPipeline
 DoneCondition     -> TerminationCondition
-Renderer          -> Renderer / ReplayViewer
+Renderer          -> Observer sinks / FastSim2DViewer / ReplayViewer
 ```
 
 Cada componente será reemplazable y testeable por separado.
@@ -424,7 +425,14 @@ Molt no se utilizará directamente porque su contrato es token-first y vLLM-firs
 │ primary engine │          │ MJX/other later  │          │ validation backend│
 └───────┬────────┘          └──────────────────┘          └──────────┬────────┘
         │                                                            │
-        └──────────────► Replay / Golden Tests ◄─────────────────────┘
+        └──────────────► Canonical visual frames ◄───────────────────┘
+                                      │
+                ┌─────────────────────┼──────────────────────┐
+                │                     │                      │
+       ┌────────▼────────┐  ┌─────────▼─────────┐  ┌────────▼────────┐
+       │ Replay / golden │  │ Live 2D viewer    │  │ Metrics / debug │
+       │ lossless sink   │  │ bounded + lossy  │  │ optional sinks  │
+       └─────────────────┘  └───────────────────┘  └─────────────────┘
                                       │
                          ┌────────────▼─────────────┐
                          │       Match Server       │
@@ -460,6 +468,8 @@ Molt no se utilizará directamente porque su contrato es token-first y vLLM-firs
 | Distribución futura | Ray, solo después de benchmark |
 | Robótica | ROS 2 Lyrical |
 | Validación 3D | Gazebo Jetty |
+| Visualización fast sim | Frames canónicos + visor 2D Bevy nativo/WASM |
+| Observabilidad espacial opcional | Adapter Rerun, sujeto a benchmark |
 | Tracking | MLflow local inicialmente |
 | Métricas | TensorBoard-compatible + JSONL/Parquet |
 | Tests | pytest, cargo test, property tests, golden tests |
@@ -1219,7 +1229,46 @@ Formato:
 - TensorBoard/MLflow para curvas;
 - no registrar cada estado en stdout.
 
-### 24.3 Métricas de sistema
+### 24.3 Frames visuales y observers
+
+La interfaz gráfica no es un backend físico. Rapier2D y los futuros backends
+producen estado canónico; observers opcionales lo adaptan a consumidores live,
+replay y métricas.
+
+Un frame visual contiene:
+
+- versión del envelope;
+- tick monotónico y tiempo simulado;
+- `MatchState` canónico;
+- acciones aplicadas;
+- eventos;
+- rewards y diagnósticos opcionales.
+
+Semánticas de entrega:
+
+- `NullSink`: ruta por defecto del entrenamiento, sin runtime gráfico;
+- `ReplaySink`: lossless y explícito;
+- `LiveSink`: muestreado, bounded y lossy; conserva el frame más reciente;
+- `MetricsSink`: agrega telemetría sin modificar estado.
+
+El visor nunca aplica backpressure al motor. Si consume más lento, descarta
+frames visuales y muestra el contador de drops. Un replay lossless sigue siendo
+la evidencia autoritativa.
+
+### 24.4 Visor 2D del fast simulator
+
+El visor ligero comparte el mismo modelo de frame para fuentes live y replay.
+Debe representar campo, robots, pelota, score, headings, velocidades,
+trayectorias, acciones, rewards y marcadores de eventos. Debe soportar pausa,
+seek, single-step exacto, velocidad de reproducción y render headless
+determinista.
+
+Bevy es la implementación preferida para cliente nativo/WASM. Rerun puede
+usarse como adapter opcional para timelines y debugging espacial. Gazebo no se
+usará como renderer de Rapier: conserva su función de backend M10 de mayor
+fidelidad.
+
+### 24.5 Métricas de sistema
 
 - ticks/s;
 - agent steps/s;
@@ -1422,6 +1471,8 @@ vsss-lab/
 │   ├── vsss-physics-rapier/
 │   ├── vsss-batch/
 │   ├── vsss-replay/
+│   ├── vsss-observer/
+│   ├── vsss-viewer-2d/
 │   ├── vsss-protocol/
 │   ├── vsss-match-server/
 │   └── vsss-python/
@@ -1789,6 +1840,25 @@ funcionan en WSL y Mac CPU.
 - replay viewer mínimo.
 
 **Gate:** partido 3v3 scripted reproducible.
+
+## M4.1 — Live visualization foundation
+
+**Entregables:**
+
+- canonical visual-frame adapter;
+- `NullSink`, `ReplaySink`, `LiveSink` bounded y `MetricsSink`;
+- misma proyección de escena desde live y replay;
+- visor 2D con pausa, seek, single-step, velocidad y overlays;
+- render headless determinista;
+- benchmark del costo con observers on/off;
+- ADR-0006 y OpenSpec `m4-live-visualization`.
+
+**No objetivos:** ROS/Gazebo, sensores 3D, protocolo remoto M8, formato binario
+definitivo y UI web administrativa.
+
+**Gate:** observar o renderizar no cambia el checksum del partido; un consumidor
+live lento no reduce ni bloquea el avance de física; live y replay producen la
+misma escena para un tick exacto.
 
 ## M5 — RL skills
 
