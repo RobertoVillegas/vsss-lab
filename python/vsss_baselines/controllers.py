@@ -24,7 +24,9 @@ def go_to_target(pose: tuple[float, float, float], target: tuple[float, float]) 
     distance = hypot(dx, dy)
     error = (atan2(dy, dx) - theta + pi) % (2.0 * pi) - pi
     forward = min(1.0, 2.0 * distance) * max(0.0, cos(error))
-    turn = max(-1.0, min(1.0, error / (pi / 2.0)))
+    # Wheel actions are normalized against the physical wheel-speed limit.
+    # A small differential is already a fast yaw command on a 60 mm axle.
+    turn = 0.08 * max(-1.0, min(1.0, error / (pi / 2.0)))
     return np.asarray(
         [np.clip(forward - turn, -1.0, 1.0), np.clip(forward + turn, -1.0, 1.0)],
         dtype=np.float32,

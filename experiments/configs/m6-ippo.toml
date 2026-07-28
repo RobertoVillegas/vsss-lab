@@ -13,5 +13,5 @@ epochs = 4
 minibatch_size = 256
 policy_id = "blue-shared"
 curriculum_stage = 7
-horizon = 1000
+horizon = 3000
 action_repeat = 4

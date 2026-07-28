@@ -56,6 +56,7 @@ class GoToTargetEnv:
         if stage not in range(len(STAGES)):
             raise ValueError("stage must be in [0, 5]")
         self._config_json = config_json
+        self._max_wheel_speed = float(json.loads(config_json)["max_wheel_speed"])
         self._template = json.loads(state_json)
         self._native = BatchSimulator(config_json, state_json, 1)
         self.stage = stage
@@ -101,7 +102,7 @@ class GoToTargetEnv:
 
     def step(self, action: FloatArray) -> tuple[FloatArray, float, bool, bool, dict[str, object]]:
         actions = np.zeros((1, 6, 2), dtype=np.float32)
-        actions[0, 0] = np.clip(action, -1.0, 1.0)
+        actions[0, 0] = np.clip(action, -1.0, 1.0) * self._max_wheel_speed
         state = self._native.step(actions)[0]
         for _ in range(self.action_repeat - 1):
             state = self._native.step(actions)[0]

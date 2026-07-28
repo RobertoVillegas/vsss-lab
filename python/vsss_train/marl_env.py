@@ -62,6 +62,7 @@ class MarlMatchEnv:
         if stage not in (7, 8):
             raise ValueError("stage must be C7 or C8")
         self._config = json.loads(config_json)
+        self._max_wheel_speed = float(self._config["max_wheel_speed"])
         self._template = json.loads(state_json)
         self._native = BatchSimulator(config_json, state_json, 1)
         self._yellow = DynamicTeamController(3, -1)
@@ -115,12 +116,12 @@ class MarlMatchEnv:
         opponent_actions: FloatArray | None = None,
     ) -> tuple[TeamBatch, TeamReward, bool, dict[str, Any]]:
         actions = np.zeros((1, 6, 2), dtype=np.float32)
-        actions[0, :3] = np.clip(blue_actions, -1.0, 1.0)
+        actions[0, :3] = np.clip(blue_actions, -1.0, 1.0) * self._max_wheel_speed
         for _ in range(self.action_repeat):
             if opponent_actions is not None:
-                actions[0, 3:] = np.clip(opponent_actions, -1.0, 1.0)
+                actions[0, 3:] = np.clip(opponent_actions, -1.0, 1.0) * self._max_wheel_speed
             elif self.stage == 8:
-                actions[0, 3:] = self._yellow.actions(self.state)
+                actions[0, 3:] = self._yellow.actions(self.state) * self._max_wheel_speed
             self.state = self._native.step(actions)[0]
         self.steps += 1
         ball_x = float(self.state[5])
@@ -185,6 +186,13 @@ def distill_dynamic_teacher(
 ) -> float:
     """Initialize a shared actor from M4 dynamic assignments over seeded resets."""
     seed_everything(seed)
+
+    def reset_module(module: torch.nn.Module) -> None:
+        reset = getattr(module, "reset_parameters", None)
+        if callable(reset):
+            reset()
+
+    actor.apply(reset_module)
     env = MarlMatchEnv(config_json, state_json, stage=8, horizon=1)
     teacher = DynamicTeamController(0, 1)
     observations: list[TeamBatch] = []
