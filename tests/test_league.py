@@ -5,17 +5,19 @@ from pathlib import Path
 
 import pytest
 import torch
+from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from vsss_eval import inspect_replay
 from vsss_league.promotion import FixtureResult, decide_promotion
 from vsss_league.ratings import elo_update
 from vsss_league.registry import LeagueRegistry, PolicyCategory, PolicyEntry
 from vsss_league.replay import run_policy_replay
+from vsss_league.telemetry import TrainingTelemetry
 from vsss_league.tournament import (
     TournamentReport,
     evaluate_candidate_vs_heuristic,
     evaluate_checkpoint_scorecard,
 )
-from vsss_league.training import create_rollout_session, train_iteration
+from vsss_league.training import IterationResult, create_rollout_session, train_iteration
 from vsss_train.config import MarlConfig
 from vsss_train.marl import SharedActor
 from vsss_train.marl_ppo import MarlLearner
@@ -156,6 +158,43 @@ def test_checkpoint_scorecard_uses_terminal_outcomes_without_replays(tmp_path: P
     assert scorecard.wins + scorecard.draws + scorecard.losses == scorecard.matches
     assert scorecard.checkpoint == str(checkpoint.resolve())
     assert tuple(tmp_path.iterdir()) == (checkpoint,)
+
+
+def test_tensorboard_telemetry_records_training_and_exploration(tmp_path: Path) -> None:
+    telemetry = TrainingTelemetry.create(
+        tmp_path,
+        MarlConfig(device="cpu", num_envs=1, rollout_steps=2, minibatch_size=6),
+        start_iteration=1,
+    )
+    telemetry.log_iteration(
+        IterationResult(
+            iteration=1,
+            policy_version=1,
+            opponent="heuristic",
+            seed=8,
+            frames=2,
+            matches=1,
+            return_total=0.5,
+            progress=0.25,
+            checkpoint=str(tmp_path / "checkpoint.pt"),
+            losses={"policy_loss": 0.1, "entropy": 1.2},
+            terminations={"goal": 1, "draw": 0, "stagnation": 0},
+        ),
+        environment_steps=2,
+        matches=1,
+        frames_per_second=100.0,
+        matches_per_second=2.0,
+        iterations_per_second=1.0,
+        actor_log_std=(-0.5, -0.6),
+    )
+    telemetry.close()
+
+    events = EventAccumulator(str(tmp_path / "tensorboard")).Reload()
+    scalar_tags = set(events.Tags()["scalars"])
+    assert "training/return" in scalar_tags
+    assert "termination/goal" in scalar_tags
+    assert "exploration/log_std_0" in scalar_tags
+    assert events.Scalars("training/return")[0].value == pytest.approx(0.5)
 
 
 def test_real_self_play_iteration_updates_version_and_checkpoint(tmp_path: Path) -> None:

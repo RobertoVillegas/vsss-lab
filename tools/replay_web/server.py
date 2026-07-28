@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 from dataclasses import asdict, dataclass
 from functools import lru_cache
@@ -147,6 +148,28 @@ def latest_metric(run_dir: Path) -> dict[str, Any] | None:
     return None
 
 
+def metric_history(run_dir: Path, max_points: int = 2_000) -> list[dict[str, Any]]:
+    """Return bounded, evenly sampled metrics while preserving the latest point."""
+    metrics_path = run_dir.resolve() / "metrics.jsonl"
+    if not metrics_path.is_file():
+        return []
+    values: list[dict[str, Any]] = []
+    for line in metrics_path.read_text(encoding="utf-8").splitlines():
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            values.append(value)
+    if len(values) <= max_points:
+        return values
+    stride = math.ceil(len(values) / max_points)
+    sampled = values[::stride]
+    if sampled[-1] is not values[-1]:
+        sampled.append(values[-1])
+    return sampled
+
+
 def resolve_replay(run_dir: Path, filename: str) -> Path | None:
     """Resolve only a replay currently discoverable in the configured run."""
     if REPLAY_NAME.fullmatch(filename) is None:
@@ -177,6 +200,9 @@ def make_handler(run_dir: Path, static_dir: Path) -> type[SimpleHTTPRequestHandl
                         "latest_metric": latest_metric(resolved_run),
                     }
                 )
+                return
+            if path == "/api/metrics":
+                self._send_json({"metrics": metric_history(resolved_run)})
                 return
             if path.startswith("/api/replays/"):
                 filename = unquote(path.removeprefix("/api/replays/"))

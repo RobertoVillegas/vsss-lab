@@ -20,6 +20,7 @@ from vsss_league.progress import TrainingDashboard
 from vsss_league.promotion import FixtureResult, decide_promotion
 from vsss_league.registry import LeagueRegistry, PolicyEntry
 from vsss_league.replay import run_policy_replay
+from vsss_league.telemetry import TrainingTelemetry
 from vsss_league.tournament import evaluate_candidate_vs_heuristic
 from vsss_league.training import (
     IterationResult,
@@ -191,6 +192,11 @@ def _run(arguments: argparse.Namespace) -> None:
     total_matches = 0
     started_at = time.monotonic()
     rollout_session = create_rollout_session(config, config_json, state_json)
+    telemetry = TrainingTelemetry.create(
+        run_dir,
+        config,
+        start_iteration=start_iteration,
+    )
     dashboard = TrainingDashboard(
         start_iteration=start_iteration,
         total_iterations=requested_iterations,
@@ -251,10 +257,55 @@ def _run(arguments: argparse.Namespace) -> None:
                 result = replace(result, checkpoint=str(checkpoint.resolve()))
             if checkpoint is not None:
                 parent_key = _register_candidate(registry, config, result, checkpoint, parent_key)
+            if interrupt.stop_requested and checkpoint is None:
+                checkpoint = checkpoint_dir / f"iteration-{iteration:06d}.pt"
+                learner.save(checkpoint)
+                result = replace(result, checkpoint=str(checkpoint.resolve()))
+                parent_key = _register_candidate(registry, config, result, checkpoint, parent_key)
+            completed += 1
+            total_frames += result.frames
+            total_matches += result.matches
+            elapsed = time.monotonic() - started_at
+            rate = completed / elapsed
+            frame_rate = total_frames / elapsed
+            matches_per_second = total_matches / elapsed
+            actor_log_std = tuple(
+                float(value) for value in learner.actor.log_std.detach().cpu().tolist()
+            )
+            metric_record = {
+                **asdict(result),
+                "environment_steps": total_frames,
+                "total_matches": total_matches,
+                "performance": {
+                    "frames_per_second": frame_rate,
+                    "matches_per_second": matches_per_second,
+                    "iterations_per_second": rate,
+                },
+                "exploration": {"actor_log_std": actor_log_std},
+            }
             with metrics_path.open("a", encoding="utf-8") as metrics:
                 metrics.write(
-                    json.dumps(asdict(result), sort_keys=True, separators=(",", ":")) + "\n"
+                    json.dumps(metric_record, sort_keys=True, separators=(",", ":")) + "\n"
                 )
+            telemetry.log_iteration(
+                result,
+                environment_steps=total_frames,
+                matches=total_matches,
+                frames_per_second=frame_rate,
+                matches_per_second=matches_per_second,
+                iterations_per_second=rate,
+                actor_log_std=actor_log_std,
+            )
+            dashboard.update(
+                result,
+                completed=completed,
+                iteration_rate=rate,
+                frame_rate=frame_rate,
+                environment_steps=total_frames,
+                matches=total_matches,
+                match_rate=matches_per_second,
+                checkpoint=checkpoint is not None,
+            )
             if iteration % arguments.capture_every == 0:
                 run_policy_replay(
                     learner.actor,
@@ -267,27 +318,6 @@ def _run(arguments: argparse.Namespace) -> None:
                     blue_policy=f"{config.policy_id}@{result.policy_version}",
                     yellow_policy=f"{config.policy_id}@{result.policy_version - 1}",
                 )
-            if interrupt.stop_requested and checkpoint is None:
-                checkpoint = checkpoint_dir / f"iteration-{iteration:06d}.pt"
-                learner.save(checkpoint)
-                result = replace(result, checkpoint=str(checkpoint.resolve()))
-                parent_key = _register_candidate(registry, config, result, checkpoint, parent_key)
-            completed += 1
-            total_frames += result.frames
-            total_matches += result.matches
-            elapsed = time.monotonic() - started_at
-            rate = completed / elapsed
-            frame_rate = total_frames / elapsed
-            dashboard.update(
-                result,
-                completed=completed,
-                iteration_rate=rate,
-                frame_rate=frame_rate,
-                environment_steps=total_frames,
-                matches=total_matches,
-                match_rate=total_matches / elapsed,
-                checkpoint=checkpoint is not None,
-            )
             if interrupt.stop_requested:
                 break
             if reached_match_target:
@@ -300,6 +330,7 @@ def _run(arguments: argparse.Namespace) -> None:
     finally:
         signal.signal(signal.SIGINT, previous_sigint)
         signal.signal(signal.SIGTERM, previous_sigterm)
+        telemetry.close()
         dashboard.stop()
     actual_final = start_iteration + completed - 1
     dashboard.log(

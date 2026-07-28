@@ -17,6 +17,7 @@
 - [x] Add a policy exploration floor and heuristic-to-self-play curriculum
 - [x] Preserve strict historical-checkpoint compatibility
 - [x] Add terminal checkpoint ranking without replay generation
+- [x] Add TensorBoard-compatible events and in-viewer training charts
 - [ ] Run a fresh 50 million-step M13 paired experiment
 - [ ] Compare goals, terminal outcomes, clustering, exploration, and throughput
       against run 0002

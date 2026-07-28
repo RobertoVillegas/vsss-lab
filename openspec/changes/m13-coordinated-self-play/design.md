@@ -36,6 +36,12 @@ Checkpoint ranking runs terminal matches from both reflected starting sides
 against a fixed heuristic. Ordering is W-L balance, goal difference, then mean
 field progress. It intentionally produces no replay files.
 
+Canonical `metrics.jsonl` remains the source of truth for run telemetry.
+TensorBoard events are a derived scalar sink closed and flushed with the
+trainer. The replay server exposes a bounded, evenly sampled history and the web
+viewer renders synchronized curves without loading replay bodies. TensorBoard's
+own server remains optional and separate from the replay server.
+
 ## Validation
 
 - Unit tests cover scalar/vector reward parity, directionality, bounded costs,

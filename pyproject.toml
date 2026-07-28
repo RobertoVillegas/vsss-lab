@@ -25,6 +25,7 @@ dev = [
 ]
 train = [
   "rich>=14.2,<15",
+  "tensorboard>=2.20,<3",
   "torch>=2.9,<3",
   "torchrl>=0.12,<0.13",
 ]
@@ -61,7 +62,18 @@ strict = true
 exclude = ["python/vsss_controller/generated"]
 
 [[tool.mypy.overrides]]
-module = ["pettingzoo", "pettingzoo.*", "torch", "torch.*", "torchrl", "torchrl.*", "tensordict", "tensordict.*"]
+module = [
+  "pettingzoo",
+  "pettingzoo.*",
+  "tensorboard",
+  "tensorboard.*",
+  "torch",
+  "torch.*",
+  "torchrl",
+  "torchrl.*",
+  "tensordict",
+  "tensordict.*",
+]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

@@ -10,6 +10,7 @@ from tools.replay_web.server import (  # noqa: E402
     discover_checkpoints,
     discover_replays,
     latest_metric,
+    metric_history,
     resolve_replay,
 )
 
@@ -88,3 +89,15 @@ def test_discovers_checkpoints_and_latest_complete_metric(tmp_path: Path) -> Non
 
     assert [item.iteration for item in discover_checkpoints(tmp_path)] == [0, 12]
     assert latest_metric(tmp_path) == {"iteration": 12, "return_total": 0.75}
+
+
+def test_metric_history_is_bounded_and_preserves_latest(tmp_path: Path) -> None:
+    (tmp_path / "metrics.jsonl").write_text(
+        "\n".join(f'{{"iteration":{iteration}}}' for iteration in range(10)) + '\n{"iteration":'
+    )
+
+    history = metric_history(tmp_path, max_points=3)
+
+    assert len(history) <= 4
+    assert history[0]["iteration"] == 0
+    assert history[-1]["iteration"] == 9

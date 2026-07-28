@@ -23,6 +23,7 @@ button, select { color: inherit; }
     #07100d;
   background-size: 36px 36px;
 }
+.app-shell.metrics-mode { grid-template-rows: 76px minmax(0, 1fr); }
 
 .topbar {
   display: flex;
@@ -45,8 +46,13 @@ h1 { margin: 2px 0 0; font-size: 18px; font-weight: 600; letter-spacing: -.02em;
 .run-state small { color: #6d887c; font: 10px "Cascadia Mono", "DM Mono", monospace; letter-spacing: .12em; }
 .run-state strong { margin-top: 3px; font-size: 12px; font-weight: 500; }
 .pulse { width: 8px; height: 8px; border-radius: 50%; background: #69e6aa; box-shadow: 0 0 16px #69e6aa; }
+.view-tabs { display: flex; gap: 4px; margin-left: 24px; }
+.view-tabs button { padding: 8px 11px; color: #91aa9f; font-size: 9px; letter-spacing: .08em; }
+.view-tabs button.active { border-color: #4faa80; color: #71e1ae; background: #102a20; }
 
 .workspace { display: grid; grid-template-columns: 250px minmax(0, 1fr) 270px; min-height: 0; }
+.workspace.metrics-workspace { grid-template-columns: minmax(0, 1fr); }
+.metrics-workspace > .sidebar, .metrics-workspace > .telemetry { display: none; }
 .sidebar { padding: 22px; border-right: 1px solid #20332c; background: rgba(8, 20, 16, .8); overflow: auto; }
 .sidebar > label { display: block; margin: 12px 0 8px; color: #789287; font: 10px "Cascadia Mono", "DM Mono", monospace; letter-spacing: .1em; text-transform: uppercase; }
 .sidebar > label:first-child { margin-top: 0; }
@@ -85,11 +91,20 @@ select { appearance: none; border: 1px solid #315044; border-radius: 3px; backgr
 .actor-card dd { margin: 0; color: #b5c8bf; }
 
 .stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+.stage.metrics-stage { overflow: auto; background: rgba(7, 16, 13, .94); }
 .stage canvas { display: block; }
 .recorded-badge { position: absolute; top: 18px; right: 20px; padding: 6px 8px; border: 1px solid rgba(255,117,71,.35); border-radius: 2px; color: #ff8a62; background: rgba(7,16,13,.7); font: 9px "Cascadia Mono", "DM Mono", monospace; letter-spacing: .1em; }
 .loading, .empty-state { position: absolute; inset: 0; display: grid; place-content: center; color: #7f998e; font: 12px "Cascadia Mono", "DM Mono", monospace; }
 .empty-state { gap: 8px; text-align: center; }
 .empty-state strong { color: #e8f3ee; font-size: 17px; font-weight: 600; }
+.charts-shell { min-width: 700px; max-width: 1800px; margin: 0 auto; padding: 24px; }
+.charts-shell > header { display: flex; align-items: end; justify-content: space-between; margin-bottom: 18px; }
+.charts-shell h2 { margin: 4px 0 0; font-size: 18px; }
+.charts-shell > header span { color: #789287; font-size: 10px; }
+.chart-grid { display: grid; grid-template-columns: repeat(2, minmax(300px, 1fr)); gap: 12px; }
+.chart-card { min-width: 0; padding: 14px 12px 8px; border: 1px solid #203c31; background: #0b1914; }
+.chart-card.wide { grid-column: 1 / -1; }
+.chart-card h3 { margin: 0 0 5px 8px; color: #8db9a5; font-size: 10px; font-weight: 500; letter-spacing: .08em; }
 
 .transport { padding: 16px 26px 18px; border-top: 1px solid #20332c; background: rgba(7,16,13,.95); }
 .timeline-row { display: grid; grid-template-columns: 82px minmax(0, 1fr) 64px; align-items: center; gap: 14px; color: #82998f; font: 10px "Cascadia Mono", "DM Mono", monospace; }
@@ -124,6 +139,9 @@ kbd { display: inline-block; margin: 0 2px; padding: 2px 4px; border: 1px solid 
   .buttons { justify-self: start; }
   .topbar { padding: 0 16px; }
   .run-state small { display: none; }
+  .view-tabs { margin-left: auto; }
+  .view-tabs button { padding-inline: 8px; }
+  .run-state { display: none; }
   .transport { padding-inline: 16px; }
   .telemetry { display: none; }
 }

@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { FieldCanvas } from "./FieldCanvas";
 import { clampedFrame, frameLabel, parseReplay } from "./replay";
-import type { Replay, ReplayIndex } from "./types";
+import type { MetricHistory, Replay, ReplayIndex } from "./types";
 
 const SPEEDS = [0.25, 0.5, 1, 2, 4, 8, 16, 32];
 const POLL_INTERVAL_MS = 2_000;
+const TrainingCharts = lazy(() => import("./TrainingCharts"));
 const ICONS = {
   back: "↶",
   previous: "‹",
@@ -17,6 +18,7 @@ const ICONS = {
 };
 
 export default function App() {
+  const [activeView, setActiveView] = useState<"replay" | "metrics">("metrics");
   const [historicalSelection, setHistoricalSelection] = useState("");
   const [frameIndex, setFrameIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -42,6 +44,16 @@ export default function App() {
     refetchInterval: POLL_INTERVAL_MS,
   });
   const index = indexQuery.data;
+  const metricsQuery = useQuery({
+    queryKey: ["training-metrics"],
+    queryFn: async (): Promise<MetricHistory> => {
+      const response = await fetch("/api/metrics");
+      if (!response.ok) throw new Error("Could not load training metrics.");
+      return response.json() as Promise<MetricHistory>;
+    },
+    enabled: activeView === "metrics",
+    refetchInterval: 5_000,
+  });
   const visibleReplays = useMemo(
     () => index?.replays.filter((item) => (
       filter === "all"
@@ -144,13 +156,27 @@ export default function App() {
     : 0;
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell ${activeView === "metrics" ? "metrics-mode" : ""}`}>
       <header className="topbar">
         <div className="brand-mark" aria-hidden="true"><i /><i /><i /></div>
         <div>
           <p className="eyebrow">VSSS LAB · REPLAY STUDIO</p>
           <h1>Training run explorer</h1>
         </div>
+        <nav className="view-tabs" aria-label="Viewer mode">
+          <button
+            className={activeView === "replay" ? "active" : ""}
+            onClick={() => setActiveView("replay")}
+          >
+            REPLAY
+          </button>
+          <button
+            className={activeView === "metrics" ? "active" : ""}
+            onClick={() => setActiveView("metrics")}
+          >
+            TRAINING METRICS
+          </button>
+        </nav>
         <div className="run-state">
           <span className="pulse" />
           <div>
@@ -160,7 +186,7 @@ export default function App() {
         </div>
       </header>
 
-      <section className="workspace">
+      <section className={`workspace ${activeView === "metrics" ? "metrics-workspace" : ""}`}>
         <aside className="sidebar">
           <label htmlFor="iteration">Captured iteration</label>
           <select
@@ -279,13 +305,19 @@ export default function App() {
           </dl>
         </aside>
 
-        <section className="stage">
+        <section className={`stage ${activeView === "metrics" ? "metrics-stage" : ""}`}>
           {error ? <div className="empty-state"><strong>Replay unavailable</strong><span>{String(error)}</span></div> : null}
-          {loading ? <div className="loading">Loading recorded frames…</div> : null}
-          {replay && frame && !error ? (
+          {activeView === "replay" && loading ? <div className="loading">Loading recorded frames…</div> : null}
+          {activeView === "replay" && replay && frame && !error ? (
             <FieldCanvas header={replay.header} frame={frame} layers={visionLayers} />
           ) : null}
-          <span className="recorded-badge">{followLatest ? "● LIVE INSPECT" : "● RECORDED"}</span>
+          {activeView === "metrics" ? (
+            <Suspense fallback={<div className="loading">Loading chart engine…</div>}>
+              <TrainingCharts metrics={metricsQuery.data?.metrics ?? []} />
+            </Suspense>
+          ) : (
+            <span className="recorded-badge">{followLatest ? "● LIVE INSPECT" : "● RECORDED"}</span>
+          )}
         </section>
 
         <ActorTelemetry
@@ -297,7 +329,7 @@ export default function App() {
         />
       </section>
 
-      <footer className="transport">
+      {activeView === "replay" ? <footer className="transport">
         <div className="timeline-row">
           <span>{frameLabel(frameIndex, replay?.frames.length ?? 0)}</span>
           <input
@@ -345,7 +377,7 @@ export default function App() {
             </label>
           </div>
         </div>
-      </footer>
+      </footer> : null}
     </main>
   );
 }

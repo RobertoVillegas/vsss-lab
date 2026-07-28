@@ -125,6 +125,13 @@ league-live-resume run_dir="/home/rob/runs/vsss-lab-live" iterations="1000" capt
 league-inspect run_dir="/home/rob/runs/vsss-lab-demo":
   uv run --group train python -m vsss_league.cli inspect --run-dir "{{run_dir}}"
 
+league-tensorboard run_dir port="6006":
+  uv run --group train tensorboard --logdir "{{run_dir}}/tensorboard" --host 127.0.0.1 --port {{port}}
+
+league-observe run_dir viewer_port="8765" tensorboard_port="6006":
+  just web-build
+  echo "Replay viewer: http://127.0.0.1:{{viewer_port}}"; uv run python -m tools.replay_web.server --run-dir "{{run_dir}}" --host 127.0.0.1 --port {{viewer_port}} > "{{run_dir}}/viewer.log" 2>&1 & viewer_pid=$!; echo "TensorBoard: http://127.0.0.1:{{tensorboard_port}}"; uv run --group train tensorboard --logdir "{{run_dir}}/tensorboard" --host 127.0.0.1 --port {{tensorboard_port}} > "{{run_dir}}/tensorboard.log" 2>&1 & tensorboard_pid=$!; trap 'kill "$viewer_pid" "$tensorboard_pid" 2>/dev/null || true' EXIT; wait
+
 vision-metrics replay:
   uv run python -m tools.vision_metrics "{{replay}}"
 

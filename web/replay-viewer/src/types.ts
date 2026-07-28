@@ -21,6 +21,31 @@ export interface TrainingMetric {
   frames: number;
   return_total: number;
   progress: number;
+  matches: number;
+  losses: {
+    policy_loss?: number;
+    value_loss?: number;
+    entropy?: number;
+  };
+  terminations?: {
+    goal?: number;
+    draw?: number;
+    stagnation?: number;
+  };
+  environment_steps?: number;
+  total_matches?: number;
+  performance?: {
+    frames_per_second?: number;
+    matches_per_second?: number;
+    iterations_per_second?: number;
+  };
+  exploration?: {
+    actor_log_std?: number[];
+  };
+}
+
+export interface MetricHistory {
+  metrics: TrainingMetric[];
 }
 
 export interface ReplayIndex {
