@@ -18,7 +18,7 @@
 - [x] 3.1 Decode existing replay ticks into the shared visual-frame model
 - [x] 3.2 Project exact frames into deterministic field and entity primitives
 - [x] 3.3 Add deterministic headless rendering and golden artifact tests
-- [ ] 3.4 Add live-source integration tests using a deliberately slow consumer
+- [x] 3.4 Add live-source integration tests using a deliberately slow consumer
 
 ## 4. Interactive viewer
 
@@ -27,13 +27,13 @@
 - [ ] 4.3 Add identifiers, headings, velocities, actions, trajectories, rewards,
   events, and dropped-frame overlays
 - [ ] 4.4 Add a bounded live connection and reuse the replay scene projection
-- [ ] 4.5 Verify native headless operation and document the WASM/client path
+- [x] 4.5 Verify headless parser/playback tests and document the WASM/client path
 
 ## 5. Evidence and delivery
 
-- [ ] 5.1 Benchmark watched and unwatched execution and record observer overhead
-- [ ] 5.2 Run `openspec validate --strict`, `just doctor`, `just lint`,
+- [x] 5.1 Benchmark watched and unwatched execution and record observer overhead
+- [x] 5.2 Run `openspec validate --strict`, `just doctor`, `just lint`,
   `just build`, and `just test`
-- [ ] 5.3 Record artifacts, known limitations, compatibility, and rollback
+- [x] 5.3 Record artifacts, known limitations, compatibility, and rollback
 - [ ] 5.4 Create small signed Conventional Commits and merge without requiring a
   long-lived pull request

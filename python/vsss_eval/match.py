@@ -79,12 +79,15 @@ def run_scripted_match(
                 "snapshot": snapshot,
             }
             _write(replay, record)
-            if observer_sinks:
+            active_observers = tuple(
+                observer for observer in observer_sinks if index % observer.sample_every == 0
+            )
+            if active_observers:
                 frame = VisualFrame.from_replay_record(
                     record,
                     timestep=timestep,
                 )
-                for observer in observer_sinks:
+                for observer in active_observers:
                     observer.publish(frame)
     return MatchSummary(
         ticks=ticks,

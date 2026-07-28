@@ -1,6 +1,8 @@
 """M4 scripted controller and match regression tests."""
 
 import json
+import threading
+import time
 from pathlib import Path
 
 import numpy as np
@@ -89,6 +91,16 @@ def test_replay_and_live_use_equivalent_visual_frames(tmp_path: Path) -> None:
     assert [frame.tick for frame in frames] == [43, 44, 45, 46, 47]
 
 
+def test_live_observer_samples_by_simulation_tick_count(tmp_path: Path) -> None:
+    replay_path = tmp_path / "sampled.jsonl"
+    live = LatestFrameSink(sample_every=4)
+    run_scripted_match(CONFIG, STATE, 10, replay_path, observers=(live,))
+    assert live.seen == 3
+    assert live.published == 3
+    assert live.dropped == 2
+    assert live.consume_latest() == replay_frames(replay_path)[8]
+
+
 def test_headless_svg_projection_is_deterministic(tmp_path: Path) -> None:
     replay_path = tmp_path / "match.jsonl"
     run_scripted_match(CONFIG, STATE, 2, replay_path)
@@ -99,3 +111,26 @@ def test_headless_svg_projection_is_deterministic(tmp_path: Path) -> None:
     assert first == second
     assert ">R0</text>" in first
     assert "<svg " in first
+
+
+def test_slow_live_consumer_never_blocks_match(tmp_path: Path) -> None:
+    replay_path = tmp_path / "live.jsonl"
+    live = LatestFrameSink()
+    summary: list[object] = []
+
+    producer = threading.Thread(
+        target=lambda: summary.append(
+            run_scripted_match(CONFIG, STATE, 500, replay_path, observers=(live,))
+        )
+    )
+    producer.start()
+    consumed = 0
+    while producer.is_alive():
+        consumed += int(live.consume_latest() is not None)
+        time.sleep(0.002)
+    producer.join(timeout=0.1)
+    assert not producer.is_alive()
+    assert len(summary) == 1
+    assert live.published == 500
+    assert live.dropped > 0
+    assert consumed < live.published

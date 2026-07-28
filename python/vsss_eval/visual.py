@@ -1,6 +1,7 @@
 """Backend-neutral visual frames and observer delivery semantics."""
 
 from dataclasses import dataclass
+from threading import Lock
 from typing import Any, Protocol
 
 
@@ -41,12 +42,16 @@ class VisualFrame:
 class FrameSink(Protocol):
     """Consumer of exact visual frames."""
 
+    sample_every: int
+
     def publish(self, frame: VisualFrame) -> None:
         """Accept a completed frame."""
 
 
 class NullSink:
     """No-op observer for explicit headless execution."""
+
+    sample_every = 1
 
     def publish(self, frame: VisualFrame) -> None:
         """Discard a frame."""
@@ -55,29 +60,38 @@ class NullSink:
 class LatestFrameSink:
     """Bounded live sink that keeps only the newest unconsumed frame."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, sample_every: int = 1) -> None:
+        if sample_every <= 0:
+            raise ValueError("sample_every must be positive")
         self._latest: VisualFrame | None = None
+        self._lock = Lock()
+        self.sample_every = sample_every
+        self.seen = 0
         self.published = 0
         self.dropped = 0
 
     def publish(self, frame: VisualFrame) -> None:
         """Replace a stale frame instead of blocking its producer."""
-        if self._latest is not None:
-            self.dropped += 1
-        self._latest = frame
-        self.published += 1
+        with self._lock:
+            self.seen += 1
+            if self._latest is not None:
+                self.dropped += 1
+            self._latest = frame
+            self.published += 1
 
     def consume_latest(self) -> VisualFrame | None:
         """Return and clear the newest available frame."""
-        frame = self._latest
-        self._latest = None
-        return frame
+        with self._lock:
+            frame = self._latest
+            self._latest = None
+            return frame
 
 
 class MetricsSink:
     """Constant-memory aggregate metrics for an observed match."""
 
     def __init__(self) -> None:
+        self.sample_every = 1
         self.frames = 0
         self.goals = 0
         self.last_tick = 0

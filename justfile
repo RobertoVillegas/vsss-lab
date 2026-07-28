@@ -41,6 +41,9 @@ replay-render replay="reports/m4-scripted.jsonl" output="reports/m4-scripted.svg
 replay-view-native replay="reports/m4-scripted.jsonl":
   cargo run -p vsss-viewer-2d -- "{{replay}}"
 
+benchmark-observer ticks="2000" repeats="5" sample_every="4":
+  uv run python -m tools.benchmark_observer --ticks {{ticks}} --repeats {{repeats}} --sample-every {{sample_every}}
+
 clean:
   cargo clean
   rm -rf .venv .pytest_cache .mypy_cache .ruff_cache
