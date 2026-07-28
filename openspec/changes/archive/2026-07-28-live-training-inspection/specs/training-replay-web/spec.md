@@ -1,8 +1,5 @@
-# training-replay-web Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change m7-web-replay-viewer. Update Purpose after archive.
-## Requirements
 ### Requirement: Run replay discovery
 
 The local web viewer SHALL poll the configured run for canonical completed
@@ -40,13 +37,7 @@ seeking; and distinguish recorded simulation time from inspection speed.
 - **WHEN** the operator manually selects an earlier iteration
 - **THEN** live-follow pauses until explicitly resumed
 
-### Requirement: Private local serving
-The viewer server SHALL bind to loopback by default and SHALL constrain replay
-reads to the configured run's replay directory.
-
-#### Scenario: Request an unknown replay
-- **WHEN** a client requests a filename that was not discovered in the run
-- **THEN** the server rejects the request without reading another filesystem path
+## ADDED Requirements
 
 ### Requirement: Actor control telemetry
 
@@ -68,4 +59,3 @@ blue policy perspective, and whether any goal occurred.
 
 - **WHEN** the operator filters for wins, losses, draws, or captures with goals
 - **THEN** the iteration picker contains only matching completed captures
-

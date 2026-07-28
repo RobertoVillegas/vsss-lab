@@ -72,9 +72,26 @@ captures iterations, launch the run-wide browser viewer:
 just league-web /home/rob/runs/vsss-first
 ```
 
-Open <http://127.0.0.1:8765> in Windows. The viewer can switch iterations,
-play/pause, change speed, seek, step one recorded frame, or skip 100 frames in
-either direction. It binds to WSL loopback and does not expose the run publicly.
+Open <http://127.0.0.1:8765> in Windows. The viewer polls the run every two
+seconds, follows and loops the latest completed capture, and reports the latest
+checkpoint and metric. Selecting an older iteration pauses live-follow until
+`Follow latest` is pressed. It can also play/pause, seek, step one recorded
+frame, or skip 100 frames in either direction.
+
+Playback at 1× follows the recorded simulation clock (20 ms control periods,
+50 Hz in the reference config). The 4× default is an inspection convenience and
+does not change training or policy inference speed. Slow robot motion at 1× is a
+property of the captured policy/actions, not a slowed simulator.
+
+Long runs can be resumed without repeating bootstrap. The iteration count is
+additional work; checkpoints and 60-second captures can be spaced independently:
+
+```bash
+just league-resume /home/rob/runs/vsss-long 10000 100 60 100
+```
+
+See `docs/calibration/m11-wheel-action-scale.md` before comparing old
+checkpoints or planning a physical-robot deployment.
 
 The native WSLg viewer remains available for a single iteration:
 
