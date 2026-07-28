@@ -39,7 +39,7 @@ M0 through M11 are implemented. M12 and M13 are usable but not yet closed:
 | Milestone | Implemented | Still required to close it |
 | --- | --- | --- |
 | M12 · vision and hardware | calibrated synthetic camera, CPU ball filter and robot EKF, association confidence, causal trajectory/interception prediction, ROS camera ingestion, viewer layers and CPU profiling hooks | record policy-visible estimates at every decision, run the predictive-feature ablation, publish hidden-truth accuracy/latency thresholds, benchmark a recorded camera, and produce hardware-in-the-loop safety evidence |
-| M13 · coordinated learning | directional reward, dynamic attacker, time/effort/congestion/defense regularization, exploration floor, heuristic-to-self-play curriculum, terminal checkpoint ranking, TensorBoard and in-viewer charts | complete a fresh 50M-step run, compare it against run 0002 across multiple seeds, promote the best checkpoint, and archive the milestone |
+| M13 · coordinated learning | directional reward, dynamic attacker, regularization, exploration floor, heuristic curriculum, deterministic self/historical/heuristic population, terminal checkpoint ranking, automated run comparison, TensorBoard and in-viewer charts | complete a fresh 50M-step run, compare it against run 0002 across multiple seeds, promote the best checkpoint, and archive the milestone |
 
 The initial platform Definition of Done is substantially implemented, but the
 project does not yet claim a validated physical-robot policy. The remaining
@@ -364,9 +364,18 @@ The main M13 learner is shared-policy MAPPO:
   checkpoints.
 
 The first 250 PPO iterations play against the deterministic dynamic heuristic.
-Later iterations play against a frozen copy of the current learner for the
-duration of each update. Historical registry sampling and dedicated exploiters
-remain a known league improvement.
+Later iterations deterministically sample a configured population for each
+update:
+
+- 50% frozen copy of the current learner;
+- 35% uniform historical checkpoint from the latest 16 eligible versions;
+- 15% dynamic heuristic.
+
+The checkpoint most recently produced by the learner is excluded from the
+historical branch because the current-policy branch already covers it.
+Historical actors are inference-only, cached, configuration-verified and loaded
+without changing trainer RNG state. Dedicated exploiters and rating-aware
+sampling remain future league improvements.
 
 New automatic runs use:
 
@@ -376,8 +385,8 @@ experiments/configs/m13-mappo-directional.toml
 
 The config selects 64 worlds, a 128-unit actor, 256 control decisions per
 rollout, a 1,500-decision match horizon, CUDA when available, and the M13 reward
-fingerprint. Override device/world count through the trailing `just` arguments;
-`auto` reports an explicit CPU fallback.
+and population fingerprint. Override device/world count through the trailing
+`just` arguments; `auto` reports an explicit CPU fallback.
 
 ## Reward design
 
@@ -434,6 +443,20 @@ against the heuristic while the final iteration 3052 produced 3-6-1. Checkpoint
 recency and training return are therefore insufficient promotion criteria. A
 real promotion also needs multiple seeds, permutation, OOD and Gazebo gates.
 
+After the fresh M13 run, generate the fixed comparison artifact:
+
+```bash
+just league-compare-runs \
+  /home/rob/runs/vsss-training-run-0002 \
+  /home/rob/runs/vsss-training-run-0003 \
+  reports/m13/run-comparison.json
+```
+
+It reports steps, matches, goal/draw/stagnation rates, rolling return/progress,
+throughput, final actor exploration and teammate-clustering rate from evenly
+sampled replay frames. Run 0002 uses its recorded 3,973 frames/s baseline
+because historical JSONL did not yet contain wall-clock telemetry.
+
 ## Inspirations and public references
 
 The project reuses principles, measurements and public interfaces—not opaque
@@ -488,7 +511,7 @@ recommended sequence for this project is:
    baselines are stable;
 5. test HAPPO/HARL as an ablation rather than a default, because VSSS uses
    homogeneous robots and deliberately shares actor weights;
-6. expand the league with historical sampling and fixed exploiters before
+6. add rating/performance-aware historical sampling and fixed exploiters before
    scaling network size or distributed infrastructure.
 
 BenchMARL is the preferred external comparison harness because it already
@@ -513,8 +536,9 @@ than replacing the readable in-repo learner.
 
 ## Known limitations
 
-- the current curriculum does not yet sample the full historical policy
-  registry during rollout collection;
+- historical rollout sampling is uniform within a recent bounded window; it
+  does not yet use opponent win rates, prioritized fictitious self-play or fixed
+  exploiters;
 - the 50M M13 comparison has not been run, so its reward changes are tested but
   not yet empirically promoted;
 - physics collection remains CPU-bound even when PyTorch reports CUDA;

@@ -18,6 +18,8 @@
 - [x] Preserve strict historical-checkpoint compatibility
 - [x] Add terminal checkpoint ranking without replay generation
 - [x] Add TensorBoard-compatible events and in-viewer training charts
+- [x] Mix current, bounded historical, and heuristic opponents deterministically
+- [x] Add a machine-readable paired-run comparison command
 - [ ] Run a fresh 50 million-step M13 paired experiment
 - [ ] Compare goals, terminal outcomes, clustering, exploration, and throughput
       against run 0002

@@ -25,8 +25,11 @@ robot identity or rewarding stationary camping.
 All reward and exploration fields are included in the checkpoint fingerprint.
 The M13 config uses a larger actor, higher entropy coefficient, and a minimum
 `log_std` of -2.0. The optimizer clamps that floor after every update. The first
-250 iterations use the deterministic dynamic heuristic as opponent; subsequent
-iterations use a frozen copy of the current learner.
+250 iterations use the deterministic dynamic heuristic as opponent. Subsequent
+iterations sample 50% frozen current learner, 35% uniformly from the latest 16
+eligible historical checkpoints, and 15% dynamic heuristic. Selection uses a
+local seeded RNG; inference-only historical actor loading cannot mutate trainer
+RNG state.
 
 Old checkpoints may omit newly introduced fields only when the selected config
 supplies their exact neutral legacy defaults. This preserves M12 inspection
@@ -41,6 +44,11 @@ TensorBoard events are a derived scalar sink closed and flushed with the
 trainer. The replay server exposes a bounded, evenly sampled history and the web
 viewer renders synchronized curves without loading replay bodies. TensorBoard's
 own server remains optional and separate from the replay server.
+
+The paired-run comparison consumes canonical JSONL metrics, the final
+checkpoint's exploration parameters, and evenly sampled replay frames. It
+reports goal/terminal rates, rolling learning signals, throughput, and a
+teammate-spacing clustering proxy in a machine-readable artifact.
 
 ## Validation
 
