@@ -1,5 +1,9 @@
 ## Why
 
+> **Status: deferred (2026-07-28).** This physical perception and sim-to-real
+> milestone is intentionally not part of the active simulation-only M14 work.
+> Its design is retained for later rather than treated as a delivery dependency.
+
 M12 must convert delayed, noisy, and occasionally missing overhead-camera
 detections into the same structured state used by policies. Julio De La Torre's
 thesis demonstrates a useful separation: Kalman estimation for ball motion, EKF
