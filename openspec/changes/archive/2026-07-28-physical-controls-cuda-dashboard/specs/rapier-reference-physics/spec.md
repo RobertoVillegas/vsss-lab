@@ -1,8 +1,5 @@
-# rapier-reference-physics Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change m2-physics-backend. Update Purpose after archive.
-## Requirements
 ### Requirement: Fixed-step differential drive
 The reference backend SHALL advance six robots and one ball at the configured
 timestep using saturated wheel-speed targets and force-derived bounded actuator
@@ -28,11 +25,3 @@ inside the mouth.
 #### Scenario: Robot enters a goal mouth
 - **WHEN** a robot drives through a goal mouth toward its side or back boundary
 - **THEN** collision geometry keeps it inside the modeled field and goal box
-
-### Requirement: Replay determinism
-Identical config, initial state, and action sequence SHALL yield identical
-canonical states and checksums on the same platform and locked version.
-
-#### Scenario: Repeat action sequence
-- **WHEN** the same 100-tick sequence runs twice
-- **THEN** every final scalar and checksum is identical

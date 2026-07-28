@@ -15,6 +15,7 @@ from vsss_train.config import MarlConfig, load_marl_config
 from vsss_train.marl_env import distill_dynamic_teacher
 from vsss_train.marl_ppo import MarlLearner
 
+from vsss_league.progress import TrainingDashboard
 from vsss_league.promotion import FixtureResult, decide_promotion
 from vsss_league.registry import LeagueRegistry, PolicyEntry
 from vsss_league.replay import run_policy_replay
@@ -34,6 +35,8 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--capture-every", type=int, default=1)
     run.add_argument("--capture-seconds", type=float, default=60.0)
     run.add_argument("--checkpoint-every", type=int, default=100)
+    run.add_argument("--device", choices=("auto", "cpu", "cuda"))
+    run.add_argument("--num-envs", type=int)
     run.add_argument("--resume", action="store_true")
     run.add_argument("--bootstrap-samples", type=int, default=2_048)
     run.add_argument("--bootstrap-epochs", type=int, default=20)
@@ -89,6 +92,11 @@ def _run(arguments: argparse.Namespace) -> None:
     replay_dir = run_dir / "replays"
     run_dir.mkdir(parents=True, exist_ok=True)
     config = load_marl_config(arguments.config)
+    config = replace(
+        config,
+        device=arguments.device or config.device,
+        num_envs=arguments.num_envs or config.num_envs,
+    )
     config_json = arguments.match_config.read_text()
     state_json = arguments.match_state.read_text()
     match_config = json.loads(config_json)
@@ -137,16 +145,25 @@ def _run(arguments: argparse.Namespace) -> None:
     final_iteration = start_iteration + arguments.iterations - 1
     stop_requested = False
     completed = 0
+    total_frames = 0
     started_at = time.monotonic()
+    dashboard = TrainingDashboard(
+        start_iteration=start_iteration,
+        total_iterations=arguments.iterations,
+        device=learner.device.type,
+        num_envs=config.num_envs,
+    )
+    dashboard.start()
+    if config.device == "auto" and learner.device.type == "cpu":
+        dashboard.log(
+            "warning: CUDA is unavailable; falling back to CPU (functional but not ideal)"
+        )
 
     def request_stop(_signum: int, _frame: object) -> None:
         nonlocal stop_requested
         if not stop_requested:
             stop_requested = True
-            print(
-                "\nStop requested; finishing the current iteration and saving a checkpoint…",
-                flush=True,
-            )
+            dashboard.request_stop()
 
     previous_sigint = signal.signal(signal.SIGINT, request_stop)
     previous_sigterm = signal.signal(signal.SIGTERM, request_stop)
@@ -193,23 +210,25 @@ def _run(arguments: argparse.Namespace) -> None:
                 result = replace(result, checkpoint=str(checkpoint.resolve()))
                 parent_key = _register_candidate(registry, config, result, checkpoint, parent_key)
             completed += 1
+            total_frames += result.frames
             elapsed = time.monotonic() - started_at
             rate = completed / elapsed
-            remaining = arguments.iterations - completed
-            print(
-                f"iteration {iteration}/{final_iteration} · "
-                f"return {result.return_total:+.3f} · progress {result.progress:+.3f} · "
-                f"{rate:.2f} iter/s · ETA {_duration(remaining / rate)}"
-                f"{' · checkpoint' if checkpoint is not None else ''}",
-                flush=True,
+            frame_rate = total_frames / elapsed
+            dashboard.update(
+                result,
+                completed=completed,
+                iteration_rate=rate,
+                frame_rate=frame_rate,
+                checkpoint=checkpoint is not None,
             )
             if stop_requested:
                 break
     finally:
         signal.signal(signal.SIGINT, previous_sigint)
         signal.signal(signal.SIGTERM, previous_sigterm)
+        dashboard.stop()
     actual_final = start_iteration + completed - 1
-    print(
+    dashboard.log(
         json.dumps(
             {
                 "run_dir": str(run_dir.resolve()),
@@ -245,13 +264,6 @@ def _register_candidate(
     )
     registry.register(entry)
     return entry.key
-
-
-def _duration(seconds: float) -> str:
-    rounded = max(0, round(seconds))
-    hours, remainder = divmod(rounded, 3_600)
-    minutes, secs = divmod(remainder, 60)
-    return f"{hours:d}h {minutes:02d}m" if hours else f"{minutes:d}m {secs:02d}s"
 
 
 def _tournament(arguments: argparse.Namespace) -> None:

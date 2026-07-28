@@ -217,6 +217,7 @@ export default function App() {
 
         <ActorTelemetry
           actions={frame?.actions}
+          robots={frame?.snapshot.robots}
           maxWheelSpeed={replay?.header.config.max_wheel_speed ?? 1}
           wheelRadius={replay?.header.config.wheel?.radius ?? 0.025}
           axleTrack={replay?.header.config.wheel?.axle_track ?? 0.06}
@@ -290,11 +291,13 @@ function Control({ label, icon, onClick }: { label: string; icon: string; onClic
 
 function ActorTelemetry({
   actions,
+  robots,
   maxWheelSpeed,
   wheelRadius,
   axleTrack,
 }: {
   actions?: number[][];
+  robots?: Replay["frames"][number]["snapshot"]["robots"];
   maxWheelSpeed: number;
   wheelRadius: number;
   axleTrack: number;
@@ -304,8 +307,10 @@ function ActorTelemetry({
       <p className="side-heading">ACTOR CONTROL · LIVE FRAME</p>
       <div className="actor-list">
         {Array.from({ length: 6 }, (_, index) => {
-          const left = actions?.[index]?.[0] ?? 0;
-          const right = actions?.[index]?.[1] ?? 0;
+          const commandLeft = actions?.[index]?.[0] ?? 0;
+          const commandRight = actions?.[index]?.[1] ?? 0;
+          const left = robots?.[index]?.wheel_speed_left ?? 0;
+          const right = robots?.[index]?.wheel_speed_right ?? 0;
           const linear = wheelRadius * (left + right) / 2;
           const angular = wheelRadius * (right - left) / axleTrack;
           const intensity = Math.min(1, Math.max(Math.abs(left), Math.abs(right)) / maxWheelSpeed);
@@ -323,7 +328,8 @@ function ActorTelemetry({
               </div>
               <div className="throttle"><i style={{ width: `${intensity * 100}%` }} /></div>
               <dl>
-                <div><dt>L / R</dt><dd>{left.toFixed(1)} / {right.toFixed(1)} rad/s</dd></div>
+                <div><dt>CMD L/R</dt><dd>{commandLeft.toFixed(1)} / {commandRight.toFixed(1)}</dd></div>
+                <div><dt>APPLIED</dt><dd>{left.toFixed(1)} / {right.toFixed(1)} rad/s</dd></div>
                 <div><dt>LINEAR</dt><dd>{linear.toFixed(2)} m/s</dd></div>
                 <div><dt>TURN</dt><dd>{angular.toFixed(2)} rad/s</dd></div>
               </dl>

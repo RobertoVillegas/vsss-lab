@@ -32,10 +32,11 @@ class TeamReward:
     ball_progress: float
     approach_progress: float
     goal: float
+    action_delta: float = 0.0
 
     @property
     def total(self) -> float:
-        return self.ball_progress + self.approach_progress + self.goal
+        return self.ball_progress + self.approach_progress + self.goal + self.action_delta
 
 
 @dataclass(frozen=True)
@@ -58,6 +59,7 @@ class MarlMatchEnv:
         stage: int,
         horizon: int = 1_000,
         action_repeat: int = 4,
+        action_delta_coefficient: float = 0.0,
     ) -> None:
         if stage not in (7, 8):
             raise ValueError("stage must be C7 or C8")
@@ -69,12 +71,14 @@ class MarlMatchEnv:
         self.stage = stage
         self.horizon = horizon
         self.action_repeat = action_repeat
+        self.action_delta_coefficient = action_delta_coefficient
         self.steps = 0
         self.state = np.zeros(BatchSimulator.state_width(), dtype=np.float32)
         self._ball_x = 0.0
         self._closest = 0.0
         self._initial_ball_x = 0.0
         self._initial_closest = 0.0
+        self._previous_blue_actions = np.zeros((3, 2), dtype=np.float32)
 
     def reset(self, seed: int) -> TeamBatch:
         rng = np.random.default_rng(seed)
@@ -108,6 +112,7 @@ class MarlMatchEnv:
         self.steps = 0
         self._ball_x = float(self.state[5])
         self._closest = self._closest_blue_distance()
+        self._previous_blue_actions.fill(0.0)
         return build_team_observation(self.state, team=0)
 
     def step(
@@ -115,8 +120,10 @@ class MarlMatchEnv:
         blue_actions: FloatArray,
         opponent_actions: FloatArray | None = None,
     ) -> tuple[TeamBatch, TeamReward, bool, dict[str, Any]]:
+        normalized_blue = np.clip(blue_actions, -1.0, 1.0)
+        action_delta = normalized_blue - self._previous_blue_actions
         actions = np.zeros((1, 6, 2), dtype=np.float32)
-        actions[0, :3] = np.clip(blue_actions, -1.0, 1.0) * self._max_wheel_speed
+        actions[0, :3] = normalized_blue * self._max_wheel_speed
         for _ in range(self.action_repeat):
             if opponent_actions is not None:
                 actions[0, 3:] = np.clip(opponent_actions, -1.0, 1.0) * self._max_wheel_speed
@@ -131,7 +138,9 @@ class MarlMatchEnv:
             ball_progress=4.0 * (ball_x - self._ball_x),
             approach_progress=2.0 * (self._closest - closest),
             goal=10.0 * float(bool(events & 1)) - 10.0 * float(bool(events & 2)),
+            action_delta=-self.action_delta_coefficient * float(np.square(action_delta).mean()),
         )
+        self._previous_blue_actions = normalized_blue.copy()
         self._ball_x = ball_x
         self._closest = closest
         done = self.steps >= self.horizon or bool(events & 0b11)
@@ -201,12 +210,15 @@ def distill_dynamic_teacher(
         observations.append(env.reset(sample_seed))
         actions.append(torch.from_numpy(teacher.actions(env.state).copy()))
     batch = stack_team_batches(observations)
-    targets = torch.stack(actions)
+    device = next(actor.parameters()).device
+    batch = batch.to(device)
+    targets = torch.stack(actions).to(device)
     optimizer = torch.optim.Adam(actor.parameters(), lr=1e-3)
     loss = torch.zeros(())
     generator = torch.Generator().manual_seed(seed)
     for _ in range(epochs):
         for indices in torch.randperm(samples, generator=generator).split(256):  # type: ignore[no-untyped-call]
+            indices = indices.to(device)
             mean, _ = actor(batch.select_batch(indices))
             loss = (torch.tanh(mean) - targets[indices]).square().mean()
             optimizer.zero_grad(set_to_none=True)
@@ -229,6 +241,7 @@ def evaluate_against_random(
     policy_scores: list[float] = []
     random_scores: list[float] = []
     actor.eval()
+    device = next(actor.parameters()).device
     for seed in seeds:
         policy_env = MarlMatchEnv(
             config_json, state_json, stage=stage, horizon=horizon, action_repeat=action_repeat
@@ -238,7 +251,7 @@ def evaluate_against_random(
         done = False
         while not done:
             with torch.no_grad():
-                action = actor.deterministic_action(observation).numpy()
+                action = actor.deterministic_action(observation.to(device)).cpu().numpy()
             observation, _, done, _ = policy_env.step(action)
         policy_scores.append(policy_env.progress_score())
 

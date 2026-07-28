@@ -96,13 +96,14 @@ class MarlLearner:
     def __init__(self, config: MarlConfig) -> None:
         self.config = config
         seed_everything(config.seed)
-        self.actor = SharedActor(config.hidden_size)
+        self.device = resolve_device(config.device)
+        self.actor = SharedActor(config.hidden_size).to(self.device)
         self.critic: LocalCritic | CentralizedCritic
         self.critic = (
             LocalCritic(config.hidden_size)
             if config.algorithm == "ippo"
             else CentralizedCritic(config.hidden_size)
-        )
+        ).to(self.device)
         self.optimizer = torch.optim.Adam(
             (*self.actor.parameters(), *self.critic.parameters()),
             lr=config.learning_rate,
@@ -130,10 +131,12 @@ class MarlLearner:
         totals = {"policy_loss": 0.0, "value_loss": 0.0, "entropy": 0.0}
         steps = 0
         generator = torch.Generator().manual_seed(self.config.seed + self.policy_version)
-        time_steps_per_batch = max(1, self.config.minibatch_size // 3)
+        agents_per_step = self.config.num_envs * 3
+        time_steps_per_batch = max(1, self.config.minibatch_size // agents_per_step)
         for _ in range(self.config.epochs):
             permutation = torch.randperm(len(data), generator=generator)
             for indices in permutation.split(time_steps_per_batch):  # type: ignore[no-untyped-call]
+                indices = indices.to(self.device)
                 sample = data[indices]
                 sample_observation = observation.select_batch(indices)
                 sample_advantage = advantage[indices]
@@ -197,6 +200,9 @@ class MarlLearner:
                     numpy_cached,
                 ),
                 "torch_rng": torch.get_rng_state(),
+                "torch_cuda_rng": (
+                    torch.cuda.get_rng_state_all() if self.device.type == "cuda" else None
+                ),
             },
             path,
         )
@@ -212,6 +218,10 @@ class MarlLearner:
         self.actor.load_state_dict(payload["actor"])
         self.critic.load_state_dict(payload["critic"])
         self.optimizer.load_state_dict(payload["optimizer"])
+        for state in self.optimizer.state.values():
+            for key, value in state.items():
+                if isinstance(value, Tensor):
+                    state[key] = value.to(self.device)
         self.policy_version = int(payload["policy_version"])
         random.setstate(payload["python_rng"])
         numpy_rng = payload["numpy_rng"]
@@ -219,3 +229,16 @@ class MarlLearner:
             (numpy_rng[0], numpy_rng[1].numpy(), numpy_rng[2], numpy_rng[3], numpy_rng[4])
         )
         torch.set_rng_state(payload["torch_rng"])
+        if self.device.type == "cuda" and payload.get("torch_cuda_rng") is not None:
+            torch.cuda.set_rng_state_all(payload["torch_cuda_rng"])
+
+
+def resolve_device(requested: str) -> torch.device:
+    """Resolve auto/cpu/cuda without silently ignoring an explicit CUDA request."""
+    if requested == "cuda":
+        if not torch.cuda.is_available():
+            raise RuntimeError("CUDA was requested but torch.cuda.is_available() is false")
+        return torch.device("cuda")
+    if requested == "auto" and torch.cuda.is_available():
+        return torch.device("cuda")
+    return torch.device("cpu")

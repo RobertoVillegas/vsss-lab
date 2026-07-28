@@ -6,16 +6,26 @@ rollout/optimize iterations. The viewer is outside the training hot loop.
 ## Start a run
 
 ```sh
-just league-run /home/rob/runs/vsss-first 10 1
+just league-run /home/rob/runs/vsss-first 10 1 60 100 auto 16
 ```
 
-Arguments are `run_dir`, `iterations`, and `capture_every`. One M7 iteration is
-one native C8 trajectory followed by one MAPPO optimization update; it is the
-meaningful unit to inspect rather than a supervised-learning epoch.
+Arguments are, in order, `run_dir`, `iterations`, `capture_every`,
+`capture_seconds`, `checkpoint_every`, `device`, and `num_envs`. The expanded
+Python command prints the corresponding named flags. One M7 iteration is one
+vectorized native C8 trajectory followed by one MAPPO optimization update; it
+is the meaningful unit to inspect rather than a supervised-learning epoch.
 
 The current default is shared-policy MAPPO: three decentralized actors share
 weights while a centralized critic is used during training. PPO/IPPO remain
 available for controlled ablations.
+
+`device=auto` selects CUDA when available and otherwise continues on CPU with a
+visible warning. Physics remains native Rapier on CPU; CUDA batches actor,
+critic, distillation, and PPO tensor work. On the July 2026 RTX 3070 reference
+host, one 16-world/48,000-frame iteration measured about 1,832 frames/s on CUDA
+and 2,748 frames/s on CPU. The small network does not yet amortize CUDA transfer
+and launch costs, so CUDA support is functional rather than a throughput claim.
+Parallel native physics stepping is the next performance optimization.
 
 Artifacts:
 

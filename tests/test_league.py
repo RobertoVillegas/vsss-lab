@@ -136,6 +136,8 @@ def test_promotion_is_reproducible_and_blocks_regression() -> None:
 
 def test_real_self_play_iteration_updates_version_and_checkpoint(tmp_path: Path) -> None:
     config = MarlConfig(
+        device="cpu",
+        num_envs=1,
         algorithm="mappo",
         hidden_size=8,
         epochs=1,

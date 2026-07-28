@@ -2,19 +2,19 @@
   "schema_version": 1,
   "scenarios": [
     {
-      "id": "straight-constant-wheel-speed",
+      "id": "straight-bounded-wheel-response",
       "ticks": 200,
       "wheel_action": [20.0, 20.0],
       "metric": "robot_0_displacement_m",
-      "reference": 0.5,
+      "reference": 0.47,
       "tolerance": 0.015
     },
     {
-      "id": "center-turn-constant-wheel-speed",
+      "id": "center-turn-bounded-wheel-response",
       "ticks": 100,
       "wheel_action": [-10.0, 10.0],
       "metric": "robot_0_heading_rad",
-      "reference": -2.116519,
+      "reference": -2.358713,
       "tolerance": 0.03
     },
     {

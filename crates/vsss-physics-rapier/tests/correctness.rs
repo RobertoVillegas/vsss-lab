@@ -3,7 +3,10 @@
 use vsss_batch::PhysicsBatch;
 use vsss_physics_api::PhysicsBackend;
 use vsss_physics_rapier::RapierBackend;
-use vsss_spec::{AngularVelocity, EventFlags, MatchConfig, MatchState, RobotAction, serialization};
+use vsss_spec::{
+    Angle, AngularVelocity, Distance, EventFlags, MatchConfig, MatchState, RobotAction,
+    serialization,
+};
 
 fn world() -> RapierBackend {
     let config: MatchConfig =
@@ -28,6 +31,45 @@ fn equal_wheels_move_forward_without_commanded_rotation() {
     let after = backend.step(&actions).unwrap().robots[0];
     assert!(after.pose.x.get() > before.pose.x.get());
     assert!(after.twist.omega.get().abs() < 1.0e-6);
+}
+
+#[test]
+fn wheel_velocity_respects_actuator_acceleration_limit() {
+    let mut backend = world();
+    let mut actions = stopped();
+    actions[0] = RobotAction::wheel_velocity(AngularVelocity(30.0), AngularVelocity(-30.0));
+
+    let after = backend.step(&actions).unwrap().robots[0];
+
+    assert!((after.wheel_speed_left.get() - 0.8).abs() < 1.0e-6);
+    assert!((after.wheel_speed_right.get() + 0.8).abs() < 1.0e-6);
+}
+
+#[test]
+fn goal_box_keeps_robot_inside_back_and_side_walls() {
+    let mut backend = world();
+    let mut snapshot = backend.snapshot();
+    snapshot.robots[0].pose.x = Distance(0.78);
+    snapshot.robots[0].pose.y = Distance(0.0);
+    snapshot.robots[0].pose.theta = Angle(0.0);
+    backend.restore(&snapshot).unwrap();
+    let mut actions = stopped();
+    actions[0] = RobotAction::wheel_velocity(AngularVelocity(30.0), AngularVelocity(30.0));
+    for _ in 0..500 {
+        backend.step(&actions).unwrap();
+    }
+    assert!(backend.snapshot().robots[0].pose.x.get() < 0.86);
+
+    snapshot.robots[0].pose.x = Distance(0.80);
+    snapshot.robots[0].pose.y = Distance(0.0);
+    snapshot.robots[0].pose.theta = Angle(core::f32::consts::FRAC_PI_2);
+    snapshot.robots[0].wheel_speed_left = AngularVelocity(0.0);
+    snapshot.robots[0].wheel_speed_right = AngularVelocity(0.0);
+    backend.restore(&snapshot).unwrap();
+    for _ in 0..500 {
+        backend.step(&actions).unwrap();
+    }
+    assert!(backend.snapshot().robots[0].pose.y.get() < 0.21);
 }
 
 #[test]

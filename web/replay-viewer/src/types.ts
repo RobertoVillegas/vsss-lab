@@ -41,6 +41,8 @@ export interface Robot {
   team: "blue" | "yellow";
   enabled: boolean;
   pose: Pose;
+  wheel_speed_left: number;
+  wheel_speed_right: number;
 }
 
 export interface Snapshot {

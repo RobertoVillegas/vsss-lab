@@ -29,6 +29,7 @@ def run_policy_replay(
     if ticks <= 0:
         raise ValueError("ticks must be positive")
     environment = MarlMatchEnv(config_json, state_json, stage=8, horizon=ticks)
+    blue_device = next(blue.parameters()).device
     observation = environment.reset(seed)
     config = json.loads(config_json)
     replay_path.parent.mkdir(parents=True, exist_ok=True)
@@ -52,11 +53,15 @@ def run_policy_replay(
         episode = 0
         while index < ticks:
             with torch.inference_mode():
-                blue_action = blue.deterministic_action(observation).numpy()
+                blue_action = blue.deterministic_action(observation.to(blue_device)).cpu().numpy()
                 yellow_action = (
                     yellow.deterministic_action(
-                        build_team_observation(environment.state, team=1)
-                    ).numpy()
+                        build_team_observation(environment.state, team=1).to(
+                            next(yellow.parameters()).device
+                        )
+                    )
+                    .cpu()
+                    .numpy()
                     if yellow is not None
                     else None
                 )

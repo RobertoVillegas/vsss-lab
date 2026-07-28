@@ -120,8 +120,20 @@ impl RapierBackend {
         for (index, action) in actions.iter().enumerate() {
             let (left, right, linear, angular) = match action.mode {
                 ControlMode::WheelVelocity => {
-                    let left = action.left.clamp(-limit, limit);
-                    let right = action.right.clamp(-limit, limit);
+                    let max_delta = self.config.max_actuator_force.get()
+                        / self.config.robot.mass.get()
+                        / self.config.wheel.radius.get()
+                        * self.config.timestep.get();
+                    let left = approach(
+                        self.state.robots[index].wheel_speed_left.get(),
+                        action.left.clamp(-limit, limit),
+                        max_delta,
+                    );
+                    let right = approach(
+                        self.state.robots[index].wheel_speed_right.get(),
+                        action.right.clamp(-limit, limit),
+                        max_delta,
+                    );
                     let linear = self.config.wheel.radius.get() * (left + right) / 2.0;
                     let angular = self.config.wheel.radius.get() * (right - left)
                         / self.config.wheel.axle_track.get();
@@ -246,4 +258,31 @@ fn add_walls(config: &MatchConfig, colliders: &mut ColliderSet) {
             );
         }
     }
+    let goal_half_width = config.field.goal_width.get() / 2.0;
+    let goal_depth = config.field.goal_depth.get();
+    for sign in [-1.0_f32, 1.0] {
+        let goal_center_x = sign * (half_l + goal_depth / 2.0);
+        for y_sign in [-1.0_f32, 1.0] {
+            colliders.insert(
+                ColliderBuilder::cuboid(goal_depth / 2.0, thickness / 2.0)
+                    .translation(Vector::new(
+                        goal_center_x,
+                        y_sign * (goal_half_width + thickness / 2.0),
+                    ))
+                    .build(),
+            );
+        }
+        colliders.insert(
+            ColliderBuilder::cuboid(thickness / 2.0, goal_half_width + thickness)
+                .translation(Vector::new(
+                    sign * (half_l + goal_depth + thickness / 2.0),
+                    0.0,
+                ))
+                .build(),
+        );
+    }
+}
+
+fn approach(current: f32, target: f32, max_delta: f32) -> f32 {
+    current + (target - current).clamp(-max_delta, max_delta)
 }

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import pytest
 import torch
 from tensordict import TensorDict
 from torch.distributions import Normal
@@ -127,7 +128,14 @@ def trajectory(learner: MarlLearner, steps: int = 4) -> TeamTrajectory:
 def test_ippo_and_mappo_update_finite_losses() -> None:
     for algorithm in ("ippo", "mappo"):
         learner = MarlLearner(
-            MarlConfig(algorithm=algorithm, hidden_size=8, epochs=1, minibatch_size=4)
+            MarlConfig(
+                device="cpu",
+                num_envs=1,
+                algorithm=algorithm,
+                hidden_size=8,
+                epochs=1,
+                minibatch_size=4,
+            )
         )
         before = learner.actor.action_head.weight.detach().clone()
         losses = learner.optimize(trajectory(learner))
@@ -137,7 +145,7 @@ def test_ippo_and_mappo_update_finite_losses() -> None:
 
 
 def test_stale_trajectory_is_rejected_before_update() -> None:
-    learner = MarlLearner(MarlConfig(hidden_size=8, epochs=1))
+    learner = MarlLearner(MarlConfig(device="cpu", num_envs=1, hidden_size=8, epochs=1))
     stale = trajectory(learner)
     learner.policy_version = 1
     before = tuple(parameter.detach().clone() for parameter in learner.actor.parameters())
@@ -150,7 +158,7 @@ def test_stale_trajectory_is_rejected_before_update() -> None:
 
 
 def test_marl_checkpoint_round_trip_and_algorithm_guard(tmp_path: Path) -> None:
-    config = MarlConfig(algorithm="ippo", hidden_size=8, epochs=1)
+    config = MarlConfig(device="cpu", num_envs=1, algorithm="ippo", hidden_size=8, epochs=1)
     learner = MarlLearner(config)
     learner.optimize(trajectory(learner))
     checkpoint = tmp_path / "ippo.pt"
@@ -163,7 +171,15 @@ def test_marl_checkpoint_round_trip_and_algorithm_guard(tmp_path: Path) -> None:
     ):
         assert torch.equal(actual, expected)
     with np.testing.assert_raises_regex(ValueError, "algorithm"):
-        MarlLearner(MarlConfig(algorithm="mappo", hidden_size=8, epochs=1)).load(checkpoint)
+        MarlLearner(
+            MarlConfig(
+                device="cpu",
+                num_envs=1,
+                algorithm="mappo",
+                hidden_size=8,
+                epochs=1,
+            )
+        ).load(checkpoint)
 
 
 def test_versioned_marl_configs() -> None:
@@ -180,6 +196,20 @@ def test_c7_and_c8_have_explicit_opponent_modes_and_team_rewards() -> None:
         assert done
         assert info["opponent_mode"] == mode
         assert np.isfinite(reward.total)
+
+
+def test_action_delta_regularization_penalizes_abrupt_commands() -> None:
+    environment = MarlMatchEnv(
+        CONFIG,
+        STATE,
+        stage=7,
+        horizon=2,
+        action_repeat=1,
+        action_delta_coefficient=0.25,
+    )
+    environment.reset(9)
+    _, reward, _, _ = environment.step(np.ones((3, 2), dtype=np.float32))
+    assert reward.action_delta == pytest.approx(-0.25)
 
 
 def test_distilled_shared_policy_is_finite_under_physical_action_scaling() -> None:

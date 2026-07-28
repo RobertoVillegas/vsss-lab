@@ -87,7 +87,7 @@ Long runs can be resumed without repeating bootstrap. The iteration count is
 additional work; checkpoints and 60-second captures can be spaced independently:
 
 ```bash
-just league-resume /home/rob/runs/vsss-long 10000 100 60 100
+just league-resume /home/rob/runs/vsss-long 10000 100 60 100 auto 16
 ```
 
 The trainer reports return, progress, throughput, ETA, and checkpoint writes.
@@ -96,14 +96,26 @@ policy is checkpointed before exit. Training and viewing are independent:
 
 ```bash
 # Terminal 1: training only
-just league-resume /home/rob/runs/vsss-long 10000 100 60 100
+just league-resume /home/rob/runs/vsss-long 10000 100 60 100 auto 16
 
 # Terminal 2: optional read-only viewer
 just league-web /home/rob/runs/vsss-long
 
 # Or launch a new run and its viewer together
-just league-live /home/rob/runs/vsss-live 10000 100 60 100
+just league-live /home/rob/runs/vsss-live 10000 100 60 100 auto 16
 ```
+
+The trailing values select `device` and vectorized environment count. `auto`
+selects CUDA when available and prints an explicit CPU fallback warning
+otherwise. The expanded command always displays the named CLI flags
+`--device` and `--num-envs`; use `cpu` deliberately for the current small-network
+baseline when maximum measured throughput matters.
+
+Training uses Rich on an interactive terminal: a stable progress bar remains at
+the bottom while current/rolling return, progress, PPO losses, device, vector
+worlds, frames/s, and the latest checkpoint remain tabulated above it. Logs and
+warnings are emitted above the live display. Redirected output automatically
+uses one aligned text row per completed iteration.
 
 Fast simulation intentionally computes virtual time faster than wall time while
 preserving the 5 ms physics step and 20 ms control period. A 60-second replay is

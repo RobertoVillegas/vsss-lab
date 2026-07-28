@@ -82,6 +82,8 @@ class MarlConfig:
     schema_version: int = 1
     algorithm: Literal["ippo", "mappo"] = "mappo"
     seed: int = 7
+    device: Literal["auto", "cpu", "cuda"] = "auto"
+    num_envs: int = 16
     hidden_size: int = 64
     learning_rate: float = 3e-4
     gamma: float = 0.99
@@ -96,6 +98,7 @@ class MarlConfig:
     curriculum_stage: Literal[7, 8] = 7
     horizon: int = 1_000
     action_repeat: int = 4
+    action_delta_coefficient: float = 0.01
 
     def __post_init__(self) -> None:
         if self.schema_version != 1:
@@ -104,6 +107,12 @@ class MarlConfig:
             raise ValueError("algorithm must be ippo or mappo")
         if self.curriculum_stage not in (7, 8):
             raise ValueError("curriculum_stage must be 7 or 8")
+        if self.device not in ("auto", "cpu", "cuda"):
+            raise ValueError("device must be auto, cpu, or cuda")
+        if self.num_envs <= 0:
+            raise ValueError("num_envs must be positive")
+        if self.action_delta_coefficient < 0.0:
+            raise ValueError("action_delta_coefficient must be non-negative")
 
     def fingerprint(self) -> str:
         payload = json.dumps(asdict(self), sort_keys=True, separators=(",", ":"))
