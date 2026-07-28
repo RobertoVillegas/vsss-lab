@@ -67,6 +67,6 @@ run = [
   "cargo clippy --workspace --all-targets -- -D warnings",
   "ruff check .",
   "ruff format --check .",
-  "uv run mypy tests python/vsss_env python/vsss_baselines python/vsss_eval python/vsss_train python/vsss_league tools/replay_viewer tools/replay_web tools/benchmark_observer.py tools/benchmark_marl.py",
+  "uv run mypy tests python/vsss_env python/vsss_baselines python/vsss_eval python/vsss_train python/vsss_league python/vsss_vision tools/replay_viewer tools/replay_web tools/benchmark_observer.py tools/benchmark_marl.py",
   "bun run --cwd web/replay-viewer typecheck",
 ]

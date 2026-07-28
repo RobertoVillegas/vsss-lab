@@ -1,19 +1,19 @@
 ## 1. Contracts and calibration
 
-- [ ] 1.1 Record the estimated-state/prediction boundary in an ADR
-- [ ] 1.2 Define versioned measurement, association, estimate, covariance, and
+- [x] 1.1 Record the estimated-state/prediction boundary in an ADR
+- [x] 1.2 Define versioned measurement, association, estimate, covariance, and
   prediction schemas
-- [ ] 1.3 Define camera/filter calibration profiles and stable validation errors
+- [x] 1.3 Define camera/filter calibration profiles and stable validation errors
 - [ ] 1.4 Add contract tests proving canonical truth and estimated state cannot be
   confused
 
 ## 2. Deterministic state estimation
 
-- [ ] 2.1 Implement a CPU ball constant-acceleration Kalman filter
-- [ ] 2.2 Implement a CPU differential-drive robot EKF with wrapped angles
+- [x] 2.1 Implement a CPU ball constant-acceleration Kalman filter
+- [x] 2.2 Implement a CPU differential-drive robot EKF with wrapped angles
 - [ ] 2.3 Implement innovation gating, rejection diagnostics, and bounded
   prediction-only dropout handling
-- [ ] 2.4 Implement confidence-aware marker association input without binding
+- [x] 2.4 Implement confidence-aware marker association input without binding
   marker identity to policy role
 - [ ] 2.5 Add golden transition, covariance, outlier, occlusion, and seed tests
 
