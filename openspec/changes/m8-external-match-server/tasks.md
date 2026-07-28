@@ -18,7 +18,7 @@
 ## 3. Controller SDKs and competition
 
 - [x] 3.1 Implement typed Rust controller SDK and sample controller
-- [ ] 3.2 Implement typed Python controller SDK and sample controller
+- [x] 3.2 Implement typed Python controller SDK and sample controller
 - [ ] 3.3 Add private container execution and heterogeneous tournament command
 - [ ] 3.4 Run Roberto-versus-Julio compatibility tournament when controller is available
 

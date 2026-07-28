@@ -21,6 +21,7 @@ dev = [
   "numpy>=2.3,<3",
   "pettingzoo>=1.25,<2",
   "pytest>=8.4,<9",
+  "pyzmq==27.1.0",
 ]
 train = [
   "torch>=2.9,<3",
@@ -56,6 +57,7 @@ select = ["E", "F", "I", "B", "UP", "RUF"]
 [tool.mypy]
 python_version = "3.13"
 strict = true
+exclude = ["python/vsss_controller/generated"]
 
 [[tool.mypy.overrides]]
 module = ["pettingzoo", "pettingzoo.*", "torch", "torch.*", "torchrl", "torchrl.*", "tensordict", "tensordict.*"]
@@ -64,6 +66,7 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = ["vsss", "vsss.*"]
 ignore_missing_imports = true
+follow_imports = "skip"
 
 [[tool.mypy.overrides]]
 module = "vsss_env.adapters"
