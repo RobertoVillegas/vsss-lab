@@ -7,7 +7,7 @@ import json
 import tomllib
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 
 @dataclass(frozen=True)
@@ -73,3 +73,47 @@ def load_config(path: str | Path) -> TrainConfig:
 def config_dict(config: TrainConfig) -> dict[str, Any]:
     """Return a JSON-safe config mapping."""
     return asdict(config)
+
+
+@dataclass(frozen=True)
+class MarlConfig:
+    """Versioned M6 shared-policy training configuration."""
+
+    schema_version: int = 1
+    algorithm: Literal["ippo", "mappo"] = "mappo"
+    seed: int = 7
+    hidden_size: int = 64
+    learning_rate: float = 3e-4
+    gamma: float = 0.99
+    gae_lambda: float = 0.95
+    clip_epsilon: float = 0.2
+    entropy_coefficient: float = 1e-3
+    value_coefficient: float = 0.5
+    max_grad_norm: float = 0.5
+    epochs: int = 4
+    minibatch_size: int = 256
+    policy_id: str = "blue-shared"
+    curriculum_stage: Literal[7, 8] = 7
+    horizon: int = 1_000
+    action_repeat: int = 4
+
+    def __post_init__(self) -> None:
+        if self.schema_version != 1:
+            raise ValueError("unsupported MARL config schema")
+        if self.algorithm not in ("ippo", "mappo"):
+            raise ValueError("algorithm must be ippo or mappo")
+        if self.curriculum_stage not in (7, 8):
+            raise ValueError("curriculum_stage must be 7 or 8")
+
+    def fingerprint(self) -> str:
+        payload = json.dumps(asdict(self), sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def load_marl_config(path: str | Path) -> MarlConfig:
+    with Path(path).open("rb") as stream:
+        document = tomllib.load(stream)
+    unknown = set(document) - set(MarlConfig.__dataclass_fields__)
+    if unknown:
+        raise ValueError(f"unknown MARL config keys: {sorted(unknown)}")
+    return MarlConfig(**document)

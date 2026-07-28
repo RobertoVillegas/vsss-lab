@@ -4,13 +4,23 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from tensordict import TensorDict
+from torch.distributions import Normal
 from vsss_env._native import BatchSimulator
+from vsss_train.config import MarlConfig, load_marl_config
 from vsss_train.marl import (
     CentralizedCritic,
     LocalCritic,
     SharedActor,
     TeamBatch,
     build_team_observation,
+)
+from vsss_train.marl_env import MarlMatchEnv, distill_dynamic_teacher, evaluate_against_random
+from vsss_train.marl_ppo import (
+    TRAJECTORY_SCHEMA,
+    MarlLearner,
+    TeamTrajectory,
+    TrajectoryMetadata,
 )
 
 ROOT = Path(__file__).parents[1]
@@ -73,3 +83,117 @@ def test_actor_has_no_per_agent_parameters() -> None:
     assert not any("agent" in name or "robot" in name for name in parameter_names)
     observation = build_team_observation(initial_state(), team=0)
     assert actor.deterministic_action(observation).shape == (3, 2)
+
+
+def trajectory(learner: MarlLearner, steps: int = 4) -> TeamTrajectory:
+    single = build_team_observation(initial_state(), team=0)
+    observation = TeamBatch(
+        *(field.unsqueeze(0).repeat(steps, *(1,) * field.ndim) for field in single)
+    )
+    with torch.no_grad():
+        mean, log_std = learner.actor(observation)
+        distribution = Normal(mean, log_std.exp())
+        action = distribution.sample()  # type: ignore[no-untyped-call]
+        log_probability = distribution.log_prob(action).sum(-1)  # type: ignore[no-untyped-call]
+        value = learner.critic(observation)
+    data = TensorDict(
+        {
+            "tick": torch.arange(steps).unsqueeze(-1).expand(steps, 3),
+            **dict(zip(TeamBatch._fields, observation, strict=True)),
+            "action": action,
+            "sample_log_prob": log_probability,
+            "reward_total": torch.linspace(0.0, 1.0, steps).unsqueeze(-1).expand(steps, 3),
+            "terminated": torch.zeros(steps, 3, dtype=torch.bool),
+            "truncated": torch.zeros(steps, 3, dtype=torch.bool),
+            "state_value": value,
+        },
+        batch_size=[steps, 3],
+    )
+    return TeamTrajectory(
+        TrajectoryMetadata(
+            schema_version=TRAJECTORY_SCHEMA,
+            run_id="test",
+            episode_id=0,
+            world_id=0,
+            team=0,
+            policy_id=learner.config.policy_id,
+            policy_version=learner.policy_version,
+            global_state_ref="sha256:test",
+        ),
+        data,
+    )
+
+
+def test_ippo_and_mappo_update_finite_losses() -> None:
+    for algorithm in ("ippo", "mappo"):
+        learner = MarlLearner(
+            MarlConfig(algorithm=algorithm, hidden_size=8, epochs=1, minibatch_size=4)
+        )
+        before = learner.actor.action_head.weight.detach().clone()
+        losses = learner.optimize(trajectory(learner))
+        assert all(np.isfinite(value) for value in losses.values())
+        assert learner.policy_version == 1
+        assert not torch.equal(before, learner.actor.action_head.weight)
+
+
+def test_stale_trajectory_is_rejected_before_update() -> None:
+    learner = MarlLearner(MarlConfig(hidden_size=8, epochs=1))
+    stale = trajectory(learner)
+    learner.policy_version = 1
+    before = tuple(parameter.detach().clone() for parameter in learner.actor.parameters())
+    with np.testing.assert_raises_regex(ValueError, "stale"):
+        learner.optimize(stale)
+    assert all(
+        torch.equal(actual, expected)
+        for actual, expected in zip(learner.actor.parameters(), before, strict=True)
+    )
+
+
+def test_marl_checkpoint_round_trip_and_algorithm_guard(tmp_path: Path) -> None:
+    config = MarlConfig(algorithm="ippo", hidden_size=8, epochs=1)
+    learner = MarlLearner(config)
+    learner.optimize(trajectory(learner))
+    checkpoint = tmp_path / "ippo.pt"
+    learner.save(checkpoint)
+    restored = MarlLearner(config)
+    restored.load(checkpoint)
+    assert restored.policy_version == learner.policy_version
+    for actual, expected in zip(
+        restored.actor.parameters(), learner.actor.parameters(), strict=True
+    ):
+        assert torch.equal(actual, expected)
+    with np.testing.assert_raises_regex(ValueError, "algorithm"):
+        MarlLearner(MarlConfig(algorithm="mappo", hidden_size=8, epochs=1)).load(checkpoint)
+
+
+def test_versioned_marl_configs() -> None:
+    assert load_marl_config(ROOT / "experiments/configs/m6-ippo.toml").algorithm == "ippo"
+    assert load_marl_config(ROOT / "experiments/configs/m6-mappo.toml").algorithm == "mappo"
+
+
+def test_c7_and_c8_have_explicit_opponent_modes_and_team_rewards() -> None:
+    for stage, mode in ((7, "inactive"), (8, "heuristic")):
+        environment = MarlMatchEnv(CONFIG, STATE, stage=stage, horizon=1)
+        observation = environment.reset(9)
+        assert observation.self_features.shape == (3, 8)
+        _, reward, done, info = environment.step(np.zeros((3, 2), dtype=np.float32))
+        assert done
+        assert info["opponent_mode"] == mode
+        assert np.isfinite(reward.total)
+
+
+def test_distilled_shared_policy_beats_seeded_random() -> None:
+    actor = SharedActor(hidden_size=32)
+    loss = distill_dynamic_teacher(actor, CONFIG, STATE, seed=7, samples=512, epochs=10)
+    result = evaluate_against_random(
+        actor,
+        CONFIG,
+        STATE,
+        stage=8,
+        seeds=range(30_007, 30_010),
+        horizon=300,
+        required_margin=0.02,
+    )
+    assert np.isfinite(loss)
+    assert result.passed
+    assert result.margin >= 0.02

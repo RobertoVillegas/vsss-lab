@@ -1,0 +1,17 @@
+schema_version = 1
+algorithm = "ippo"
+seed = 7
+hidden_size = 64
+learning_rate = 0.0003
+gamma = 0.99
+gae_lambda = 0.95
+clip_epsilon = 0.2
+entropy_coefficient = 0.001
+value_coefficient = 0.5
+max_grad_norm = 0.5
+epochs = 4
+minibatch_size = 256
+policy_id = "blue-shared"
+curriculum_stage = 7
+horizon = 1000
+action_repeat = 4

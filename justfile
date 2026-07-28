@@ -63,6 +63,15 @@ evaluate-skill config="experiments/configs/m5-go-to-target.toml" checkpoint="/ho
 m5-smoke:
   uv run --group train pytest -q tests/test_rl_skills.py
 
+prepare-marl config="experiments/configs/m6-mappo.toml" checkpoint="/home/rob/checkpoints/m6-mappo.pt":
+  uv run --group train python -m vsss_train.marl_cli prepare --config "{{config}}" --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --checkpoint "{{checkpoint}}"
+
+evaluate-marl config="experiments/configs/m6-mappo.toml" checkpoint="/home/rob/checkpoints/m6-mappo.pt" seeds="20" margin="0.05":
+  uv run --group train python -m vsss_train.marl_cli evaluate --config "{{config}}" --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --checkpoint "{{checkpoint}}" --seeds {{seeds}} --margin {{margin}}
+
+m6-smoke:
+  uv run --group train pytest -q tests/test_marl.py
+
 clean:
   cargo clean
   rm -rf .venv .pytest_cache .mypy_cache .ruff_cache

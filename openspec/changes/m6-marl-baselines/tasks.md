@@ -11,12 +11,12 @@
 
 ## 3. Learning and curriculum
 
-- [ ] 3.1 Implement versioned team trajectories and IPPO/MAPPO optimization
-- [ ] 3.2 Implement algorithm-safe checkpoint lifecycle
-- [ ] 3.3 Implement C7/C8 native rollout and deterministic random-baseline evaluation
+- [x] 3.1 Implement versioned team trajectories and IPPO/MAPPO optimization
+- [x] 3.2 Implement algorithm-safe checkpoint lifecycle
+- [x] 3.3 Implement C7/C8 native rollout and deterministic random-baseline evaluation
 
 ## 4. Verification
 
-- [ ] 4.1 Add CLI/configs and executable M6 smoke/identity/evaluation gates
+- [x] 4.1 Add CLI/configs and executable M6 smoke/identity/evaluation gates
 - [ ] 4.2 Record benchmark evidence and known limitations
 - [ ] 4.3 Run all gates, sign small commits, archive OpenSpec, and push
