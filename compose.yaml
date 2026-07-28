@@ -91,7 +91,7 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     read_only: true
-    tmpfs: [/tmp, /root/.gz, /root/.ros]
+    tmpfs: [/tmp, /root/.cache, /root/.gz, /root/.ros]
     pids_limit: 512
 
 networks:

@@ -15,12 +15,17 @@ gz sim -s -r /workspace/simulation/gazebo/vsss_world.sdf >/tmp/gz-server.log 2>&
 server_pid=$!
 trap 'kill "${server_pid}" 2>/dev/null || true' EXIT
 for _ in $(seq 1 50); do
-  if gz topic -i -t /model/blue_0/cmd_vel | grep -q "Subscribers"; then
+  if gz topic -i -t /model/blue_0/cmd_vel | grep -q "Subscribers" \
+    && gz topic -i -t /vsss/camera/image_raw | grep -q "Publishers"; then
     break
   fi
   sleep 0.1
 done
 gz topic -i -t /model/blue_0/cmd_vel | grep -q "Subscribers"
+gz topic -i -t /vsss/camera/image_raw | grep -q "gz.msgs.Image"
+timeout 10 gz topic -e -t /vsss/camera/image_raw -n 1 >/tmp/camera-image.pbtxt
+grep -q 'width: 680' /tmp/camera-image.pbtxt
+grep -q 'height: 520' /tmp/camera-image.pbtxt
 gz topic -t /model/blue_0/cmd_vel -m gz.msgs.Twist \
   -p 'linear: {x: 0.25}, angular: {z: 0.0}'
 sleep 0.1
