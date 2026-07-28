@@ -248,6 +248,9 @@ impl PhysicsBackend for RapierBackend {
 }
 
 fn add_walls(config: &MatchConfig, colliders: &mut ColliderSet) {
+    // The VSSS playing surface has 70 mm clipped corners. Keep this reference
+    // geometry aligned with the calibrated ROS/Gazebo and pSim fields.
+    const CORNER_CHAMFER: f32 = 0.07;
     let half_l = config.field.length.get() / 2.0;
     let half_w = config.field.width.get() / 2.0;
     let thickness = config.field.wall_thickness.get();
@@ -294,6 +297,12 @@ fn add_walls(config: &MatchConfig, colliders: &mut ColliderSet) {
                 ))
                 .build(),
         );
+    }
+    for (x_sign, y_sign) in [(-1.0_f32, -1.0_f32), (-1.0, 1.0), (1.0, -1.0), (1.0, 1.0)] {
+        let corner = Vector::new(x_sign * half_l, y_sign * half_w);
+        let along_x = Vector::new(x_sign * (half_l - CORNER_CHAMFER), y_sign * half_w);
+        let along_y = Vector::new(x_sign * half_l, y_sign * (half_w - CORNER_CHAMFER));
+        colliders.insert(ColliderBuilder::triangle(corner, along_x, along_y).build());
     }
 }
 

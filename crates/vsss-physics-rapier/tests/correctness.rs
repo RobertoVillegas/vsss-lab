@@ -200,3 +200,23 @@ fn sustained_robot_command_does_not_engulf_ball() {
     let required = 0.075 / 2.0 + 0.0215 - 0.0011;
     assert!(minimum_separation >= required, "{minimum_separation}");
 }
+
+#[test]
+fn ball_is_deflected_by_clipped_field_corner() {
+    let mut backend = world();
+    let mut snapshot = backend.snapshot();
+    snapshot.ball.x = Distance(0.60);
+    snapshot.ball.y = Distance(0.50);
+    snapshot.ball.vx.0 = 1.0;
+    snapshot.ball.vy.0 = 1.0;
+    backend.restore(&snapshot).unwrap();
+
+    let mut maximum_corner_reach = f32::MIN;
+    for _ in 0..300 {
+        let state = backend.step(&stopped()).unwrap();
+        maximum_corner_reach = maximum_corner_reach.max(state.ball.x.get() + state.ball.y.get());
+    }
+
+    // The chamfer face is x + y = 1.33 m before accounting for ball radius.
+    assert!(maximum_corner_reach < 1.31, "{maximum_corner_reach}");
+}

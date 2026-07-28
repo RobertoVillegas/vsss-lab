@@ -64,11 +64,27 @@ export function FieldCanvas({ header, frame }: Props) {
     context.fillStyle = gradient;
     context.fillRect(0, 0, width, height);
 
+    const chamfer = Math.min(0.07 * scale, pitchWidth / 8, pitchHeight / 8);
+    const tracePitch = () => {
+      context.beginPath();
+      context.moveTo(left + chamfer, top);
+      context.lineTo(left + pitchWidth - chamfer, top);
+      context.lineTo(left + pitchWidth, top + chamfer);
+      context.lineTo(left + pitchWidth, top + pitchHeight - chamfer);
+      context.lineTo(left + pitchWidth - chamfer, top + pitchHeight);
+      context.lineTo(left + chamfer, top + pitchHeight);
+      context.lineTo(left, top + pitchHeight - chamfer);
+      context.lineTo(left, top + chamfer);
+      context.closePath();
+    };
+
     context.fillStyle = "#123c2c";
-    context.fillRect(left, top, pitchWidth, pitchHeight);
+    tracePitch();
+    context.fill();
     context.strokeStyle = "rgba(224, 244, 235, 0.72)";
     context.lineWidth = 2;
-    context.strokeRect(left, top, pitchWidth, pitchHeight);
+    tracePitch();
+    context.stroke();
     context.beginPath();
     context.moveTo(width / 2, top);
     context.lineTo(width / 2, top + pitchHeight);
@@ -83,9 +99,45 @@ export function FieldCanvas({ header, frame }: Props) {
 
     const goalWidth = field.goal_width * scale;
     const goalDepth = field.goal_depth * scale;
+    const penaltyDepth = 0.15 * scale;
+    const penaltyWidth = 0.70 * scale;
     context.strokeStyle = "rgba(224, 244, 235, 0.5)";
     context.strokeRect(left - goalDepth, height / 2 - goalWidth / 2, goalDepth, goalWidth);
     context.strokeRect(left + pitchWidth, height / 2 - goalWidth / 2, goalDepth, goalWidth);
+    context.strokeRect(left, height / 2 - penaltyWidth / 2, penaltyDepth, penaltyWidth);
+    context.strokeRect(
+      left + pitchWidth - penaltyDepth,
+      height / 2 - penaltyWidth / 2,
+      penaltyDepth,
+      penaltyWidth,
+    );
+
+    // Goal-area arcs and restart crosses mirror the calibrated 1.70 x 1.30 m
+    // reference layout while staying in canonical, field-centered coordinates.
+    for (const xSign of [-1, 1]) {
+      const [arcX, arcY] = point(xSign * (field.length / 2 - 0.07), 0);
+      context.beginPath();
+      if (xSign < 0) {
+        context.arc(arcX, arcY, 0.13 * scale, -Math.PI / 2, Math.PI / 2);
+      } else {
+        context.arc(arcX, arcY, 0.13 * scale, Math.PI / 2, Math.PI * 1.5);
+      }
+      context.stroke();
+    }
+
+    const drawCross = (x: number, y: number) => {
+      const [crossX, crossY] = point(x, y);
+      const radius = 0.025 * scale;
+      context.beginPath();
+      context.moveTo(crossX - radius, crossY);
+      context.lineTo(crossX + radius, crossY);
+      context.moveTo(crossX, crossY - radius);
+      context.lineTo(crossX, crossY + radius);
+      context.stroke();
+    };
+    for (const x of [-0.375, 0.375]) {
+      for (const y of [-0.40, 0, 0.40]) drawCross(x, y);
+    }
 
     const robotWidth = header.config.robot.length * scale;
     const robotHeight = header.config.robot.width * scale;
@@ -105,6 +157,21 @@ export function FieldCanvas({ header, frame }: Props) {
       context.strokeStyle = "#07100d";
       context.lineWidth = 2;
       context.strokeRect(-robotWidth / 2, -robotHeight / 2, robotWidth, robotHeight);
+      const tagColors = ["#45e2b5", "#e05cff", "#ff625c"];
+      context.fillStyle = robot.team === "blue" ? "#248cff" : "#f4c600";
+      context.fillRect(
+        -robotWidth * 0.32,
+        -robotHeight * 0.40,
+        robotWidth * 0.30,
+        robotHeight * 0.80,
+      );
+      context.fillStyle = tagColors[Number.parseInt(robot.id.replace(/\D/g, ""), 10) % 3] ?? tagColors[0];
+      context.fillRect(
+        robotWidth * 0.08,
+        robotHeight * 0.08,
+        robotWidth * 0.25,
+        robotHeight * 0.25,
+      );
       context.beginPath();
       context.moveTo(0, 0);
       context.lineTo(robotWidth / 2, 0);
