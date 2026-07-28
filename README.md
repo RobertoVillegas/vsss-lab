@@ -195,6 +195,35 @@ TensorBoard remains available as a specialized optional view. Checkpoints should
 be selected through seeded evaluation against a population—not by choosing the
 largest training return or simply taking the last file.
 
+## Evidence-driven experimentation
+
+Training and model selection are separate concerns. VSSS Lab evaluates
+candidates on paired seeds from both team colors and uses terminal match
+outcomes with confidence intervals. Shaped return, possession, touches, Elo, and
+checkpoint recency remain diagnostics; none can promote a policy alone.
+
+The adaptive-training layer provides:
+
+- immutable holdouts plus routine, frontier, and deduplicated failure scenarios;
+- validity-checked scenario mutation and learning-progress allocation;
+- persistent multiobjective Optuna studies with smoke, screen, and confirmation
+  fidelities;
+- bounded reward and PPO search parameters with commit, seed, parent, compute,
+  and pruning lineage;
+- feed-forward, isolated-GRU, entity-attention, and symmetric wheel-action
+  ablation contracts;
+- exact-simulator CEM demonstrations for atomic skills only;
+- behaviorally diverse historical policy retention and confidence-gated
+  distillation;
+- reward-independent replay events, possession, pressure, positioning,
+  coordination, timelines, heatmaps, JSON, and CSV export;
+- phase-level CPU/CUDA profiling and a trace-parity gate for any future
+  accelerator backend.
+
+Rapier remains the authoritative physics engine. A faster alternate backend is
+adoptable only if it preserves contact and goal traces and improves end-to-end
+throughput by a material margin.
+
 ## Inspirations and references
 
 VSSS Lab is informed by public simulators, robot-soccer tooling, and MARL
@@ -255,6 +284,26 @@ starting a long run:
 
 ```bash
 just cuda-smoke
+```
+
+Useful evaluation and profiling commands:
+
+```bash
+# Paired-color, five-seed terminal evaluation.
+just league-tournament \
+  /path/to/checkpoint.pt \
+  reports/tournament \
+  experiments/configs/m13-mappo-directional.toml \
+  5
+
+# Reward-independent replay JSON and team CSV.
+just replay-analyze \
+  /path/to/replay.jsonl \
+  reports/replay-analytics.json \
+  reports/replay-teams.csv
+
+# CPU/GPU rollout phase profile.
+just profile-m14 200 reports/m14/profile.json
 ```
 
 ## Train and inspect a run

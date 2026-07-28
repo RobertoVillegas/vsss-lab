@@ -38,6 +38,9 @@ replay-view replay="reports/m4-scripted.jsonl":
 replay-render replay="reports/m4-scripted.jsonl" output="reports/m4-scripted.svg":
   uv run python -m tools.replay_viewer.view "{{replay}}" --svg "{{output}}"
 
+replay-analyze replay output="reports/replay-analytics.json" team_csv="reports/replay-teams.csv":
+  uv run python -m tools.replay_analytics "{{replay}}" --json "{{output}}" --team-csv "{{team_csv}}"
+
 replay-view-native replay="reports/m4-scripted.jsonl":
   cargo run -p vsss-viewer-2d -- "{{replay}}"
 

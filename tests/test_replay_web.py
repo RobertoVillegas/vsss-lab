@@ -6,11 +6,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from vsss_eval import run_scripted_match  # noqa: E402
+
 from tools.replay_web.server import (  # noqa: E402
     discover_checkpoints,
     discover_replays,
     latest_metric,
     metric_history,
+    replay_analytics,
     resolve_replay,
 )
 
@@ -101,3 +104,18 @@ def test_metric_history_is_bounded_and_preserves_latest(tmp_path: Path) -> None:
     assert len(history) <= 4
     assert history[0]["iteration"] == 0
     assert history[-1]["iteration"] == 9
+
+
+def test_replay_analytics_is_derived_lazily_and_cached_by_file_identity(tmp_path: Path) -> None:
+    replay = tmp_path / "iteration-0001.jsonl"
+    run_scripted_match(
+        (ROOT / "tests/golden/m1_match_config.json").read_text(),
+        (ROOT / "tests/golden/m1_match_state.json").read_text(),
+        2,
+        replay,
+    )
+    stat = replay.stat()
+    first = replay_analytics(str(replay), stat.st_size, stat.st_mtime_ns)
+    second = replay_analytics(str(replay), stat.st_size, stat.st_mtime_ns)
+    assert first is second
+    assert first["sample_count"] == 2

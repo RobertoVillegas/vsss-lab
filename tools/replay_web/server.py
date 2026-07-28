@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any, TypedDict
 from urllib.parse import unquote, urlparse
 
+from vsss_eval import analyze_replay
+
 REPLAY_NAME = re.compile(r"iteration-(\d+)\.jsonl")
 CHECKPOINT_NAME = re.compile(r"iteration-(\d+)\.pt")
 
@@ -178,6 +180,12 @@ def resolve_replay(run_dir: Path, filename: str) -> Path | None:
     return replay if replay.is_file() else None
 
 
+@lru_cache(maxsize=512)
+def replay_analytics(filename: str, _size: int, _modified_ns: int) -> dict[str, Any]:
+    """Derive analytics lazily only after the user selects a replay."""
+    return analyze_replay(Path(filename)).to_dict()
+
+
 def make_handler(run_dir: Path, static_dir: Path) -> type[SimpleHTTPRequestHandler]:
     """Create a request handler closed over validated roots."""
     resolved_run = run_dir.resolve()
@@ -206,9 +214,16 @@ def make_handler(run_dir: Path, static_dir: Path) -> type[SimpleHTTPRequestHandl
                 return
             if path.startswith("/api/replays/"):
                 filename = unquote(path.removeprefix("/api/replays/"))
+                analytics_request = filename.endswith("/analytics")
+                if analytics_request:
+                    filename = filename.removesuffix("/analytics")
                 replay = resolve_replay(resolved_run, filename)
                 if replay is None:
                     self.send_error(HTTPStatus.NOT_FOUND, "Replay not found")
+                    return
+                if analytics_request:
+                    stat = replay.stat()
+                    self._send_json(replay_analytics(str(replay), stat.st_size, stat.st_mtime_ns))
                     return
                 self._send_file(replay, "application/x-ndjson")
                 return
