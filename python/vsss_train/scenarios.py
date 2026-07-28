@@ -97,6 +97,7 @@ class ScenarioCurriculum:
             lambda: deque(maxlen=2 * history)
         )
         self._failures: dict[str, Scenario] = {}
+        self._descriptor_failures: set[str] = set()
         self._counts: Counter[str] = Counter()
 
     @property
@@ -134,6 +135,24 @@ class ScenarioCurriculum:
         elif not scenario.immutable:
             self._failures.setdefault(scenario.digest, scenario)
 
+    def ingest_failure_descriptor(self, *, kind: str, digest: str) -> bool:
+        """Route a deduplicated replay failure to a matching rehearsal scenario."""
+        if digest in self._descriptor_failures:
+            return False
+        candidates = sorted(
+            (
+                scenario
+                for scenario in self.scenarios
+                if scenario.kind == kind and scenario.role != "holdout"
+            ),
+            key=lambda scenario: scenario.scenario_id,
+        )
+        if not candidates:
+            return False
+        self._descriptor_failures.add(digest)
+        self._failures.setdefault(digest, candidates[0])
+        return True
+
     def telemetry(self, *, reset: bool = False) -> dict[str, object]:
         result: dict[str, object] = {
             "mixture": {
@@ -143,6 +162,7 @@ class ScenarioCurriculum:
                 "holdout": len(self.holdouts),
             },
             "deduplicated_failures": len(self._failures),
+            "replay_failure_descriptors": len(self._descriptor_failures),
             "learning_progress": {
                 kind: _window_progress(values, self.history)
                 for kind, values in sorted(self._outcomes.items())

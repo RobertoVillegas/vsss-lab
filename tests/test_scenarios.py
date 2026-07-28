@@ -103,6 +103,17 @@ def test_curriculum_deduplicates_failures_and_never_trains_on_holdout() -> None:
     assert teacher.failure_count == 0
 
 
+def test_replay_failure_descriptor_is_deduplicated_and_never_changes_reward() -> None:
+    routine = scenario(scenario_id="routine")
+    frontier = scenario(scenario_id="frontier", kind="defense", role="frontier")
+    holdout = scenario(scenario_id="holdout", role="holdout", immutable=True)
+    teacher = ScenarioCurriculum((routine, frontier, holdout), CONFIG, seed=14)
+    assert teacher.ingest_failure_descriptor(kind="defense", digest="failure-1")
+    assert not teacher.ingest_failure_descriptor(kind="defense", digest="failure-1")
+    assert teacher.failure_count == 1
+    assert teacher.telemetry()["replay_failure_descriptors"] == 1
+
+
 def test_committed_m14_suite_is_valid_and_covers_all_skill_kinds() -> None:
     suite = load_suite(ROOT / "experiments/scenarios/m14-v1.json", CONFIG)
     assert len(suite) == 9

@@ -72,10 +72,13 @@ def test_analytics_exports_json_and_flat_team_csv(tmp_path: Path) -> None:
     report = analyze_replay(replay)
     json_output = tmp_path / "analytics.json"
     csv_output = tmp_path / "teams.csv"
+    event_output = tmp_path / "events.csv"
     report.write_json(json_output)
     report.write_team_csv(csv_output)
+    report.write_event_csv(event_output)
     assert '"definition_version": "m14.1"' in json_output.read_text()
     assert "pressure_attacking" in csv_output.read_text()
+    assert event_output.read_text().startswith("time,kind,team,robot_id,x,y")
 
 
 def test_opponent_touch_ends_possession_and_team_view_mirrors_pressure(tmp_path: Path) -> None:
@@ -107,3 +110,26 @@ def test_analytics_rejects_tampered_replay(tmp_path: Path) -> None:
     _write(replay, [tick])
     with pytest.raises(ValueError, match="checksum mismatch"):
         analyze_replay(replay)
+
+
+def test_sampling_tolerance_and_event_attribution_are_stable(tmp_path: Path) -> None:
+    dense = tmp_path / "dense.jsonl"
+    sparse = tmp_path / "sparse.jsonl"
+    ticks = [
+        _tick(index, index * 0.1, -0.2 + index * 0.05, {"R0": -0.2 + index * 0.05})
+        for index in range(1, 9)
+    ]
+    ticks.append(_tick(9, 0.9, 0.4, {}, events=1))
+    _write(dense, ticks)
+    _write(sparse, ticks[::2])
+    dense_report = analyze_replay(dense)
+    sparse_report = analyze_replay(sparse)
+    assert dense_report.teams["blue"]["goals"] == sparse_report.teams["blue"]["goals"] == 1
+    assert dense_report.teams["yellow"]["goals_conceded"] == 1
+    assert {event.team for event in dense_report.events if event.kind == "goal"} == {"blue"}
+    assert sparse_report.sampled_seconds == pytest.approx(dense_report.sampled_seconds, abs=0.11)
+    assert sparse_report.teams["blue"]["possession_seconds"] == pytest.approx(
+        dense_report.teams["blue"]["possession_seconds"], abs=0.21
+    )
+    failures = dense_report.failure_descriptors()
+    assert any(item.kind == "defense" and item.team == "yellow" for item in failures)

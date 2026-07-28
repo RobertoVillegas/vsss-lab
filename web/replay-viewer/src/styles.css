@@ -109,6 +109,13 @@ select { appearance: none; border: 1px solid #315044; border-radius: 3px; backgr
 .transport { padding: 16px 26px 18px; border-top: 1px solid #20332c; background: rgba(7,16,13,.95); }
 .timeline-row { display: grid; grid-template-columns: 82px minmax(0, 1fr) 64px; align-items: center; gap: 14px; color: #82998f; font: 10px "Cascadia Mono", "DM Mono", monospace; }
 .timeline-row span:last-child { text-align: right; }
+.analytics-events { display: grid; gap: 4px; margin: 8px 0 12px; max-height: 152px; overflow: auto; }
+.analytics-events button { display: grid; grid-template-columns: 52px 1fr auto; gap: 6px; border: 1px solid #223a31; background: #0c1713; color: #a8bcb3; padding: 5px 7px; text-align: left; font: 9px "Cascadia Mono", "DM Mono", monospace; cursor: pointer; }
+.analytics-events button:hover { border-color: #3b7f68; color: #e5fff4; }
+.analytics-events strong { color: #67d8ae; }
+.heatmap { display: grid; grid-template-columns: repeat(12, 1fr); gap: 1px; aspect-ratio: 1.2; padding: 3px; border: 1px solid #223a31; background: #07100d; }
+.heatmap i { display: block; background: #54e1aa; min-width: 0; }
+.export-button { width: 100%; margin-top: 8px; border: 1px solid #315b4d; background: #11251e; color: #8fe7c5; padding: 7px; font: 9px "Cascadia Mono", "DM Mono", monospace; cursor: pointer; }
 input[type="range"] { width: 100%; accent-color: #71e1ae; cursor: pointer; }
 .transport-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin-top: 12px; }
 .buttons { display: flex; align-items: center; gap: 7px; }

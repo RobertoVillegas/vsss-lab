@@ -12,6 +12,7 @@ from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
+from vsss_eval import analyze_replay
 from vsss_train.config import MarlConfig, load_marl_config
 from vsss_train.marl_env import distill_dynamic_teacher
 from vsss_train.marl_ppo import MarlLearner, PolicyActor, load_policy_actor
@@ -313,6 +314,7 @@ def _run(arguments: argparse.Namespace) -> None:
                 checkpoint=checkpoint is not None,
             )
             if iteration % arguments.capture_every == 0:
+                replay_path = replay_dir / f"iteration-{iteration:06d}.jsonl"
                 run_policy_replay(
                     learner.actor,
                     opponent,
@@ -320,10 +322,16 @@ def _run(arguments: argparse.Namespace) -> None:
                     state_json,
                     seed=config.seed + 10_000 + iteration,
                     ticks=capture_frames,
-                    replay_path=replay_dir / f"iteration-{iteration:06d}.jsonl",
+                    replay_path=replay_path,
                     blue_policy=f"{config.policy_id}@{result.policy_version}",
                     yellow_policy=opponent_id,
                 )
+                if session.curriculum is not None:
+                    for descriptor in analyze_replay(replay_path).failure_descriptors():
+                        session.curriculum.ingest_failure_descriptor(
+                            kind=descriptor.kind,
+                            digest=descriptor.digest,
+                        )
             if interrupt.stop_requested:
                 break
             if reached_match_target:

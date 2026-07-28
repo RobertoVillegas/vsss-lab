@@ -41,6 +41,19 @@ class AnalyticsEvent:
 
 
 @dataclass(frozen=True)
+class FailureDescriptor:
+    """Reward-independent replay signature suitable for curriculum allocation."""
+
+    digest: str
+    kind: str
+    team: Team
+    event_time: float | None
+    congestion_ratio: float
+    double_commit_ratio: float
+    last_defender_failures: int
+
+
+@dataclass(frozen=True)
 class ReplayAnalytics:
     schema_version: int
     definition_version: str
@@ -81,6 +94,55 @@ class ReplayAnalytics:
             writer = csv.DictWriter(stream, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(rows)
+
+    def write_event_csv(self, path: Path) -> None:
+        """Export the event timeline without loading replay frames downstream."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8", newline="") as stream:
+            writer = csv.DictWriter(
+                stream,
+                fieldnames=("time", "kind", "team", "robot_id", "x", "y"),
+            )
+            writer.writeheader()
+            writer.writerows(asdict(event) for event in self.events)
+
+    def failure_descriptors(self) -> tuple[FailureDescriptor, ...]:
+        """Describe failures for scenario rehearsal; descriptors never alter reward."""
+        import hashlib
+
+        descriptors: list[FailureDescriptor] = []
+        for team in TEAMS:
+            stats = self.teams[team]
+            seconds = max(self.sampled_seconds, 1e-9)
+            congestion_ratio = float(stats["congestion_seconds"]) / seconds
+            double_commit_ratio = float(stats["double_commit_seconds"]) / seconds
+            failures = int(stats["last_defender_failures"])
+            kinds: list[tuple[str, float | None]] = [
+                ("defense", event.time)
+                for event in self.events
+                if event.kind == "goal" and event.team != team
+            ]
+            if congestion_ratio >= 0.20:
+                kinds.append(("congestion_recovery", None))
+            if double_commit_ratio >= 0.05:
+                kinds.append(("interception", None))
+            for index, (kind, event_time) in enumerate(kinds):
+                payload = (
+                    f"{self.definition_version}:{Path(self.source_replay).name}:"
+                    f"{team}:{kind}:{event_time}:{index}"
+                )
+                descriptors.append(
+                    FailureDescriptor(
+                        digest=hashlib.sha256(payload.encode()).hexdigest(),
+                        kind=kind,
+                        team=team,
+                        event_time=event_time,
+                        congestion_ratio=congestion_ratio,
+                        double_commit_ratio=double_commit_ratio,
+                        last_defender_failures=failures,
+                    )
+                )
+        return tuple(descriptors)
 
 
 def analyze_replay(path: Path) -> ReplayAnalytics:

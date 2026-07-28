@@ -26,6 +26,7 @@ export default function App() {
   const [followLatest, setFollowLatest] = useState(true);
   const [loop, setLoop] = useState(true);
   const [filter, setFilter] = useState("all");
+  const [analyticsEventFilter, setAnalyticsEventFilter] = useState("all");
   const [visionLayers, setVisionLayers] = useState({
     truth: true,
     measured: true,
@@ -90,6 +91,16 @@ export default function App() {
     staleTime: Number.POSITIVE_INFINITY,
   });
   const analytics = analyticsQuery.data;
+  const analyticsKinds = useMemo(
+    () => [...new Set(analytics?.events.map((event) => event.kind) ?? [])].sort(),
+    [analytics?.events],
+  );
+  const analyticsEvents = useMemo(
+    () => analytics?.events.filter(
+      (event) => analyticsEventFilter === "all" || event.kind === analyticsEventFilter,
+    ) ?? [],
+    [analytics?.events, analyticsEventFilter],
+  );
   const error = indexQuery.error ?? replayQuery.error;
   const loading = indexQuery.isPending || replayQuery.isFetching;
 
@@ -328,6 +339,47 @@ export default function App() {
             <div><dt>Interceptions B/Y</dt><dd>{analytics ? `${analytics.teams.blue.interceptions} / ${analytics.teams.yellow.interceptions}` : "—"}</dd></div>
             <div><dt>Congestion B/Y</dt><dd>{analytics ? `${analytics.teams.blue.congestion_seconds.toFixed(1)}s / ${analytics.teams.yellow.congestion_seconds.toFixed(1)}s` : "—"}</dd></div>
           </dl>
+          {analytics ? (
+            <>
+              <label htmlFor="analytics-event-filter">Timeline events</label>
+              <select
+                id="analytics-event-filter"
+                value={analyticsEventFilter}
+                onChange={(event) => setAnalyticsEventFilter(event.target.value)}
+              >
+                <option value="all">All events</option>
+                {analyticsKinds.map((kind) => <option key={kind} value={kind}>{kind}</option>)}
+              </select>
+              <div className="analytics-events">
+                {analyticsEvents.slice(0, 8).map((event, index) => (
+                  <button
+                    key={`${event.time}-${event.kind}-${index}`}
+                    onClick={() => {
+                      if (!replay) return;
+                      const target = replay.frames.findIndex(
+                        (candidate) => candidate.snapshot.simulation_time >= event.time,
+                      );
+                      if (target >= 0) {
+                        setPlaying(false);
+                        setFrameIndex(target);
+                      }
+                    }}
+                  >
+                    <span>{event.time.toFixed(2)}s</span>
+                    <strong>{event.kind.toUpperCase()}</strong>
+                    <small>{event.team.toUpperCase()} {event.robot_id ?? ""}</small>
+                  </button>
+                ))}
+              </div>
+              <BallHeatmap cells={analytics.ball_heatmap} />
+              <button
+                className="export-button"
+                onClick={() => exportAnalyticsCsv(analytics)}
+              >
+                EXPORT TEAM + EVENT CSV
+              </button>
+            </>
+          ) : null}
         </aside>
 
         <section className={`stage ${activeView === "metrics" ? "metrics-stage" : ""}`}>
@@ -420,6 +472,44 @@ function Policy({ team, value, yellow = false }: { team: string; value?: string;
 
 function Control({ label, icon, onClick }: { label: string; icon: string; onClick: () => void }) {
   return <button className="control-button" aria-label={label} onClick={onClick}>{icon}</button>;
+}
+
+function BallHeatmap({ cells }: { cells: number[][] }) {
+  const maximum = Math.max(1, ...cells.flat());
+  return (
+    <div className="heatmap" aria-label="Ball-position heatmap">
+      {cells.flatMap((row, y) => row.map((value, x) => (
+        <i
+          key={`${x}-${y}`}
+          title={`${value} samples`}
+          style={{ opacity: 0.08 + 0.92 * value / maximum }}
+        />
+      )))}
+    </div>
+  );
+}
+
+function exportAnalyticsCsv(analytics: ReplayAnalytics) {
+  const quote = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+  const lines = [
+    "record_type,team,time,kind,robot_id,possession_seconds,passes,shots,saves,interceptions,congestion_seconds",
+    ...(["blue", "yellow"] as const).map((team) => {
+      const stats = analytics.teams[team];
+      return [
+        "team", team, "", "", "", stats.possession_seconds, stats.passes,
+        stats.shots, stats.saves, stats.interceptions, stats.congestion_seconds,
+      ].map(quote).join(",");
+    }),
+    ...analytics.events.map((event) => [
+      "event", event.team, event.time, event.kind, event.robot_id, "", "", "", "", "", "",
+    ].map(quote).join(",")),
+  ];
+  const url = URL.createObjectURL(new Blob([`${lines.join("\n")}\n`], { type: "text/csv" }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = "vsss-replay-analytics.csv";
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
 
 function ActorTelemetry({

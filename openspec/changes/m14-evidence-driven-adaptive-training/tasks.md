@@ -16,9 +16,9 @@
 - [x] Implement per-match, per-team, and per-robot derived analytics
 - [x] Detect shots, saves, clearances, passes, assists, interceptions, double
       commits, and last-defender failures
-- [ ] Add timelines, heatmaps, comparison tables, filters, and tabular export
-- [ ] Validate sampling tolerance and event attribution with golden replays
-- [ ] Feed failure descriptors into curriculum allocation, never directly into
+- [x] Add timelines, heatmaps, comparison tables, filters, and tabular export
+- [x] Validate sampling tolerance and event attribution with golden replays
+- [x] Feed failure descriptors into curriculum allocation, never directly into
       reward without an anti-farming ablation
 
 ## 3. Adaptive scenarios and reward search

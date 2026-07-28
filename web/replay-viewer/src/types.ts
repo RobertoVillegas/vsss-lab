@@ -74,6 +74,15 @@ export interface ReplayAnalytics {
     double_commit_seconds: number;
     congestion_seconds: number;
   }>;
+  events: {
+    time: number;
+    kind: string;
+    team: "blue" | "yellow";
+    robot_id: string | null;
+    x: number;
+    y: number;
+  }[];
+  ball_heatmap: number[][];
 }
 
 export interface Pose {

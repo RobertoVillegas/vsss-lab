@@ -30,3 +30,13 @@
 An uncertain fixture with a positive point estimate but a lower confidence
 bound below its regression floor must reject promotion. Repeating the same
 ordered evidence must produce byte-identical estimates and decision JSON.
+
+## Replay analytics completion
+
+The viewer now exposes a seekable filtered event timeline, a normalized
+ball-position heatmap, side-by-side team metrics, and a combined team/event CSV
+export. Golden replay tests preserve goal attribution and bound possession-time
+drift under temporal downsampling. Derived defense, congestion, and
+double-commit descriptors are SHA-256 deduplicated and routed into matching
+curriculum rehearsal buckets after captured replays; no descriptor is added to
+the reward function.
