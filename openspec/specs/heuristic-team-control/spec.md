@@ -18,4 +18,3 @@ when robot slots and identities are permuted.
 #### Scenario: Permute team robots
 - **WHEN** the same physical robots are reordered
 - **THEN** assigned roles and actions reorder with them
-

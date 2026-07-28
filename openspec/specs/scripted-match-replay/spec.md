@@ -18,4 +18,3 @@ checksums, and a headless viewer SHALL validate and summarize it.
 #### Scenario: Inspect valid replay
 - **WHEN** the viewer reads a completed replay
 - **THEN** it reports ticks, score, goals, and final checksum
-
