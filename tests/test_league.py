@@ -3,9 +3,21 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import torch
+from vsss_eval import inspect_replay
 from vsss_league.promotion import FixtureResult, decide_promotion
 from vsss_league.ratings import elo_update
 from vsss_league.registry import LeagueRegistry, PolicyCategory, PolicyEntry
+from vsss_league.replay import run_policy_replay
+from vsss_league.tournament import TournamentReport, evaluate_candidate_vs_heuristic
+from vsss_league.training import train_iteration
+from vsss_train.config import MarlConfig
+from vsss_train.marl import SharedActor
+from vsss_train.marl_ppo import MarlLearner
+
+ROOT = Path(__file__).parents[1]
+CONFIG = (ROOT / "tests/golden/m1_match_config.json").read_text()
+STATE = (ROOT / "tests/golden/m1_match_state.json").read_text()
 
 
 def checkpoint_entry(
@@ -120,3 +132,72 @@ def test_promotion_is_reproducible_and_blocks_regression() -> None:
         fixtures=regressive,
         required_margin=0.0,
     ).promoted
+
+
+def test_real_self_play_iteration_updates_version_and_checkpoint(tmp_path: Path) -> None:
+    config = MarlConfig(
+        algorithm="mappo",
+        hidden_size=8,
+        epochs=1,
+        minibatch_size=6,
+        horizon=4,
+        action_repeat=1,
+    )
+    learner = MarlLearner(config)
+    opponent = SharedActor(hidden_size=8)
+    checkpoint = tmp_path / "iteration-1.pt"
+    result = train_iteration(
+        learner,
+        opponent,
+        CONFIG,
+        STATE,
+        iteration=1,
+        seed=101,
+        opponent_id="history@0",
+        checkpoint=checkpoint,
+    )
+    assert result.policy_version == learner.policy_version == 1
+    assert result.frames == 4
+    assert checkpoint.is_file()
+    assert all(torch.isfinite(torch.tensor(value)) for value in result.losses.values())
+
+
+def test_learned_policy_replay_is_viewer_compatible(tmp_path: Path) -> None:
+    replay = tmp_path / "learned.jsonl"
+    result = run_policy_replay(
+        SharedActor(hidden_size=8),
+        None,
+        CONFIG,
+        STATE,
+        seed=17,
+        ticks=4,
+        replay_path=replay,
+        blue_policy="candidate@1",
+        yellow_policy="heuristic",
+    )
+    inspected = inspect_replay(replay)
+    assert inspected["ticks"] == result["ticks"] == 4
+    assert inspected["final_checksum"] == result["final_checksum"]
+    header = replay.read_text().splitlines()[0]
+    assert '"blue":"candidate@1"' in header
+
+
+def test_tournament_report_is_byte_reproducible_with_side_switch(tmp_path: Path) -> None:
+    actor = SharedActor(hidden_size=8)
+
+    def run_tournament() -> TournamentReport:
+        return evaluate_candidate_vs_heuristic(
+            actor,
+            CONFIG,
+            STATE,
+            candidate="candidate@1",
+            seeds=(3,),
+            ticks=3,
+            replay_dir=tmp_path / "replays",
+        )
+
+    first = run_tournament()
+    second = run_tournament()
+    assert first.canonical_json() == second.canonical_json()
+    assert {match.side for match in first.matches} == {"blue", "yellow"}
+    assert first.wins + first.draws + first.losses == 2

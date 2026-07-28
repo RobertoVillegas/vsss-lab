@@ -75,6 +75,27 @@ m6-smoke:
 benchmark-marl iterations="2000":
   uv run --group train python -m tools.benchmark_marl --iterations {{iterations}}
 
+league-run run_dir="/home/rob/runs/vsss-lab-demo" iterations="3" capture_every="1" config="experiments/configs/m6-mappo.toml":
+  uv run --group train python -m vsss_league.cli run --config "{{config}}" --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --run-dir "{{run_dir}}" --iterations {{iterations}} --capture-every {{capture_every}}
+
+league-inspect run_dir="/home/rob/runs/vsss-lab-demo":
+  uv run --group train python -m vsss_league.cli inspect --run-dir "{{run_dir}}"
+
+league-tournament checkpoint run_dir="/home/rob/runs/vsss-lab-tournament" config="experiments/configs/m6-mappo.toml" seeds="5":
+  uv run --group train python -m vsss_league.cli tournament --config "{{config}}" --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --checkpoint "{{checkpoint}}" --output-dir "{{run_dir}}" --seeds {{seeds}}
+
+league-view run_dir="/home/rob/runs/vsss-lab-demo" iteration="0001":
+  cargo run -p vsss-viewer-2d -- "{{run_dir}}/replays/iteration-{{iteration}}.jsonl"
+
+league-render run_dir="/home/rob/runs/vsss-lab-demo" iteration="0001":
+  uv run python -m tools.replay_viewer.view "{{run_dir}}/replays/iteration-{{iteration}}.jsonl" --svg "{{run_dir}}/replays/iteration-{{iteration}}.svg"
+
+league-promote candidate manifest run_dir="/home/rob/runs/vsss-lab-demo":
+  uv run --group train python -m vsss_league.cli promote --run-dir "{{run_dir}}" --candidate "{{candidate}}" --manifest "{{manifest}}"
+
+m7-smoke:
+  uv run --group train pytest -q tests/test_league.py
+
 clean:
   cargo clean
   rm -rf .venv .pytest_cache .mypy_cache .ruff_cache

@@ -6,7 +6,7 @@ import copy
 import json
 import math
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import torch
@@ -109,11 +109,17 @@ class MarlMatchEnv:
         self._closest = self._closest_blue_distance()
         return build_team_observation(self.state, team=0)
 
-    def step(self, blue_actions: FloatArray) -> tuple[TeamBatch, TeamReward, bool, dict[str, Any]]:
+    def step(
+        self,
+        blue_actions: FloatArray,
+        opponent_actions: FloatArray | None = None,
+    ) -> tuple[TeamBatch, TeamReward, bool, dict[str, Any]]:
         actions = np.zeros((1, 6, 2), dtype=np.float32)
         actions[0, :3] = np.clip(blue_actions, -1.0, 1.0)
         for _ in range(self.action_repeat):
-            if self.stage == 8:
+            if opponent_actions is not None:
+                actions[0, 3:] = np.clip(opponent_actions, -1.0, 1.0)
+            elif self.stage == 8:
                 actions[0, 3:] = self._yellow.actions(self.state)
             self.state = self._native.step(actions)[0]
         self.steps += 1
@@ -136,9 +142,20 @@ class MarlMatchEnv:
                 "events": events,
                 "closest_ball_distance": closest,
                 "ball_x": ball_x,
-                "opponent_mode": "heuristic" if self.stage == 8 else "inactive",
+                "opponent_mode": (
+                    "policy"
+                    if opponent_actions is not None
+                    else "heuristic"
+                    if self.stage == 8
+                    else "inactive"
+                ),
+                "actions": actions[0].copy(),
             },
         )
+
+    def snapshot(self) -> dict[str, Any]:
+        """Return the current canonical lifecycle snapshot."""
+        return cast(dict[str, Any], json.loads(self._native.snapshots()[0]))
 
     def progress_score(self) -> float:
         return 2.0 * (self._initial_closest - self._closest) + (self._ball_x - self._initial_ball_x)

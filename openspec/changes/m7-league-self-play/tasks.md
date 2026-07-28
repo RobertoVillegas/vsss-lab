@@ -11,12 +11,12 @@
 
 ## 3. Self-play and visualization
 
-- [ ] 3.1 Implement native checkpoint-vs-checkpoint rollout collection
-- [ ] 3.2 Implement real rollout/optimize training iterations and immutable captures
-- [ ] 3.3 Implement learned-policy match replay and existing-viewer compatibility
+- [x] 3.1 Implement native checkpoint-vs-checkpoint rollout collection
+- [x] 3.2 Implement real rollout/optimize training iterations and immutable captures
+- [x] 3.3 Implement learned-policy match replay and existing-viewer compatibility
 
 ## 4. Promotion and operations
 
-- [ ] 4.1 Implement deterministic fixture manifests and non-regression promotion
-- [ ] 4.2 Add run/tournament/promote/view commands and tests
+- [x] 4.1 Implement deterministic fixture manifests and non-regression promotion
+- [x] 4.2 Add run/tournament/promote/view commands and tests
 - [ ] 4.3 Run benchmarks and all gates, archive OpenSpec, sign commits, and push
