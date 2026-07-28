@@ -33,10 +33,10 @@
 
 ## 4. Policy and teacher ablations
 
-- [ ] Add recurrent MAPPO behind an explicit experiment configuration
-- [ ] Compare MLP and GRU policies under camera-realistic partial observability
+- [x] Add recurrent MAPPO behind an explicit experiment configuration
+- [x] Compare MLP and GRU policies under camera-realistic partial observability
 - [x] Add a batched entity-attention policy and expose attention telemetry
-- [ ] Compare continuous wheels with one symmetric, physically meaningful
+- [x] Compare continuous wheels with one symmetric, physically meaningful
       action abstraction at matched control frequency
 - [x] Implement a bounded exact-simulator planner for one atomic skill
 - [ ] Compare scratch, verified imitation warm start, and MAPPO fine-tuning

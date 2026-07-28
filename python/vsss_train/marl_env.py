@@ -14,7 +14,12 @@ from numpy.typing import NDArray
 from vsss_baselines import DynamicTeamController
 from vsss_env._native import BatchSimulator
 
-from vsss_train.ablations import EntityAttentionActor
+from vsss_train.ablations import (
+    EntityAttentionActor,
+    LatticeSharedActor,
+    RecurrentSharedActor,
+    SymmetricWheelLattice,
+)
 from vsss_train.marl import (
     SharedActor,
     TeamBatch,
@@ -600,7 +605,7 @@ def _defensive_threat(ball_x: float, activation_x: float) -> float:
 
 
 def distill_dynamic_teacher(
-    actor: SharedActor | EntityAttentionActor,
+    actor: SharedActor | RecurrentSharedActor | EntityAttentionActor | LatticeSharedActor,
     config_json: str,
     state_json: str,
     *,
@@ -635,7 +640,20 @@ def distill_dynamic_teacher(
         for indices in torch.randperm(samples, generator=generator).split(256):  # type: ignore[no-untyped-call]
             indices = indices.to(device)
             mean, _ = actor(batch.select_batch(indices))
-            loss = (torch.tanh(mean) - targets[indices]).square().mean()
+            if isinstance(actor, LatticeSharedActor):
+                lattice = torch.tensor(
+                    SymmetricWheelLattice.values,
+                    dtype=torch.float32,
+                    device=device,
+                )
+                distances = (targets[indices].unsqueeze(-2) - lattice).square().sum(dim=-1)
+                labels = distances.argmin(dim=-1)
+                loss = torch.nn.functional.cross_entropy(
+                    mean.reshape(-1, mean.shape[-1]),
+                    labels.reshape(-1),
+                )
+            else:
+                loss = (torch.tanh(mean) - targets[indices]).square().mean()
             optimizer.zero_grad(set_to_none=True)
             loss.backward()  # type: ignore[no-untyped-call]
             optimizer.step()
@@ -643,7 +661,7 @@ def distill_dynamic_teacher(
 
 
 def evaluate_against_random(
-    actor: SharedActor | EntityAttentionActor,
+    actor: SharedActor | RecurrentSharedActor | EntityAttentionActor | LatticeSharedActor,
     config_json: str,
     state_json: str,
     *,

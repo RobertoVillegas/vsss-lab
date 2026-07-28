@@ -44,7 +44,18 @@ class RecurrentSharedActor(nn.Module):
         self.action_head = nn.Linear(hidden_size, 2)
         self.log_std = nn.Parameter(torch.full((2,), -0.5))
 
-    def forward(
+    def forward(self, observation: TeamBatch) -> tuple[Tensor, Tensor]:
+        prefix = observation.self_features.shape[:-1]
+        state = RecurrentState(
+            torch.zeros(
+                (*prefix, self.hidden_size),
+                device=observation.self_features.device,
+            )
+        )
+        mean, log_std, _ = self.forward_with_state(observation, state)
+        return mean, log_std
+
+    def forward_with_state(
         self,
         observation: TeamBatch,
         state: RecurrentState,
@@ -58,6 +69,10 @@ class RecurrentSharedActor(nn.Module):
         ).reshape_as(state.hidden)
         mean = self.action_head(hidden)
         return mean, self.log_std.expand_as(mean), RecurrentState(hidden)
+
+    def deterministic_action(self, observation: TeamBatch) -> Tensor:
+        mean, _ = self(observation)
+        return torch.tanh(mean)
 
 
 class EntityAttentionActor(nn.Module):
@@ -133,3 +148,23 @@ class SymmetricWheelLattice:
             raise ValueError("lattice action index out of range")
         table = torch.tensor(self.values, dtype=torch.float32, device=actions.device)
         return table[actions]
+
+
+class LatticeSharedActor(nn.Module):
+    """Categorical shared actor over the symmetric differential-drive lattice."""
+
+    log_std: Tensor
+
+    def __init__(self, hidden_size: int = 64) -> None:
+        super().__init__()
+        self.encoder = AgentEncoder(hidden_size)
+        self.logits_head = nn.Linear(hidden_size, len(SymmetricWheelLattice.values))
+        self.register_buffer("log_std", torch.full((2,), -0.5))
+
+    def forward(self, observation: TeamBatch) -> tuple[Tensor, Tensor]:
+        logits = self.logits_head(self.encoder(observation))
+        return logits, self.log_std
+
+    def deterministic_action(self, observation: TeamBatch) -> Tensor:
+        logits, _ = self(observation)
+        return SymmetricWheelLattice().parse(logits.argmax(dim=-1))

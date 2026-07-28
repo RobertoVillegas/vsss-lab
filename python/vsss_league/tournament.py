@@ -9,7 +9,12 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from vsss_train.ablations import EntityAttentionActor
+from vsss_train.ablations import (
+    EntityAttentionActor,
+    LatticeSharedActor,
+    RecurrentSharedActor,
+    RecurrentState,
+)
 from vsss_train.marl import SharedActor
 from vsss_train.marl_env import MarlMatchEnv
 
@@ -63,7 +68,7 @@ class CheckpointScorecard:
 
 
 def evaluate_checkpoint_scorecard(
-    actor: SharedActor | EntityAttentionActor,
+    actor: SharedActor | RecurrentSharedActor | EntityAttentionActor | LatticeSharedActor,
     config_json: str,
     state_json: str,
     *,
@@ -88,13 +93,29 @@ def evaluate_checkpoint_scorecard(
                 horizon=ticks,
             )
             observation = environment.reset(seed)
+            recurrent_state = (
+                RecurrentState.zeros(worlds=1, agents=3, hidden_size=actor.hidden_size).hidden[0]
+                if isinstance(actor, RecurrentSharedActor)
+                else None
+            )
             environment.mark_progress_origin()
             blue_score = 0
             yellow_score = 0
             done = False
             while not done:
                 with torch.inference_mode():
-                    action = actor.deterministic_action(observation.to(device)).cpu().numpy()
+                    device_observation = observation.to(device)
+                    if isinstance(actor, RecurrentSharedActor):
+                        if recurrent_state is None:
+                            raise AssertionError("recurrent actor requires state")
+                        mean, _, recurrent = actor.forward_with_state(
+                            device_observation,
+                            RecurrentState(recurrent_state.to(device)),
+                        )
+                        recurrent_state = recurrent.hidden
+                        action = torch.tanh(mean).cpu().numpy()
+                    else:
+                        action = actor.deterministic_action(device_observation).cpu().numpy()
                 observation, _, done, info = environment.step(np.asarray(action, dtype=np.float32))
                 events = int(info["events"])
                 blue_score += int(bool(events & 1))
@@ -122,7 +143,7 @@ def evaluate_checkpoint_scorecard(
 
 
 def evaluate_candidate_vs_heuristic(
-    actor: SharedActor | EntityAttentionActor,
+    actor: SharedActor | RecurrentSharedActor | EntityAttentionActor | LatticeSharedActor,
     config_json: str,
     state_json: str,
     *,

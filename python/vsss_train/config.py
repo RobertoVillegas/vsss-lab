@@ -81,9 +81,12 @@ class MarlConfig:
 
     schema_version: int = 1
     algorithm: Literal["ippo", "mappo"] = "mappo"
-    policy_architecture: Literal["mlp", "attention"] = "mlp"
+    policy_architecture: Literal["mlp", "gru", "attention"] = "mlp"
+    action_parser: Literal["continuous", "lattice"] = "continuous"
     adaptive_curriculum: bool = False
     scenario_suite: str = ""
+    observation_dropout: float = 0.0
+    observation_noise_std: float = 0.0
     seed: int = 7
     device: Literal["auto", "cpu", "cuda"] = "auto"
     num_envs: int = 64
@@ -131,10 +134,18 @@ class MarlConfig:
             raise ValueError("unsupported MARL config schema")
         if self.algorithm not in ("ippo", "mappo"):
             raise ValueError("algorithm must be ippo or mappo")
-        if self.policy_architecture not in ("mlp", "attention"):
-            raise ValueError("policy_architecture must be mlp or attention")
+        if self.policy_architecture not in ("mlp", "gru", "attention"):
+            raise ValueError("policy_architecture must be mlp, gru, or attention")
+        if self.action_parser not in ("continuous", "lattice"):
+            raise ValueError("action_parser must be continuous or lattice")
+        if self.action_parser == "lattice" and self.policy_architecture != "mlp":
+            raise ValueError("lattice ablation currently requires the MLP architecture")
         if self.adaptive_curriculum and not self.scenario_suite:
             raise ValueError("adaptive_curriculum requires scenario_suite")
+        if not 0.0 <= self.observation_dropout < 1.0:
+            raise ValueError("observation_dropout must be in [0, 1)")
+        if self.observation_noise_std < 0.0:
+            raise ValueError("observation_noise_std must be non-negative")
         if self.curriculum_stage not in (7, 8):
             raise ValueError("curriculum_stage must be 7 or 8")
         if self.device not in ("auto", "cpu", "cuda"):

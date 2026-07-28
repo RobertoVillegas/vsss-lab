@@ -9,7 +9,13 @@ from pathlib import Path
 
 import torch
 from tensordict import TensorDict
-from torch.distributions import Normal
+from torch.distributions import Categorical, Normal
+from vsss_train.ablations import (
+    LatticeSharedActor,
+    RecurrentSharedActor,
+    RecurrentState,
+    SymmetricWheelLattice,
+)
 from vsss_train.config import MarlConfig
 from vsss_train.marl import TeamBatch, build_team_observation, stack_team_batches
 from vsss_train.marl_env import FloatArray, VectorMarlMatchEnv
@@ -121,31 +127,89 @@ def collect_self_play_trajectory(
     initial_snapshot = environment.snapshot(0)
     observations: list[TeamBatch] = []
     actions: list[torch.Tensor] = []
+    action_indices: list[torch.Tensor] = []
     log_probabilities: list[torch.Tensor] = []
     rewards: list[torch.Tensor] = []
     terminated: list[torch.Tensor] = []
     truncated: list[torch.Tensor] = []
     values: list[torch.Tensor] = []
     ticks: list[torch.Tensor] = []
+    recurrent_hidden: list[torch.Tensor] = []
+    recurrent_state = (
+        RecurrentState.zeros(
+            worlds=learner.config.num_envs,
+            agents=3,
+            hidden_size=learner.config.hidden_size,
+            device=learner.device,
+        )
+        if isinstance(learner.actor, RecurrentSharedActor)
+        else None
+    )
+    opponent_recurrent_state = (
+        RecurrentState.zeros(
+            worlds=learner.config.num_envs,
+            agents=3,
+            hidden_size=learner.config.hidden_size,
+            device=learner.device,
+        )
+        if isinstance(opponent, RecurrentSharedActor)
+        else None
+    )
     returns = [0.0] * learner.config.num_envs
     completed_progress = [0.0] * learner.config.num_envs
     completed_matches = 0
     termination_counts = {"goal": 0, "draw": 0, "stagnation": 0}
     for step in range(learner.config.rollout_steps):
+        policy_observation = _degrade_observation(
+            observation,
+            dropout=learner.config.observation_dropout,
+            noise_std=learner.config.observation_noise_std,
+            seed=seed + step,
+        )
         with torch.no_grad():
-            mean, log_std = learner.actor(observation)
-            distribution = Normal(mean, log_std.exp())
-            action, log_probability = sample_bounded_action(distribution)
-            value = learner.critic(observation)
+            if isinstance(learner.actor, LatticeSharedActor):
+                logits, _ = learner.actor(policy_observation)
+                categorical = Categorical(logits=logits)
+                action_index = categorical.sample()  # type: ignore[no-untyped-call]
+                action = SymmetricWheelLattice().parse(action_index)
+                log_probability = categorical.log_prob(  # type: ignore[no-untyped-call]
+                    action_index
+                )
+                action_indices.append(action_index)
+            elif isinstance(learner.actor, RecurrentSharedActor):
+                if recurrent_state is None:
+                    raise AssertionError("recurrent actor requires recurrent state")
+                recurrent_hidden.append(recurrent_state.hidden.clone())
+                mean, log_std, recurrent_state = learner.actor.forward_with_state(
+                    policy_observation,
+                    recurrent_state,
+                )
+            else:
+                mean, log_std = learner.actor(policy_observation)
+            if not isinstance(learner.actor, LatticeSharedActor):
+                distribution = Normal(mean, log_std.exp())
+                action, log_probability = sample_bounded_action(distribution)
+            value = learner.critic(policy_observation)
             opponent_actions: FloatArray | None
             if opponent is not None:
                 opponent_observation = stack_team_batches(
                     [build_team_observation(state, team=1) for state in environment.states]
                 ).to(learner.device)
-                opponent_actions = opponent.deterministic_action(opponent_observation).cpu().numpy()
+                if isinstance(opponent, RecurrentSharedActor):
+                    if opponent_recurrent_state is None:
+                        raise AssertionError("recurrent opponent requires recurrent state")
+                    opponent_mean, _, opponent_recurrent_state = opponent.forward_with_state(
+                        opponent_observation,
+                        opponent_recurrent_state,
+                    )
+                    opponent_actions = torch.tanh(opponent_mean).cpu().numpy()
+                else:
+                    opponent_actions = (
+                        opponent.deterministic_action(opponent_observation).cpu().numpy()
+                    )
             else:
                 opponent_actions = None
-        observations.append(observation)
+        observations.append(policy_observation)
         actions.append(action)
         log_probabilities.append(log_probability)
         values.append(value)
@@ -193,6 +257,12 @@ def collect_self_play_trajectory(
             next_observation = stack_team_batches(
                 [build_team_observation(state, team=0) for state in environment.states]
             )
+        if recurrent_state is not None or opponent_recurrent_state is not None:
+            done_mask = torch.as_tensor(step_done, dtype=torch.bool, device=learner.device)
+        if recurrent_state is not None:
+            recurrent_state.reset_worlds(done_mask)
+        if opponent_recurrent_state is not None:
+            opponent_recurrent_state.reset_worlds(done_mask)
         rewards.append(
             torch.tensor(
                 [[reward] * 3 for reward in step_rewards],
@@ -217,17 +287,22 @@ def collect_self_play_trajectory(
         )
         observation = next_observation.to(learner.device)
     batch = stack_team_batches(observations)
+    trajectory_fields = {
+        "tick": torch.stack(ticks),
+        **dict(zip(TeamBatch._fields, batch, strict=True)),
+        "action": torch.stack(actions),
+        "sample_log_prob": torch.stack(log_probabilities),
+        "reward_total": torch.stack(rewards),
+        "terminated": torch.stack(terminated),
+        "truncated": torch.stack(truncated),
+        "state_value": torch.stack(values),
+    }
+    if recurrent_hidden:
+        trajectory_fields["recurrent_hidden"] = torch.stack(recurrent_hidden)
+    if action_indices:
+        trajectory_fields["action_index"] = torch.stack(action_indices)
     data = TensorDict(
-        {
-            "tick": torch.stack(ticks),
-            **dict(zip(TeamBatch._fields, batch, strict=True)),
-            "action": torch.stack(actions),
-            "sample_log_prob": torch.stack(log_probabilities),
-            "reward_total": torch.stack(rewards),
-            "terminated": torch.stack(terminated),
-            "truncated": torch.stack(truncated),
-            "state_value": torch.stack(values),
-        },
+        trajectory_fields,
         batch_size=[len(observations), learner.config.num_envs, 3],
     )
     state_reference = hashlib.sha256(
@@ -320,3 +395,47 @@ def _reset_world(session: RolloutSession, world: int, index: int) -> TeamBatch:
     state = json.loads(json.dumps(selection.scenario.state))
     state.update(tick=0, simulation_time=0.0, score_blue=0, score_yellow=0, events=0)
     return session.environment.reset_state(world, state)
+
+
+def _degrade_observation(
+    observation: TeamBatch,
+    *,
+    dropout: float,
+    noise_std: float,
+    seed: int,
+) -> TeamBatch:
+    if dropout == 0.0 and noise_std == 0.0:
+        return observation
+    generator = torch.Generator(device=observation.self_features.device).manual_seed(seed)
+
+    def perturb(value: torch.Tensor, *, can_drop: bool) -> torch.Tensor:
+        result = value
+        if noise_std:
+            noise = torch.randn(
+                value.shape,
+                generator=generator,
+                device=value.device,
+                dtype=value.dtype,
+            )
+            result = result + noise_std * noise
+        if can_drop and dropout:
+            mask_shape = (*value.shape[:-1], 1)
+            visible = (
+                torch.rand(
+                    mask_shape,
+                    generator=generator,
+                    device=value.device,
+                )
+                >= dropout
+            )
+            result = result * visible
+        return result
+
+    return TeamBatch(
+        perturb(observation.self_features, can_drop=False),
+        perturb(observation.ball, can_drop=True),
+        perturb(observation.goals, can_drop=False),
+        observation.context,
+        perturb(observation.teammates, can_drop=True),
+        perturb(observation.opponents, can_drop=True),
+    )

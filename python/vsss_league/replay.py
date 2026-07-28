@@ -11,7 +11,12 @@ from typing import Any, TextIO
 
 import numpy as np
 import torch
-from vsss_train.ablations import EntityAttentionActor
+from vsss_train.ablations import (
+    EntityAttentionActor,
+    LatticeSharedActor,
+    RecurrentSharedActor,
+    RecurrentState,
+)
 from vsss_train.marl import SharedActor, build_team_observation
 from vsss_train.marl_env import MarlMatchEnv
 from vsss_vision import (
@@ -28,8 +33,8 @@ from vsss_vision import (
 
 
 def run_policy_replay(
-    blue: SharedActor | EntityAttentionActor,
-    yellow: SharedActor | EntityAttentionActor | None,
+    blue: SharedActor | RecurrentSharedActor | EntityAttentionActor | LatticeSharedActor,
+    yellow: SharedActor | RecurrentSharedActor | EntityAttentionActor | LatticeSharedActor | None,
     config_json: str,
     state_json: str,
     *,
@@ -45,6 +50,10 @@ def run_policy_replay(
     environment = MarlMatchEnv(config_json, state_json, stage=8, horizon=ticks)
     blue_device = next(blue.parameters()).device
     observation = environment.reset(seed)
+    blue_recurrent = _initial_recurrent(blue, blue_device)
+    yellow_recurrent = (
+        _initial_recurrent(yellow, next(yellow.parameters()).device) if yellow is not None else None
+    )
     config = json.loads(config_json)
     camera = SyntheticCamera(CameraPerturbationProfile(), seed=seed + 50_000)
     calibration = EstimatorCalibration()
@@ -89,18 +98,19 @@ def run_policy_replay(
         episode = 0
         while index < ticks:
             with torch.inference_mode():
-                blue_action = blue.deterministic_action(observation.to(blue_device)).cpu().numpy()
-                yellow_action = (
-                    yellow.deterministic_action(
-                        build_team_observation(environment.state, team=1).to(
-                            next(yellow.parameters()).device
-                        )
-                    )
-                    .cpu()
-                    .numpy()
-                    if yellow is not None
-                    else None
+                blue_action, blue_recurrent = _policy_action(
+                    blue,
+                    observation.to(blue_device),
+                    blue_recurrent,
                 )
+                yellow_action: np.ndarray[Any, np.dtype[np.float32]] | None = None
+                if yellow is not None:
+                    yellow_device = next(yellow.parameters()).device
+                    yellow_action, yellow_recurrent = _policy_action(
+                        yellow,
+                        build_team_observation(environment.state, team=1).to(yellow_device),
+                        yellow_recurrent,
+                    )
             observation, reward, done, info = environment.step(blue_action, yellow_action)
             snapshot = environment.snapshot()
             if int(info["events"]) & 1:
@@ -234,6 +244,12 @@ def run_policy_replay(
                 pending_predictions.clear()
                 episode += 1
                 observation = environment.reset(seed + episode)
+                blue_recurrent = _initial_recurrent(blue, blue_device)
+                yellow_recurrent = (
+                    _initial_recurrent(yellow, next(yellow.parameters()).device)
+                    if yellow is not None
+                    else None
+                )
     pending_replay_path.replace(replay_path)
     pending_analysis_path.replace(analysis_path)
     return {
@@ -254,3 +270,25 @@ def run_policy_replay(
 
 def _write(stream: TextIO, record: dict[str, Any]) -> None:
     stream.write(json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n")
+
+
+def _initial_recurrent(
+    actor: SharedActor | RecurrentSharedActor | EntityAttentionActor | LatticeSharedActor,
+    device: torch.device,
+) -> RecurrentState | None:
+    if not isinstance(actor, RecurrentSharedActor):
+        return None
+    return RecurrentState(torch.zeros((3, actor.hidden_size), dtype=torch.float32, device=device))
+
+
+def _policy_action(
+    actor: SharedActor | RecurrentSharedActor | EntityAttentionActor | LatticeSharedActor,
+    observation: Any,
+    recurrent: RecurrentState | None,
+) -> tuple[np.ndarray[Any, np.dtype[np.float32]], RecurrentState | None]:
+    if isinstance(actor, RecurrentSharedActor):
+        if recurrent is None:
+            raise AssertionError("recurrent actor requires state")
+        mean, _, recurrent = actor.forward_with_state(observation, recurrent)
+        return torch.tanh(mean).cpu().numpy(), recurrent
+    return actor.deterministic_action(observation).cpu().numpy(), None

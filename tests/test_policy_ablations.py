@@ -34,7 +34,7 @@ def observations(worlds: int = 2) -> TeamBatch:
 def test_recurrent_state_resets_only_finished_world() -> None:
     actor = RecurrentSharedActor(hidden_size=8)
     state = RecurrentState.zeros(worlds=2, agents=3, hidden_size=8)
-    _, _, next_state = actor(observations(), state)
+    _, _, next_state = actor.forward_with_state(observations(), state)
     retained = next_state.hidden[1].clone()
     next_state.reset_worlds(torch.tensor([True, False]))
     assert torch.count_nonzero(next_state.hidden[0]) == 0
@@ -88,3 +88,68 @@ def test_attention_actor_runs_a_real_mappo_update_and_checkpoint(tmp_path: Path)
     restored = MarlLearner(config)
     restored.load(checkpoint)
     assert restored.policy_version == 1
+
+
+def test_gru_actor_runs_recurrent_mappo_and_versions_memory_checkpoint(
+    tmp_path: Path,
+) -> None:
+    config = MarlConfig(
+        device="cpu",
+        policy_architecture="gru",
+        num_envs=2,
+        hidden_size=8,
+        rollout_steps=3,
+        horizon=1,
+        action_repeat=1,
+        epochs=1,
+        minibatch_size=6,
+    )
+    learner = MarlLearner(config)
+    checkpoint = tmp_path / "gru.pt"
+    result = train_iteration(
+        learner,
+        None,
+        CONFIG,
+        STATE,
+        iteration=1,
+        seed=14,
+        opponent_id="heuristic",
+        checkpoint=checkpoint,
+    )
+    assert result.policy_version == 1
+    restored = MarlLearner(config)
+    restored.load(checkpoint)
+    assert restored.policy_version == 1
+    assert restored.config.policy_architecture == "gru"
+
+
+def test_lattice_actor_runs_categorical_mappo_at_same_control_frequency(
+    tmp_path: Path,
+) -> None:
+    config = MarlConfig(
+        device="cpu",
+        action_parser="lattice",
+        num_envs=2,
+        hidden_size=8,
+        rollout_steps=3,
+        horizon=2,
+        action_repeat=1,
+        epochs=1,
+        minibatch_size=6,
+    )
+    learner = MarlLearner(config)
+    checkpoint = tmp_path / "lattice.pt"
+    result = train_iteration(
+        learner,
+        None,
+        CONFIG,
+        STATE,
+        iteration=1,
+        seed=14,
+        opponent_id="heuristic",
+        checkpoint=checkpoint,
+    )
+    assert result.policy_version == 1
+    restored = MarlLearner(config)
+    restored.load(checkpoint)
+    assert restored.config.action_parser == "lattice"

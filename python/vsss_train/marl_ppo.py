@@ -11,16 +11,21 @@ import numpy as np
 import torch
 from tensordict import TensorDict
 from torch import Tensor, nn
-from torch.distributions import Normal
+from torch.distributions import Categorical, Normal
 
-from vsss_train.ablations import EntityAttentionActor
+from vsss_train.ablations import (
+    EntityAttentionActor,
+    LatticeSharedActor,
+    RecurrentSharedActor,
+    RecurrentState,
+)
 from vsss_train.config import MarlConfig
 from vsss_train.marl import CentralizedCritic, LocalCritic, SharedActor, TeamBatch
 from vsss_train.ppo import seed_everything
 
 MARL_CHECKPOINT_SCHEMA = 1
 TRAJECTORY_SCHEMA = 1
-PolicyActor = SharedActor | EntityAttentionActor
+PolicyActor = SharedActor | RecurrentSharedActor | EntityAttentionActor | LatticeSharedActor
 LEGACY_NEUTRAL_CONFIG = {
     "minimum_log_std": -5.0,
     "maximum_log_std": 0.0,
@@ -35,8 +40,11 @@ LEGACY_NEUTRAL_CONFIG = {
     "league_heuristic_weight": 0.0,
     "league_history_window": 16,
     "policy_architecture": "mlp",
+    "action_parser": "continuous",
     "adaptive_curriculum": False,
     "scenario_suite": "",
+    "observation_dropout": 0.0,
+    "observation_noise_std": 0.0,
     "goal_coefficient": 10.0,
     "progress_coefficient": 0.0,
 }
@@ -186,10 +194,27 @@ class MarlLearner:
                 sample = data[indices]
                 sample_observation = observation.select_batch(indices)
                 sample_advantage = advantage[indices]
-                mean, log_std = self.actor(sample_observation)
-                distribution = Normal(mean, log_std.exp())
-                log_probability = bounded_action_log_prob(distribution, sample["action"])
-                ratio = (log_probability - sample["sample_log_prob"]).exp()
+                if isinstance(self.actor, LatticeSharedActor):
+                    logits, _ = self.actor(sample_observation)
+                    distribution_discrete = Categorical(logits=logits)
+                    log_probability = distribution_discrete.log_prob(  # type: ignore[no-untyped-call]
+                        sample["action_index"]
+                    )
+                    ratio = (log_probability - sample["sample_log_prob"]).exp()
+                    entropy = distribution_discrete.entropy().mean()  # type: ignore[no-untyped-call]
+                elif isinstance(self.actor, RecurrentSharedActor):
+                    mean, log_std, _ = self.actor.forward_with_state(
+                        sample_observation,
+                        RecurrentState(sample["recurrent_hidden"]),
+                    )
+                else:
+                    mean, log_std = self.actor(sample_observation)
+                if not isinstance(self.actor, LatticeSharedActor):
+                    distribution = Normal(mean, log_std.exp())
+                    log_probability = bounded_action_log_prob(distribution, sample["action"])
+                    ratio = (log_probability - sample["sample_log_prob"]).exp()
+                    entropy_action = torch.tanh(distribution.rsample())
+                    entropy = -bounded_action_log_prob(distribution, entropy_action).mean()
                 clipped = ratio.clamp(
                     1.0 - self.config.clip_epsilon,
                     1.0 + self.config.clip_epsilon,
@@ -200,8 +225,6 @@ class MarlLearner:
                 ).mean()
                 value = self.critic(sample_observation)
                 value_loss = 0.5 * (value - value_target[indices]).square().mean()
-                entropy_action = torch.tanh(distribution.rsample())
-                entropy = -bounded_action_log_prob(distribution, entropy_action).mean()
                 log_ratio = log_probability - sample["sample_log_prob"]
                 approx_kl = ((ratio - 1.0) - log_ratio).mean()
                 clip_fraction = ((ratio - 1.0).abs() > self.config.clip_epsilon).float().mean()
@@ -342,6 +365,10 @@ def resolve_device(requested: str) -> torch.device:
 
 
 def _build_actor(config: MarlConfig) -> PolicyActor:
+    if config.action_parser == "lattice":
+        return LatticeSharedActor(config.hidden_size)
+    if config.policy_architecture == "gru":
+        return RecurrentSharedActor(config.hidden_size)
     if config.policy_architecture == "attention":
         return EntityAttentionActor(config.hidden_size)
     return SharedActor(config.hidden_size)
