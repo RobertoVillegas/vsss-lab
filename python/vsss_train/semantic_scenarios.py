@@ -7,6 +7,7 @@ import hashlib
 import json
 import math
 import random
+from collections import defaultdict, deque
 from dataclasses import asdict, dataclass
 from typing import Any, Literal
 
@@ -23,6 +24,14 @@ SkillFamily = Literal[
 ControlledTeam = Literal["blue", "yellow"]
 
 GENERATOR_REVISION = "m15.1"
+SKILL_FAMILIES: tuple[SkillFamily, ...] = (
+    "approach",
+    "interception",
+    "save_deflection",
+    "clearance",
+    "shot",
+    "pass_receive",
+)
 
 
 @dataclass(frozen=True)
@@ -100,6 +109,109 @@ class SemanticScenario:
     context: SkillContext
 
 
+@dataclass(frozen=True)
+class SemanticSelection:
+    scenario: SemanticScenario | None
+    source: Literal["full_match", "routine", "frontier", "failure"]
+
+
+class SemanticSkillCurriculum:
+    """Learning-progress scheduler with mirrored colors and failure rehearsal."""
+
+    def __init__(
+        self,
+        base_state: dict[str, Any],
+        config: dict[str, Any],
+        *,
+        seed: int,
+        full_match_fraction: float = 0.25,
+        window: int = 24,
+    ) -> None:
+        if not 0.0 <= full_match_fraction <= 1.0:
+            raise ValueError("full_match_fraction must be in [0, 1]")
+        if window < 4:
+            raise ValueError("curriculum window must be at least four")
+        self.base_state = copy.deepcopy(base_state)
+        self.config = config
+        self.seed = seed
+        self.full_match_fraction = full_match_fraction
+        self.window = window
+        self.levels = {family: 0.05 for family in SKILL_FAMILIES}
+        self.outcomes: dict[SkillFamily, deque[float]] = defaultdict(
+            lambda: deque(maxlen=window * 2)
+        )
+        self.failures: dict[str, SkillScenarioParameters] = {}
+        self.counts: dict[str, int] = defaultdict(int)
+
+    def select_training(self, index: int) -> SemanticSelection:
+        generator = random.Random(self.seed + index * 104_729)
+        if generator.random() < self.full_match_fraction:
+            self.counts["full_match"] += 1
+            return SemanticSelection(None, "full_match")
+        if self.failures and generator.random() < 0.15:
+            key = sorted(self.failures)[generator.randrange(len(self.failures))]
+            parameters = self.failures[key]
+            source: Literal["failure", "routine", "frontier"] = "failure"
+        else:
+            family = SKILL_FAMILIES[index % len(SKILL_FAMILIES)]
+            level = self.levels[family]
+            source = "routine" if generator.random() < 0.30 else "frontier"
+            amount = max(0.0, level - 0.15) if source == "routine" else level
+            parameters = SkillScenarioParameters(
+                schema_version=1,
+                family=family,
+                seed=self.seed + index,
+                controlled_team="blue" if (index // len(SKILL_FAMILIES)) % 2 == 0 else "yellow",
+                difficulty=SkillDifficulty(
+                    ball_speed=_jitter(amount, generator),
+                    ball_angle=_jitter(amount, generator),
+                    spawn_distance=_jitter(amount, generator),
+                    target_width=_jitter(amount, generator),
+                    opponent_pressure=_jitter(amount, generator),
+                ),
+            )
+        self.counts[source] += 1
+        return SemanticSelection(
+            compile_skill_scenario(parameters, self.base_state, self.config),
+            source,
+        )
+
+    def record(self, scenario: SemanticScenario, *, success: bool) -> None:
+        family = scenario.parameters.family
+        history = self.outcomes[family]
+        history.append(float(success))
+        if success:
+            self.failures.pop(scenario.parameters.digest, None)
+        else:
+            self.failures.setdefault(scenario.parameters.digest, scenario.parameters)
+        if len(history) < self.window * 2:
+            return
+        values = tuple(history)
+        previous = sum(values[: self.window]) / self.window
+        current = sum(values[self.window :]) / self.window
+        learning_progress = current - previous
+        if current >= 0.70 and learning_progress >= -0.05:
+            self.levels[family] = min(1.0, self.levels[family] + 0.05)
+        elif current < 0.35 and learning_progress <= 0.0:
+            self.levels[family] = max(0.0, self.levels[family] - 0.025)
+
+    def telemetry(self, *, reset: bool = False) -> dict[str, object]:
+        result: dict[str, object] = {
+            "schema_version": 1,
+            "levels": dict(self.levels),
+            "allocation": dict(self.counts),
+            "failure_count": len(self.failures),
+            "success_rate": {
+                family: sum(values) / len(values) if values else None
+                for family in SKILL_FAMILIES
+                if (values := self.outcomes[family])
+            },
+        }
+        if reset:
+            self.counts.clear()
+        return result
+
+
 def compile_skill_scenario(
     parameters: SkillScenarioParameters,
     base_state: dict[str, Any],
@@ -163,7 +275,7 @@ def compile_skill_scenario(
             primary,
             attack_sign,
             ball,
-            spawn_distance * 0.40,
+            _lerp(0.08, 0.14, difficulty.spawn_distance),
             heading_error=0.15,
             generator=generator,
         )
@@ -319,6 +431,10 @@ def _validate_not_terminal(state: dict[str, Any], config: dict[str, Any]) -> Non
 
 def _lerp(start: float, end: float, amount: float) -> float:
     return start + (end - start) * amount
+
+
+def _jitter(amount: float, generator: random.Random) -> float:
+    return min(1.0, max(0.0, amount + generator.uniform(-0.08, 0.08)))
 
 
 def _angle(value: float) -> float:

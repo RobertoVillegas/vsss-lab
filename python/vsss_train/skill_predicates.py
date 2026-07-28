@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -185,3 +185,31 @@ class SkillEvaluator:
             self._controlled_touches,
             self._opponent_touches,
         )
+
+
+def skill_frame_from_native(
+    state: Sequence[float],
+    *,
+    step: int,
+    events: int,
+) -> SkillFrame:
+    """Adapt the stable native state ABI to the semantic predicate contract."""
+    robot_positions: dict[str, tuple[float, float]] = {}
+    robot_teams: dict[str, str] = {}
+    robot_base = 10
+    robot_width = 11
+    for slot in range(6):
+        base = robot_base + slot * robot_width
+        robot_id = f"R{int(state[base])}"
+        robot_positions[robot_id] = (float(state[base + 2]), float(state[base + 3]))
+        robot_teams[robot_id] = "blue" if int(state[base + 1]) == 0 else "yellow"
+    return SkillFrame(
+        step=step,
+        ball_x=float(state[5]),
+        ball_y=float(state[6]),
+        ball_vx=float(state[7]),
+        ball_vy=float(state[8]),
+        robot_positions=robot_positions,
+        robot_teams=robot_teams,
+        events=events,
+    )

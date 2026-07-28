@@ -84,7 +84,10 @@ class MarlConfig:
     policy_architecture: Literal["mlp", "gru", "attention"] = "mlp"
     action_parser: Literal["continuous", "lattice"] = "continuous"
     adaptive_curriculum: bool = False
+    semantic_curriculum: bool = False
     scenario_suite: str = ""
+    semantic_full_match_fraction: float = 0.25
+    semantic_terminal_reward: float = 2.0
     observation_dropout: float = 0.0
     observation_noise_std: float = 0.0
     seed: int = 7
@@ -142,6 +145,12 @@ class MarlConfig:
             raise ValueError("lattice ablation currently requires the MLP architecture")
         if self.adaptive_curriculum and not self.scenario_suite:
             raise ValueError("adaptive_curriculum requires scenario_suite")
+        if self.adaptive_curriculum and self.semantic_curriculum:
+            raise ValueError("static and semantic curricula are mutually exclusive")
+        if not 0.0 <= self.semantic_full_match_fraction <= 1.0:
+            raise ValueError("semantic_full_match_fraction must be in [0, 1]")
+        if self.semantic_terminal_reward < 0.0:
+            raise ValueError("semantic_terminal_reward must be non-negative")
         if not 0.0 <= self.observation_dropout < 1.0:
             raise ValueError("observation_dropout must be in [0, 1)")
         if self.observation_noise_std < 0.0:

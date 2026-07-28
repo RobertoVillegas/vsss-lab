@@ -305,6 +305,7 @@ class VectorMarlMatchEnv:
         self._config = json.loads(config_json)
         self._template = json.loads(state_json)
         self._native = BatchSimulator(config_json, state_json, num_envs)
+        self._blue = DynamicTeamController(0, 1)
         self._yellow = DynamicTeamController(3, -1)
         self._max_wheel_speed = float(self._config["max_wheel_speed"])
         self.num_envs = num_envs
@@ -343,7 +344,13 @@ class VectorMarlMatchEnv:
         self._defensive_distance = np.zeros(num_envs, dtype=np.float32)
         self._stagnation_anchor = np.zeros((num_envs, 2), dtype=np.float32)
         self._stagnation_steps = np.zeros(num_envs, dtype=np.int64)
-        self.last_terminal_reasons = np.full(num_envs, "", dtype="<U10")
+        self.last_terminal_reasons = np.full(num_envs, "", dtype="<U24")
+        self.controlled_teams = np.zeros(num_envs, dtype=np.int64)
+
+    def set_controlled_team(self, world: int, team: int) -> None:
+        if team not in (0, 1):
+            raise ValueError("controlled team must be 0 or 1")
+        self.controlled_teams[world] = team
 
     def reset(self, world: int, seed: int) -> TeamBatch:
         snapshot = _seeded_snapshot(self._template, seed)
@@ -356,16 +363,19 @@ class VectorMarlMatchEnv:
         )
         self.steps[world] = 0
         self._ball_x[world] = self.states[world, 5]
-        self._closest[world] = _closest_blue_distance(self.states[world])
+        team = int(self.controlled_teams[world])
+        self._closest[world] = _closest_team_distance(self.states[world], team)
         self._initial_ball_x[world] = self._ball_x[world]
         self._initial_closest[world] = self._closest[world]
         self._previous_blue_actions[world].fill(0.0)
         self._goal_grace_remaining[world] = -1
-        self._defensive_distance[world] = _defensive_distance(self.states[world], self._config)
+        self._defensive_distance[world] = _defensive_distance(
+            self.states[world], self._config, team
+        )
         self._stagnation_anchor[world] = self.states[world, 5:7]
         self._stagnation_steps[world] = 0
         self.last_terminal_reasons[world] = ""
-        return build_team_observation(self.states[world], team=0)
+        return build_team_observation(self.states[world], team=team)
 
     def step(
         self,
@@ -386,19 +396,29 @@ class VectorMarlMatchEnv:
         )
         actions = self._native_actions
         actions.fill(0.0)
-        actions[:, :3] = normalized_blue * self._max_wheel_speed
+        for world, team in enumerate(self.controlled_teams):
+            learner_slice = slice(0, 3) if team == 0 else slice(3, 6)
+            actions[world, learner_slice] = normalized_blue[world] * self._max_wheel_speed
         events = self._events
         events.fill(0)
         if opponent_actions is not None:
-            actions[:, 3:] = np.clip(opponent_actions, -1.0, 1.0) * self._max_wheel_speed
+            normalized_opponents = np.clip(opponent_actions, -1.0, 1.0)
+            for world, team in enumerate(self.controlled_teams):
+                opponent_slice = slice(3, 6) if team == 0 else slice(0, 3)
+                actions[world, opponent_slice] = normalized_opponents[world] * self._max_wheel_speed
             self.states = self._native.step_repeated(actions, self.action_repeat)
             events |= self.states[:, -1].astype(np.int64)
         elif self.stage == 8:
             for _ in range(self.action_repeat):
                 for world in range(self.num_envs):
-                    actions[world, 3:] = (
-                        self._yellow.actions(self.states[world]) * self._max_wheel_speed
-                    )
+                    if self.controlled_teams[world] == 0:
+                        actions[world, 3:] = (
+                            self._yellow.actions(self.states[world]) * self._max_wheel_speed
+                        )
+                    else:
+                        actions[world, :3] = (
+                            self._blue.actions(self.states[world]) * self._max_wheel_speed
+                        )
                 self.states = self._native.step(actions)
                 events |= self.states[:, -1].astype(np.int64)
         else:
@@ -407,15 +427,28 @@ class VectorMarlMatchEnv:
         self.steps += 1
         ball_x = self.states[:, 5]
         closest = np.asarray(
-            [_closest_blue_distance(state) for state in self.states],
+            [
+                _closest_team_distance(state, int(team))
+                for state, team in zip(self.states, self.controlled_teams, strict=True)
+            ],
             dtype=np.float32,
         )
         defensive_distance = np.asarray(
-            [_defensive_distance(state, self._config) for state in self.states],
+            [
+                _defensive_distance(state, self._config, int(team))
+                for state, team in zip(self.states, self.controlled_teams, strict=True)
+            ],
             dtype=np.float32,
         )
         threat = np.asarray(
-            [_defensive_threat(float(x), self.defensive_activation_x) for x in ball_x],
+            [
+                _defensive_threat(
+                    float(x),
+                    self.defensive_activation_x,
+                    int(team),
+                )
+                for x, team in zip(ball_x, self.controlled_teams, strict=True)
+            ],
             dtype=np.float32,
         )
         ball_positions = self.states[:, 5:7]
@@ -439,13 +472,26 @@ class VectorMarlMatchEnv:
             self._stagnation_steps >= self.stagnation_limit
         )
         draw = (self.steps >= self.horizon) & ~goal_complete & ~stagnated
+        attack_sign = np.where(self.controlled_teams == 0, 1.0, -1.0)
+        scored = np.where(self.controlled_teams == 0, (events & 1) != 0, (events & 2) != 0)
+        conceded = np.where(
+            self.controlled_teams == 0,
+            (events & 2) != 0,
+            (events & 1) != 0,
+        )
         rewards = (
-            self.progress_coefficient * (2.0 * (self._closest - closest) + (ball_x - self._ball_x))
+            self.progress_coefficient
+            * (2.0 * (self._closest - closest) + attack_sign * (ball_x - self._ball_x))
             + self.ball_direction_coefficient
             * np.asarray(
                 [
-                    _ball_direction_reward(state, self._config, self.movement_speed_threshold)
-                    for state in self.states
+                    _ball_direction_reward(
+                        state,
+                        self._config,
+                        self.movement_speed_threshold,
+                        int(team),
+                    )
+                    for state, team in zip(self.states, self.controlled_teams, strict=True)
                 ],
                 dtype=np.float32,
             )
@@ -453,15 +499,19 @@ class VectorMarlMatchEnv:
             + self.attacker_alignment_coefficient
             * np.asarray(
                 [
-                    _attacker_alignment_reward(state, self.movement_speed_threshold)
-                    for state in self.states
+                    _attacker_alignment_reward(
+                        state,
+                        self.movement_speed_threshold,
+                        int(team),
+                    )
+                    for state, team in zip(self.states, self.controlled_teams, strict=True)
                 ],
                 dtype=np.float32,
             )
             / self.horizon
             - self.time_penalty_coefficient / self.horizon
-            + self.goal_coefficient * ((events & 1) != 0)
-            - self.goal_coefficient * ((events & 2) != 0)
+            + self.goal_coefficient * scored
+            - self.goal_coefficient * conceded
             - self.action_delta_coefficient * np.square(action_delta).mean(axis=(1, 2))
             - self.wheel_effort_coefficient * np.square(normalized_blue).mean(axis=(1, 2))
             - self.teammate_congestion_coefficient * congestion
@@ -481,7 +531,10 @@ class VectorMarlMatchEnv:
         self.last_terminal_reasons[stagnated] = "stagnation"
         self.last_terminal_reasons[goal_complete] = "goal"
         observations = stack_team_batches(
-            [build_team_observation(state, team=0) for state in self.states]
+            [
+                build_team_observation(state, team=int(team))
+                for state, team in zip(self.states, self.controlled_teams, strict=True)
+            ]
         )
         return observations, rewards, done, events, done
 
@@ -490,9 +543,12 @@ class VectorMarlMatchEnv:
         self._initial_ball_x = self._ball_x.copy()
 
     def progress_scores(self) -> FloatArray:
-        return (
-            2.0 * (self._initial_closest - self._closest) + (self._ball_x - self._initial_ball_x)
-        ).astype(np.float32)
+        scores = 2.0 * (self._initial_closest - self._closest) + np.where(
+            self.controlled_teams == 0,
+            1.0,
+            -1.0,
+        ) * (self._ball_x - self._initial_ball_x)
+        return np.asarray(scores, dtype=np.float32)
 
     def snapshot(self, world: int) -> dict[str, Any]:
         return cast(dict[str, Any], json.loads(self._native.snapshots()[world]))
@@ -528,13 +584,14 @@ def _seeded_snapshot(template: dict[str, Any], seed: int) -> dict[str, Any]:
     return snapshot
 
 
-def _closest_blue_distance(state: FloatArray) -> float:
+def _closest_team_distance(state: FloatArray, team: int = 0) -> float:
+    offset = 0 if team == 0 else 3
     return min(
         math.hypot(
             float(state[5] - state[ROBOT_BASE + slot * ROBOT_WIDTH + 2]),
             float(state[6] - state[ROBOT_BASE + slot * ROBOT_WIDTH + 3]),
         )
-        for slot in range(3)
+        for slot in range(offset, offset + 3)
     )
 
 
@@ -566,12 +623,14 @@ def _ball_direction_reward(
     state: FloatArray,
     config: dict[str, Any],
     speed_threshold: float,
+    team: int = 0,
 ) -> float:
     velocity = (float(state[7]), float(state[8]))
     if math.hypot(*velocity) < speed_threshold:
         return 0.0
     ball = (float(state[5]), float(state[6]))
-    goal_x = float(config["field"]["length"]) / 2.0
+    attack_sign = 1.0 if team == 0 else -1.0
+    goal_x = attack_sign * float(config["field"]["length"]) / 2.0
     enemy = (goal_x - ball[0], -ball[1])
     ally = (-goal_x - ball[0], -ball[1])
     enemy_similarity = _cosine_similarity(enemy, velocity)
@@ -579,10 +638,15 @@ def _ball_direction_reward(
     return math.tanh(enemy_similarity) - math.tanh(ally_similarity)
 
 
-def _attacker_alignment_reward(state: FloatArray, speed_threshold: float) -> float:
+def _attacker_alignment_reward(
+    state: FloatArray,
+    speed_threshold: float,
+    team: int = 0,
+) -> float:
     ball = (float(state[5]), float(state[6]))
+    offset = 0 if team == 0 else 3
     attacker = min(
-        range(3),
+        range(offset, offset + 3),
         key=lambda slot: math.hypot(
             ball[0] - float(state[ROBOT_BASE + slot * ROBOT_WIDTH + 2]),
             ball[1] - float(state[ROBOT_BASE + slot * ROBOT_WIDTH + 3]),
@@ -600,9 +664,14 @@ def _attacker_alignment_reward(state: FloatArray, speed_threshold: float) -> flo
     return math.tanh(similarity) - math.tanh(1.0)
 
 
-def _defensive_distance(state: FloatArray, config: dict[str, Any]) -> float:
+def _defensive_distance(
+    state: FloatArray,
+    config: dict[str, Any],
+    team: int = 0,
+) -> float:
     field = config["field"]
-    target_x = -float(field["length"]) / 2.0 + 0.12
+    attack_sign = 1.0 if team == 0 else -1.0
+    target_x = -attack_sign * (float(field["length"]) / 2.0 - 0.12)
     half_goal = float(field["goal_width"]) / 2.0
     target_y = float(np.clip(state[6], -half_goal, half_goal))
     return min(
@@ -610,12 +679,13 @@ def _defensive_distance(state: FloatArray, config: dict[str, Any]) -> float:
             target_x - float(state[ROBOT_BASE + slot * ROBOT_WIDTH + 2]),
             target_y - float(state[ROBOT_BASE + slot * ROBOT_WIDTH + 3]),
         )
-        for slot in range(3)
+        for slot in range(0 if team == 0 else 3, 3 if team == 0 else 6)
     )
 
 
-def _defensive_threat(ball_x: float, activation_x: float) -> float:
-    return float(np.clip((activation_x - ball_x) / 0.75, 0.0, 1.0))
+def _defensive_threat(ball_x: float, activation_x: float, team: int = 0) -> float:
+    attack_sign = 1.0 if team == 0 else -1.0
+    return float(np.clip((activation_x - attack_sign * ball_x) / 0.75, 0.0, 1.0))
 
 
 def distill_dynamic_teacher(

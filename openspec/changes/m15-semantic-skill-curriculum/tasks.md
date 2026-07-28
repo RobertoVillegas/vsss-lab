@@ -16,7 +16,7 @@
       and opponent pressure
 - [x] Reject non-finite, outside-field, overlapping, unreachable, and
       already-terminal initial states
-- [ ] Add property tests over seeds, mirrors, difficulty bounds, and neighbor
+- [x] Add property tests over seeds, mirrors, difficulty bounds, and neighbor
       world isolation
 
 ## 3. Semantic predicates and termination
@@ -25,7 +25,7 @@
 - [x] Implement causal approach and interception predicates
 - [x] Implement goal-bound save/deflection and clearance predicates
 - [x] Implement shot and pass/receive contact-chain predicates
-- [ ] Add short confirmation windows and semantic early termination
+- [x] Add short confirmation windows and semantic early termination
 - [ ] Add golden near-miss, opponent-touch, rebound, own-goal, timeout, and
       repeated-contact anti-farming traces
 
@@ -35,8 +35,8 @@
       deduplicated failures with immutable holdouts excluded from gradients
 - [ ] Advance independent difficulty axes from rolling success and learning
       progress
-- [ ] Mirror allocation across controlled colors and avoid fixed player roles
-- [ ] Add bounded terminal skill outcome reward with separate attribution
+- [x] Mirror allocation across controlled colors and avoid fixed player roles
+- [x] Add bounded terminal skill outcome reward with separate attribution
 - [ ] Compare predicates-only, terminal skill reward, and dense shaping arms
 - [ ] Reject any shaping arm that farms events or fails full-match transfer
 

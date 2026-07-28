@@ -350,6 +350,47 @@ def test_match_persists_across_short_ppo_rollouts() -> None:
     assert second.matches == 1
 
 
+def test_semantic_curriculum_runs_mirrored_worlds_and_reports_outcomes() -> None:
+    config = MarlConfig(
+        device="cpu",
+        num_envs=12,
+        hidden_size=8,
+        epochs=1,
+        minibatch_size=72,
+        horizon=2,
+        rollout_steps=2,
+        action_repeat=1,
+        semantic_curriculum=True,
+        semantic_full_match_fraction=0.0,
+    )
+    learner = MarlLearner(config)
+    session = create_rollout_session(config, CONFIG, STATE)
+    result = train_iteration(
+        learner,
+        None,
+        CONFIG,
+        STATE,
+        iteration=1,
+        seed=101,
+        opponent_id="heuristic",
+        checkpoint=None,
+        session=session,
+    )
+    assert set(session.environment.controlled_teams) == {0, 1}
+    assert result.matches == config.num_envs
+    assert result.curriculum is not None
+    levels = result.curriculum["levels"]
+    assert isinstance(levels, dict)
+    assert set(levels) == {
+        "approach",
+        "interception",
+        "save_deflection",
+        "clearance",
+        "shot",
+        "pass_receive",
+    }
+
+
 def test_learned_policy_replay_is_viewer_compatible(tmp_path: Path) -> None:
     replay = tmp_path / "learned.jsonl"
     result = run_policy_replay(

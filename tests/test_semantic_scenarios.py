@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 from vsss_train.semantic_scenarios import (
+    SKILL_FAMILIES,
+    SemanticSkillCurriculum,
     SkillDifficulty,
     SkillScenarioParameters,
     compile_skill_scenario,
@@ -93,3 +95,44 @@ def test_compiler_remains_valid_across_families_colors_and_many_seeds() -> None:
     # Some 180-degree mirrors are physically identical, but seeds still provide
     # broad state diversity without relying on an identifier in canonical state.
     assert len(digests) >= int(expected * 0.8)
+
+
+def test_curriculum_mirrors_colors_and_allocates_every_family() -> None:
+    curriculum = SemanticSkillCurriculum(STATE, CONFIG, seed=11, full_match_fraction=0.0)
+    selections = [curriculum.select_training(index) for index in range(48)]
+    scenarios = [selection.scenario for selection in selections]
+    assert all(scenario is not None for scenario in scenarios)
+    compiled = [scenario for scenario in scenarios if scenario is not None]
+    assert {scenario.parameters.family for scenario in compiled} == set(SKILL_FAMILIES)
+    assert {scenario.parameters.controlled_team for scenario in compiled} == {
+        "blue",
+        "yellow",
+    }
+    assert {selection.source for selection in selections} >= {"routine", "frontier"}
+
+
+def test_curriculum_advances_mastered_family_and_deduplicates_failures() -> None:
+    curriculum = SemanticSkillCurriculum(
+        STATE,
+        CONFIG,
+        seed=13,
+        full_match_fraction=0.0,
+        window=4,
+    )
+    selection = curriculum.select_training(0)
+    assert selection.scenario is not None
+    scenario = selection.scenario
+    curriculum.record(scenario, success=False)
+    curriculum.record(scenario, success=False)
+    assert curriculum.telemetry()["failure_count"] == 1
+    for _ in range(8):
+        curriculum.record(scenario, success=True)
+    assert curriculum.levels[scenario.parameters.family] > 0.05
+    assert curriculum.telemetry()["failure_count"] == 0
+
+
+def test_curriculum_can_reserve_full_matches_outside_skill_gradients() -> None:
+    curriculum = SemanticSkillCurriculum(STATE, CONFIG, seed=17, full_match_fraction=1.0)
+    selection = curriculum.select_training(0)
+    assert selection.scenario is None
+    assert selection.source == "full_match"
