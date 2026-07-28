@@ -24,6 +24,7 @@ dev = [
   "pyzmq==27.1.0",
 ]
 train = [
+  "optuna>=4.6,<5",
   "rich>=14.2,<15",
   "tensorboard>=2.20,<3",
   "torch>=2.9,<3",
