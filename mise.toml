@@ -40,6 +40,8 @@ description = "Run Rust and Python test suites"
 depends = ["bindings"]
 run = [
   "cargo test --workspace --locked",
+  "uv sync --group train --locked",
+  "uv run maturin develop --release",
   "uv run pytest -q",
 ]
 
@@ -47,6 +49,7 @@ run = [
 description = "Run all static checks"
 depends = ["bootstrap"]
 run = [
+  "uv sync --group train --locked",
   "cargo fmt --all -- --check",
   "cargo clippy --workspace --all-targets -- -D warnings",
   "ruff check .",
