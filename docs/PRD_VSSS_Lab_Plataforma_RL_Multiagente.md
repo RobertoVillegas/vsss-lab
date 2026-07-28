@@ -167,6 +167,12 @@ La plataforma debe permitir responder preguntas como:
 - escenarios para calibración;
 - comportamiento observable como “golden model” inicial.
 
+Las texturas superiores `blue_0..2` y `yellow_0..2` también muestran una
+restricción real de VSSS: la cámara debe distinguir equipo y jugador. VSSS Lab
+separa identidad lógica, asignación azul/amarillo y marcador visual removible;
+los assets se derivarán de las reglas fijadas para el evento en lugar de usar
+el número de textura como identidad de política.
+
 **Qué no se hereda como arquitectura principal:**
 
 - ROS 1 Noetic;
@@ -1243,6 +1249,7 @@ Un frame visual contiene:
 - acciones aplicadas;
 - eventos;
 - rewards y diagnósticos opcionales.
+- perfil opcional de marcadores observables, separado de `robot_id` y de roles.
 
 Semánticas de entrega:
 
@@ -1911,6 +1918,7 @@ misma escena para un tick exacto.
 - containers;
 - replays;
 - torneo Roberto vs Julio.
+- slots y asignaciones de equipo independientes de marcadores físicos.
 
 **Gate:** controllers heterogéneos compiten sin compartir proceso.
 
@@ -1961,6 +1969,8 @@ misma escena para un tick exacto.
 - ROS bridge;
 - hardware-in-the-loop;
 - safety gates.
+- tags reglamentarios de equipo/jugador y asociación con confianza;
+- comparación sincronizada entre ground truth y estado estimado.
 
 **Gate:** definido posteriormente.
 
