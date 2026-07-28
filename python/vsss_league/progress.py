@@ -51,7 +51,7 @@ class TrainingDashboard:
         self._live = Live(
             Group(self._table(), self._progress),
             console=self.console,
-            refresh_per_second=4,
+            auto_refresh=False,
             transient=False,
         )
 
