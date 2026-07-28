@@ -28,3 +28,14 @@ Resetting one world cannot change another world's memory. The action lattice
 must be sign symmetric and bounded. Attention weights must cover all five
 visible entities. Invalid or unsuccessful planner trajectories cannot enter a
 demonstration artifact.
+
+## Executed teacher smoke
+
+`just m14-teacher-ablation experiments/reports/m14-teacher-smoke.json cuda 3`
+executed the exact Rapier teacher, verified its winning atomic trajectory, and
+compared scratch MAPPO, verified imitation, and imitation followed by MAPPO on
+three paired seeds. All three arms finished `0-6-0` for a terminal score of
+`0.5`. The imitation arms reached mean clone loss `0.036642`, but neither
+improved terminal outcomes. The machine-readable decision is therefore
+`no_terminal_advantage`: imitation remains available behind an experiment
+boundary and is not promoted.

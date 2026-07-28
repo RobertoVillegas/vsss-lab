@@ -39,7 +39,7 @@
 - [x] Compare continuous wheels with one symmetric, physically meaningful
       action abstraction at matched control frequency
 - [x] Implement a bounded exact-simulator planner for one atomic skill
-- [ ] Compare scratch, verified imitation warm start, and MAPPO fine-tuning
+- [x] Compare scratch, verified imitation warm start, and MAPPO fine-tuning
 - [x] Keep KAN and learned world models deferred unless their entry gates pass
 
 ## 5. Population consolidation

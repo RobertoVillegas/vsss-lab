@@ -5,7 +5,18 @@ from pathlib import Path
 import numpy as np
 import pytest
 from numpy.typing import NDArray
-from vsss_train.teacher import SkillResult, plan_atomic_skill, write_demonstrations
+from vsss_train.marl import SharedActor
+from vsss_train.teacher import (
+    ExactApproachRollout,
+    SkillResult,
+    behavior_clone_demonstration,
+    plan_atomic_skill,
+    write_demonstrations,
+)
+
+ROOT = Path(__file__).parents[1]
+CONFIG = (ROOT / "tests/golden/m1_match_config.json").read_text()
+STATE = (ROOT / "tests/golden/m1_match_state.json").read_text()
 
 
 def target_rollout(actions: NDArray[np.float32]) -> SkillResult:
@@ -45,3 +56,25 @@ def test_planner_rejects_unmet_skill_predicate() -> None:
 
     with pytest.raises(ValueError, match="skill predicate"):
         plan_atomic_skill(failure, skill="clearance", seed=1, population=8, elites=2)
+
+
+def test_exact_rapier_teacher_produces_cloneable_approach_demonstration() -> None:
+    demonstration = plan_atomic_skill(
+        ExactApproachRollout(CONFIG, STATE, seed=14),
+        skill="approach",
+        seed=14,
+        horizon=100,
+        population=48,
+        elites=6,
+        generations=5,
+    )
+    actor = SharedActor(hidden_size=8)
+    loss = behavior_clone_demonstration(
+        actor,
+        demonstration,
+        CONFIG,
+        STATE,
+        epochs=2,
+    )
+    assert demonstration.terminal_reason in {"approach", "contact"}
+    assert np.isfinite(loss)

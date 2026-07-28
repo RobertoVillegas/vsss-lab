@@ -138,6 +138,10 @@ class MarlMatchEnv:
 
     def reset(self, seed: int) -> TeamBatch:
         snapshot = _seeded_snapshot(self._template, seed)
+        return self.reset_state(snapshot)
+
+    def reset_state(self, snapshot: dict[str, Any]) -> TeamBatch:
+        """Restore one explicit scenario for deterministic skill evaluation."""
         self._native.restore(0, json.dumps(snapshot, separators=(",", ":")))
         self.state = self._native.step(np.zeros((1, 6, 2), dtype=np.float32))[0]
         self.steps = 0
