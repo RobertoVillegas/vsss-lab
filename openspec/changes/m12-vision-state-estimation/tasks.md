@@ -19,10 +19,10 @@
 
 ## 3. Predictive trajectory
 
-- [ ] 3.1 Implement analytic present-state ball projection
+- [x] 3.1 Implement analytic present-state ball projection
 - [ ] 3.2 Implement collision-aware projection against canonical walls, goals,
   damping, restitution, and chamfers
-- [ ] 3.3 Implement goalkeeper-line and general segment interception queries
+- [x] 3.3 Implement goalkeeper-line and general segment interception queries
 - [ ] 3.4 Add uncertainty propagation and stale-estimate limits
 - [ ] 3.5 Add a future-truth mutation test that blocks information leakage
 
