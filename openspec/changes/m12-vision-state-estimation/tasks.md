@@ -43,7 +43,7 @@
 - [x] 5.3 Render goalkeeper interception point and time
 - [x] 5.4 Render accepted/rejected measurements, estimate age, visibility, and
   association confidence
-- [ ] 5.5 Store post-hoc prediction error separately from policy-visible replay
+- [x] 5.5 Store post-hoc prediction error separately from policy-visible replay
   data
 
 ## 6. Physical camera and acceleration

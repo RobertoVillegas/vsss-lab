@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -214,18 +215,22 @@ def test_learned_policy_replay_is_viewer_compatible(tmp_path: Path) -> None:
         CONFIG,
         STATE,
         seed=17,
-        ticks=4,
+        ticks=12,
         replay_path=replay,
         blue_policy="candidate@1",
         yellow_policy="heuristic",
     )
     inspected = inspect_replay(replay)
-    assert inspected["ticks"] == result["ticks"] == 4
-    assert result["simulation_seconds"] == pytest.approx(0.08)
+    assert inspected["ticks"] == result["ticks"] == 12
+    assert result["simulation_seconds"] == pytest.approx(0.24)
     assert result["outcome"] in {"win", "loss", "draw"}
     assert inspected["final_checksum"] == result["final_checksum"]
     header = replay.read_text().splitlines()[0]
     assert '"blue":"candidate@1"' in header
+    analysis = Path(result["analysis"])
+    records = [json.loads(line) for line in analysis.read_text().splitlines()]
+    assert records[0]["policy_visible"] is False
+    assert any(record["type"] == "prediction_error" for record in records)
 
 
 def test_tournament_report_is_byte_reproducible_with_side_switch(tmp_path: Path) -> None:

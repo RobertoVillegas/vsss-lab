@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, TextIO
@@ -49,8 +50,13 @@ def run_policy_replay(
     ball_filter: BallKalmanFilter | None = None
     robot_filters: dict[int, RobotEkf] = {}
     replay_path.parent.mkdir(parents=True, exist_ok=True)
+    analysis_path = replay_path.with_suffix(".analysis.jsonl")
     final_checksum = ""
-    with replay_path.open("w", encoding="utf-8", newline="\n") as replay:
+    pending_predictions: list[dict[str, Any]] = []
+    with (
+        replay_path.open("w", encoding="utf-8", newline="\n") as replay,
+        analysis_path.open("w", encoding="utf-8", newline="\n") as analysis,
+    ):
         _write(
             replay,
             {
@@ -61,6 +67,15 @@ def run_policy_replay(
                 "config_sha256": hashlib.sha256(config_json.encode()).hexdigest(),
                 "config": config,
                 "policies": {"blue": blue_policy, "yellow": yellow_policy},
+            },
+        )
+        _write(
+            analysis,
+            {
+                "type": "analysis_header",
+                "version": 1,
+                "source_replay": replay_path.name,
+                "policy_visible": False,
             },
         )
         index = 0
@@ -91,6 +106,30 @@ def run_policy_replay(
             snapshot["score_yellow"] = goals_yellow
             snapshot["tick"] = (index + 1) * environment.action_repeat
             snapshot["simulation_time"] = (index + 1) * float(config["control_period"])
+            current_index = index + 1
+            remaining_predictions = []
+            for pending in pending_predictions:
+                if pending["episode"] != episode:
+                    continue
+                if pending["target_index"] > current_index:
+                    remaining_predictions.append(pending)
+                    continue
+                error_x = float(snapshot["ball"]["x"]) - pending["predicted_x"]
+                error_y = float(snapshot["ball"]["y"]) - pending["predicted_y"]
+                _write(
+                    analysis,
+                    {
+                        "type": "prediction_error",
+                        "source_index": pending["source_index"],
+                        "target_index": current_index,
+                        "elapsed": pending["elapsed"],
+                        "error_x": error_x,
+                        "error_y": error_y,
+                        "error": math.hypot(error_x, error_y),
+                        "episode": episode,
+                    },
+                )
+            pending_predictions = remaining_predictions
             camera_frame = camera.observe(snapshot)
             ball_estimate: BallEstimate | None
             ball_prediction: Prediction | None
@@ -143,6 +182,19 @@ def run_policy_replay(
             interception = (
                 goalkeeper_interception(ball_prediction) if ball_prediction is not None else None
             )
+            if ball_prediction is not None:
+                for elapsed, predicted_x, predicted_y in ball_prediction.samples[1:]:
+                    pending_predictions.append(
+                        {
+                            "source_index": current_index,
+                            "target_index": current_index
+                            + round(elapsed / float(config["control_period"])),
+                            "elapsed": elapsed,
+                            "predicted_x": predicted_x,
+                            "predicted_y": predicted_y,
+                            "episode": episode,
+                        }
+                    )
             canonical = json.dumps(snapshot, sort_keys=True, separators=(",", ":"))
             final_checksum = hashlib.sha256(canonical.encode()).hexdigest()
             index += 1
@@ -174,6 +226,7 @@ def run_policy_replay(
                 },
             )
             if done and index < ticks:
+                pending_predictions.clear()
                 episode += 1
                 observation = environment.reset(seed + episode)
     return {
@@ -188,6 +241,7 @@ def run_policy_replay(
         "progress": environment.progress_score(),
         "final_checksum": final_checksum,
         "replay": str(replay_path.resolve()),
+        "analysis": str(analysis_path.resolve()),
     }
 
 
