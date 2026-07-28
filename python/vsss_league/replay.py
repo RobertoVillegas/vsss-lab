@@ -43,6 +43,7 @@ def run_policy_replay(
     replay_path: Path,
     blue_policy: str,
     yellow_policy: str,
+    semantic_context: dict[str, object] | None = None,
 ) -> dict[str, Any]:
     """Evaluate learned blue versus learned or heuristic yellow and write JSONL."""
     if ticks <= 0:
@@ -71,18 +72,18 @@ def run_policy_replay(
         pending_replay_path.open("w", encoding="utf-8", newline="\n") as replay,
         pending_analysis_path.open("w", encoding="utf-8", newline="\n") as analysis,
     ):
-        _write(
-            replay,
-            {
-                "type": "header",
-                "version": 1,
-                "seed": seed,
-                "ticks": ticks,
-                "config_sha256": hashlib.sha256(config_json.encode()).hexdigest(),
-                "config": config,
-                "policies": {"blue": blue_policy, "yellow": yellow_policy},
-            },
-        )
+        header: dict[str, Any] = {
+            "type": "header",
+            "version": 1,
+            "seed": seed,
+            "ticks": ticks,
+            "config_sha256": hashlib.sha256(config_json.encode()).hexdigest(),
+            "config": config,
+            "policies": {"blue": blue_policy, "yellow": yellow_policy},
+        }
+        if semantic_context is not None:
+            header["semantic_context"] = semantic_context
+        _write(replay, header)
         _write(
             analysis,
             {

@@ -124,3 +124,24 @@ def test_pass_fails_after_opponent_intercepts() -> None:
         SkillStatus.FAILURE,
         SkillReason.OPPONENT_TOUCH,
     )
+
+
+def test_rebound_resets_confirmation_window_until_trajectory_is_safe() -> None:
+    subject = evaluator("save_deflection")
+    subject.observe(frame(1, r0=(0.03, 0.0), velocity=(0.2, 0.2)))
+    rebound = subject.observe(frame(2, velocity=(-0.3, 0.0)))
+    assert rebound.status is SkillStatus.RUNNING
+    subject.observe(frame(3, velocity=(0.2, 0.2)))
+    result = subject.observe(frame(4, velocity=(0.2, 0.2)))
+    assert result.status is SkillStatus.SUCCESS
+
+
+def test_persistent_overlap_is_one_touch_not_a_farmable_contact_chain() -> None:
+    subject = evaluator("pass_receive", horizon=4)
+    first = subject.observe(frame(1, r1=(0.03, 0.0)))
+    repeated = subject.observe(frame(2, r1=(0.03, 0.0)))
+    assert first.controlled_touches == repeated.controlled_touches == 1
+    subject.observe(frame(3))
+    result = subject.observe(frame(4, r0=(0.03, 0.0)))
+    assert result.status is SkillStatus.SUCCESS
+    assert result.controlled_touches == 2

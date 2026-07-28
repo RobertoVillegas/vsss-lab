@@ -105,6 +105,26 @@ m14-accelerator-spike output="experiments/reports/m14-accelerator.json" device="
   mise run train-env
   uv run --group train python -m tools.m14_accelerator_spike --output "{{output}}" --device "{{device}}" --worlds {{worlds}} --steps {{steps}}
 
+m15-evaluate-control output="experiments/reports/m15/semantic-control.json" control="heuristic" seeds="5" config="experiments/configs/m15-mappo-semantic.toml":
+  mise run train-env
+  uv run --group train python -m tools.evaluate_m15 --config "{{config}}" --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --output "{{output}}" --control "{{control}}" --seeds {{seeds}}
+
+m15-evaluate checkpoint output="experiments/reports/m15/semantic-policy.json" seeds="5" config="experiments/configs/m15-mappo-semantic.toml":
+  mise run train-env
+  uv run --group train python -m tools.evaluate_m15 --config "{{config}}" --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --output "{{output}}" --control policy --checkpoint "{{checkpoint}}" --seeds {{seeds}}
+
+m15-ablation output="experiments/reports/m15/ablation.json" device="auto" seeds="2" iterations="3":
+  mise run train-env
+  uv run --group train python -m tools.m15_ablation --output "{{output}}" --device "{{device}}" --seeds {{seeds}} --iterations {{iterations}}
+
+m15-benchmark output="experiments/reports/m15/throughput.json" worlds="64" iterations="3":
+  mise run train-env
+  uv run --group train python -m tools.benchmark_m15 --output "{{output}}" --worlds {{worlds}} --iterations {{iterations}}
+
+m15-candidate-probe output_dir="experiments/reports/m15/candidate" iterations="50" device="auto":
+  mise run train-env
+  uv run --group train python -m tools.m15_candidate_probe --output-dir "{{output_dir}}" --iterations {{iterations}} --device "{{device}}"
+
 league-run run_dir="/home/rob/runs/vsss-lab-demo" iterations="3" capture_every="1" capture_seconds="60" checkpoint_every="100" device="auto" num_envs="64" config="experiments/configs/m14-mappo-adaptive.toml":
   mise run train-env
   uv run --group train python -m vsss_league.cli run --config "{{config}}" --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --run-dir "{{run_dir}}" --iterations {{iterations}} --capture-every {{capture_every}} --capture-seconds {{capture_seconds}} --checkpoint-every {{checkpoint_every}} --device "{{device}}" --num-envs {{num_envs}}

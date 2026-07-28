@@ -46,6 +46,32 @@ export interface TrainingMetric {
   exploration?: {
     actor_log_std?: number[];
   };
+  curriculum?: {
+    schema_version?: number;
+    levels?: Record<string, Record<string, number>>;
+    success_rate?: Record<string, number>;
+    outcomes?: {
+      success?: number;
+      failure?: number;
+      unresolved?: number;
+    };
+    trials?: SemanticTrial[];
+  };
+}
+
+export interface SemanticTrial {
+  schema_version: number;
+  scenario_id: string;
+  family: string;
+  controlled_team: "blue" | "yellow";
+  difficulty: Record<string, number>;
+  parameter_hash: string;
+  state_hash: string;
+  status: "success" | "failure" | "unresolved";
+  reason: string;
+  steps: number;
+  controlled_touches: number;
+  opponent_touches: number;
 }
 
 export interface MetricHistory {
@@ -113,6 +139,7 @@ export interface ReplayHeader {
   type: "header";
   ticks: number;
   policies: { blue: string; yellow: string };
+  semantic_context?: TrainingMetric["curriculum"];
   config: {
     control_period: number;
     max_wheel_speed: number;

@@ -62,6 +62,7 @@ class TrainingTelemetry:
             **{f"loss/{name}": value for name, value in result.losses.items()},
             **{f"termination/{name}": value for name, value in result.terminations.items()},
             **{f"exploration/log_std_{index}": value for index, value in enumerate(actor_log_std)},
+            **_curriculum_scalars(result.curriculum),
         }
         for name, value in scalars.items():
             self.writer.add_scalar(name, value, step)
@@ -70,3 +71,27 @@ class TrainingTelemetry:
 
     def close(self) -> None:
         self.writer.close()
+
+
+def _curriculum_scalars(curriculum: dict[str, object] | None) -> dict[str, float]:
+    if curriculum is None:
+        return {}
+    scalars: dict[str, float] = {}
+    levels = curriculum.get("levels")
+    if isinstance(levels, dict):
+        for family, axes in levels.items():
+            if isinstance(axes, dict):
+                for axis, value in axes.items():
+                    if isinstance(value, (int, float)):
+                        scalars[f"curriculum/{family}/{axis}"] = float(value)
+    rates = curriculum.get("success_rate")
+    if isinstance(rates, dict):
+        for family, value in rates.items():
+            if isinstance(value, (int, float)):
+                scalars[f"skill_success/{family}"] = float(value)
+    outcomes = curriculum.get("outcomes")
+    if isinstance(outcomes, dict):
+        for status, value in outcomes.items():
+            if isinstance(value, (int, float)):
+                scalars[f"skill_outcome/{status}"] = float(value)
+    return scalars

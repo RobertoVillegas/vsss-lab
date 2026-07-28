@@ -160,3 +160,37 @@ kbd { display: inline-block; margin: 0 2px; padding: 2px 4px; border: 1px solid 
   .workspace { grid-template-columns: 220px minmax(0, 1fr); }
   .telemetry { display: none; }
 }
+
+.semantic-trials {
+  margin-top: 18px;
+  border: 1px solid #183027;
+  background: #091510;
+  padding: 18px;
+}
+.semantic-trials > header, .semantic-filters, .semantic-row { display: grid; align-items: center; }
+.semantic-trials > header { grid-template-columns: 1fr auto; gap: 16px; }
+.semantic-trials > header h2 { margin: 3px 0 0; }
+.semantic-filters {
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 12px;
+  margin: 18px 0;
+}
+.semantic-filters label { color: #678075; font-size: 10px; letter-spacing: .08em; }
+.semantic-filters select { display: block; width: 100%; margin-top: 5px; }
+.semantic-table { max-height: 420px; overflow: auto; border-top: 1px solid #183027; }
+.semantic-row {
+  grid-template-columns: 110px 1.2fr 80px 60px 100px 1.2fr 80px;
+  gap: 12px;
+  min-width: 850px;
+  padding: 9px 4px;
+  border-bottom: 1px solid #13271f;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.semantic-row .blue, .semantic-row .success { color: #71e1ae; }
+.semantic-row .yellow, .semantic-row .unresolved { color: #ffd84a; }
+.semantic-row .failure { color: #ff8a62; }
+
+@media (max-width: 900px) {
+  .semantic-filters { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+}

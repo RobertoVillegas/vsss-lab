@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "decision": "reject_large_run",
+  "candidate": "semantic-shared@50",
+  "evidence": {
+    "paired_control_seeds": 5,
+    "matched_compute_environment_steps": 1280,
+    "random_resolved_drills_per_second": 7.814413113326273,
+    "heuristic_resolved_drills_per_second": 9.827203427477661,
+    "m14_static_semantic_success_rate": 0.0,
+    "m15_terminal_semantic_success_rate": 0.0,
+    "m14_static_terminal_score": 0.5,
+    "m15_terminal_terminal_score": 0.5,
+    "candidate_environment_steps": 204800,
+    "candidate_holdout_successes": 0,
+    "candidate_holdout_attempts": 60,
+    "candidate_vs_heuristic": {
+      "wins": 0,
+      "draws": 10,
+      "losses": 0
+    },
+    "candidate_vs_frozen_m14": {
+      "wins": 0,
+      "draws": 8,
+      "losses": 2
+    },
+    "candidate_vs_historical": {
+      "wins": 0,
+      "draws": 10,
+      "losses": 0
+    }
+  },
+  "failed_gates": [
+    "learnability_above_controls",
+    "semantic_advantage_over_frozen_m14",
+    "frozen_m14_transfer"
+  ],
+  "authorized_next_action": "bounded_remediation_only",
+  "high_budget_command": null
+}

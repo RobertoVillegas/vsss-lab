@@ -24,6 +24,13 @@ SkillFamily = Literal[
 ControlledTeam = Literal["blue", "yellow"]
 
 GENERATOR_REVISION = "m15.1"
+DIFFICULTY_AXES = (
+    "ball_speed",
+    "ball_angle",
+    "spawn_distance",
+    "target_width",
+    "opponent_pressure",
+)
 SKILL_FAMILIES: tuple[SkillFamily, ...] = (
     "approach",
     "interception",
@@ -58,6 +65,7 @@ class SkillScenarioParameters:
     controlled_team: ControlledTeam
     difficulty: SkillDifficulty
     horizon: int = 250
+    holdout: bool = False
     generator_revision: str = GENERATOR_REVISION
 
     def __post_init__(self) -> None:
@@ -136,7 +144,9 @@ class SemanticSkillCurriculum:
         self.seed = seed
         self.full_match_fraction = full_match_fraction
         self.window = window
-        self.levels = {family: 0.05 for family in SKILL_FAMILIES}
+        self.levels = {
+            family: {axis: 0.05 for axis in DIFFICULTY_AXES} for family in SKILL_FAMILIES
+        }
         self.outcomes: dict[SkillFamily, deque[float]] = defaultdict(
             lambda: deque(maxlen=window * 2)
         )
@@ -145,7 +155,9 @@ class SemanticSkillCurriculum:
 
     def select_training(self, index: int) -> SemanticSelection:
         generator = random.Random(self.seed + index * 104_729)
-        if generator.random() < self.full_match_fraction:
+        total_allocated = sum(self.counts.values())
+        required_full_matches = math.ceil((total_allocated + 1) * self.full_match_fraction)
+        if self.counts["full_match"] < required_full_matches:
             self.counts["full_match"] += 1
             return SemanticSelection(None, "full_match")
         if self.failures and generator.random() < 0.15:
@@ -154,20 +166,19 @@ class SemanticSkillCurriculum:
             source: Literal["failure", "routine", "frontier"] = "failure"
         else:
             family = SKILL_FAMILIES[index % len(SKILL_FAMILIES)]
-            level = self.levels[family]
+            levels = self.levels[family]
             source = "routine" if generator.random() < 0.30 else "frontier"
-            amount = max(0.0, level - 0.15) if source == "routine" else level
+            amounts = {
+                axis: max(0.0, value - 0.15) if source == "routine" else value
+                for axis, value in levels.items()
+            }
             parameters = SkillScenarioParameters(
                 schema_version=1,
                 family=family,
                 seed=self.seed + index,
                 controlled_team="blue" if (index // len(SKILL_FAMILIES)) % 2 == 0 else "yellow",
                 difficulty=SkillDifficulty(
-                    ball_speed=_jitter(amount, generator),
-                    ball_angle=_jitter(amount, generator),
-                    spawn_distance=_jitter(amount, generator),
-                    target_width=_jitter(amount, generator),
-                    opponent_pressure=_jitter(amount, generator),
+                    **{axis: _jitter(amount, generator) for axis, amount in amounts.items()}
                 ),
             )
         self.counts[source] += 1
@@ -177,6 +188,8 @@ class SemanticSkillCurriculum:
         )
 
     def record(self, scenario: SemanticScenario, *, success: bool) -> None:
+        if scenario.parameters.holdout:
+            raise ValueError("immutable holdouts cannot be recorded for training")
         family = scenario.parameters.family
         history = self.outcomes[family]
         history.append(float(success))
@@ -190,17 +203,50 @@ class SemanticSkillCurriculum:
         previous = sum(values[: self.window]) / self.window
         current = sum(values[self.window :]) / self.window
         learning_progress = current - previous
+        axis = DIFFICULTY_AXES[(len(history) // self.window - 2) % len(DIFFICULTY_AXES)]
         if current >= 0.70 and learning_progress >= -0.05:
-            self.levels[family] = min(1.0, self.levels[family] + 0.05)
+            self.levels[family][axis] = min(1.0, self.levels[family][axis] + 0.05)
         elif current < 0.35 and learning_progress <= 0.0:
-            self.levels[family] = max(0.0, self.levels[family] - 0.025)
+            self.levels[family][axis] = max(0.0, self.levels[family][axis] - 0.025)
+
+    def holdouts(
+        self,
+        *,
+        seeds: tuple[int, ...] = (10_007, 10_009, 10_037, 10_039, 10_061),
+    ) -> tuple[SemanticScenario, ...]:
+        """Build an immutable, paired-color suite outside the training allocator."""
+        scenarios = []
+        for family in SKILL_FAMILIES:
+            for team in ("blue", "yellow"):
+                for seed in seeds:
+                    scenarios.append(
+                        compile_skill_scenario(
+                            SkillScenarioParameters(
+                                schema_version=1,
+                                family=family,
+                                seed=seed,
+                                controlled_team=team,
+                                difficulty=SkillDifficulty(0.65, 0.65, 0.65, 0.65, 0.65),
+                                holdout=True,
+                            ),
+                            self.base_state,
+                            self.config,
+                        )
+                    )
+        return tuple(scenarios)
 
     def telemetry(self, *, reset: bool = False) -> dict[str, object]:
+        total = sum(self.counts.values())
+        observed_full_match_fraction = self.counts["full_match"] / total if total else 0.0
         result: dict[str, object] = {
             "schema_version": 1,
             "levels": dict(self.levels),
             "allocation": dict(self.counts),
             "failure_count": len(self.failures),
+            "observed_full_match_fraction": observed_full_match_fraction,
+            "allocation_valid": (
+                not total or observed_full_match_fraction + 1e-12 >= self.full_match_fraction
+            ),
             "success_rate": {
                 family: sum(values) / len(values) if values else None
                 for family in SKILL_FAMILIES
@@ -210,6 +256,58 @@ class SemanticSkillCurriculum:
         if reset:
             self.counts.clear()
         return result
+
+    def state_dict(self) -> dict[str, object]:
+        return {
+            "schema_version": 1,
+            "generator_revision": GENERATOR_REVISION,
+            "levels": copy.deepcopy(self.levels),
+            "outcomes": {family: list(self.outcomes[family]) for family in SKILL_FAMILIES},
+            "failures": {
+                digest: asdict(parameters) for digest, parameters in self.failures.items()
+            },
+        }
+
+    def load_state_dict(self, state: dict[str, object]) -> None:
+        if (
+            state.get("schema_version") != 1
+            or state.get("generator_revision") != GENERATOR_REVISION
+        ):
+            raise ValueError("incompatible semantic curriculum state")
+        levels = state.get("levels")
+        outcomes = state.get("outcomes")
+        failures = state.get("failures")
+        if not isinstance(levels, dict) or not isinstance(outcomes, dict):
+            raise ValueError("semantic curriculum state is incomplete")
+        for family in SKILL_FAMILIES:
+            raw_axes = levels.get(family)
+            if not isinstance(raw_axes, dict) or set(raw_axes) != set(DIFFICULTY_AXES):
+                raise ValueError(f"invalid difficulty state for {family}")
+            self.levels[family] = {
+                axis: _bounded_number(raw_axes[axis]) for axis in DIFFICULTY_AXES
+            }
+            raw_outcomes = outcomes.get(family, [])
+            if not isinstance(raw_outcomes, list):
+                raise ValueError(f"invalid outcome history for {family}")
+            self.outcomes[family].clear()
+            self.outcomes[family].extend(float(value) for value in raw_outcomes)
+        self.failures.clear()
+        if isinstance(failures, dict):
+            for digest, raw in failures.items():
+                if not isinstance(raw, dict):
+                    raise ValueError("invalid semantic failure state")
+                difficulty = raw.get("difficulty")
+                if not isinstance(difficulty, dict):
+                    raise ValueError("semantic failure lacks difficulty")
+                parameters = SkillScenarioParameters(
+                    **{
+                        **raw,
+                        "difficulty": SkillDifficulty(**difficulty),
+                    }
+                )
+                if parameters.digest != digest:
+                    raise ValueError("semantic failure digest mismatch")
+                self.failures[str(digest)] = parameters
 
 
 def compile_skill_scenario(
@@ -240,6 +338,7 @@ def compile_skill_scenario(
     target_half_width = _lerp(0.17, 0.06, difficulty.target_width)
     own_goal_x = -attack_sign * float(config["field"]["length"]) / 2
     target_goal_x = -own_goal_x
+    target_y = attack_sign * lane
 
     _park_robot(reserve, attack_sign, -0.58, -lane_sign * 0.48, 0.0)
     _park_opponents(opponents, attack_sign, difficulty.opponent_pressure, lane_sign)
@@ -264,20 +363,37 @@ def compile_skill_scenario(
         heading = math.pi + lane_sign * _lerp(0.02, 0.32, difficulty.ball_angle)
         _set_ball(state, attack_sign, *ball, speed=speed, heading=heading)
         intercept_x = ball[0] - _lerp(0.10, 0.24, difficulty.spawn_distance)
-        _park_robot(primary, attack_sign, intercept_x, lane * 0.55, math.pi)
+        intercept_y = lane + lane_sign * _lerp(
+            0.11,
+            0.22,
+            difficulty.spawn_distance,
+        )
+        intercept_heading = math.atan2(ball[1] - intercept_y, ball[0] - intercept_x)
+        _park_robot(
+            primary,
+            attack_sign,
+            intercept_x,
+            intercept_y,
+            intercept_heading,
+        )
         _park_robot(support, attack_sign, -0.58, -lane_sign * 0.34, 0.0)
         initial_threat = True
     elif family == "clearance":
         ball = (-0.48, lane * 0.55)
         heading = math.pi + lane_sign * _lerp(0.0, 0.22, difficulty.ball_angle)
         _set_ball(state, attack_sign, *ball, speed=speed * 0.45, heading=heading)
-        _place_behind(
+        clearance_x = ball[0] - _lerp(0.08, 0.14, difficulty.spawn_distance)
+        clearance_y = ball[1] + lane_sign * _lerp(
+            0.10,
+            0.18,
+            difficulty.spawn_distance,
+        )
+        _park_robot(
             primary,
             attack_sign,
-            ball,
-            _lerp(0.08, 0.14, difficulty.spawn_distance),
-            heading_error=0.15,
-            generator=generator,
+            clearance_x,
+            clearance_y,
+            math.atan2(ball[1] - clearance_y, ball[0] - clearance_x),
         )
         _park_robot(support, attack_sign, -0.24, -lane_sign * 0.38, 0.0)
         initial_threat = True
@@ -299,15 +415,38 @@ def compile_skill_scenario(
         support_id = str(passer["id"])
         passer_position = (-0.30, -lane_sign * 0.26)
         receiver_position = (0.08, lane_sign * 0.18)
+        target_y = attack_sign * receiver_position[1]
         heading = math.atan2(
             receiver_position[1] - passer_position[1],
             receiver_position[0] - passer_position[0],
         )
-        ball_position = (
-            passer_position[0] + 0.09 * math.cos(heading),
-            passer_position[1] + 0.09 * math.sin(heading),
+        robot_config = config["robot"]
+        ball_config = config["ball"]
+        contact_offset = (
+            math.hypot(
+                float(robot_config["length"]),
+                float(robot_config["width"]),
+            )
+            / 2
+            + float(ball_config["radius"])
+            + 1e-7
         )
-        _set_ball(state, attack_sign, *ball_position, speed=speed * 0.65, heading=heading)
+        ball_position = (
+            passer_position[0] + contact_offset * math.cos(heading),
+            passer_position[1] + contact_offset * math.sin(heading),
+        )
+        launch_heading = heading + lane_sign * _lerp(
+            0.45,
+            1.00,
+            difficulty.ball_angle,
+        )
+        _set_ball(
+            state,
+            attack_sign,
+            *ball_position,
+            speed=speed * 0.65,
+            heading=launch_heading,
+        )
         _park_robot(passer, attack_sign, *passer_position, heading)
         _park_robot(receiver, attack_sign, *receiver_position, heading + math.pi)
 
@@ -316,8 +455,9 @@ def compile_skill_scenario(
             f"m15-{family}-{parameters.controlled_team}-{parameters.seed}-{parameters.digest[:8]}"
         ),
         kind=_legacy_kind(family),
-        role="frontier",
+        role="holdout" if parameters.holdout else "frontier",
         state=state,
+        immutable=parameters.holdout,
     )
     validate_scenario(scenario, config)
     _validate_not_terminal(state, config)
@@ -329,7 +469,7 @@ def compile_skill_scenario(
         support_robot_id=support_id,
         target_goal_x=target_goal_x,
         own_goal_x=own_goal_x,
-        target_y=lane,
+        target_y=target_y,
         target_half_width=target_half_width,
         initial_ball_speed=math.hypot(float(state["ball"]["vx"]), float(state["ball"]["vy"])),
         initial_threat=initial_threat,
@@ -435,6 +575,15 @@ def _lerp(start: float, end: float, amount: float) -> float:
 
 def _jitter(amount: float, generator: random.Random) -> float:
     return min(1.0, max(0.0, amount + generator.uniform(-0.08, 0.08)))
+
+
+def _bounded_number(value: object) -> float:
+    if not isinstance(value, (int, float)):
+        raise ValueError("difficulty state must be numeric")
+    result = float(value)
+    if not math.isfinite(result) or not 0.0 <= result <= 1.0:
+        raise ValueError("difficulty state must be finite and in [0, 1]")
+    return result
 
 
 def _angle(value: float) -> float:

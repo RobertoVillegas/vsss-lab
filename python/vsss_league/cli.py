@@ -193,6 +193,14 @@ def _run(arguments: argparse.Namespace) -> None:
     total_matches = 0
     started_at = time.monotonic()
     rollout_session = create_rollout_session(config, config_json, state_json)
+    curriculum_state_path = run_dir / "semantic-curriculum.json"
+    if arguments.resume and rollout_session.semantic_curriculum is not None:
+        if not curriculum_state_path.is_file():
+            raise ValueError("semantic resume requires semantic-curriculum.json")
+        curriculum_state = json.loads(curriculum_state_path.read_text())
+        if not isinstance(curriculum_state, dict):
+            raise ValueError("semantic curriculum state must be an object")
+        rollout_session.semantic_curriculum.load_state_dict(curriculum_state)
     opponent_cache: dict[str, PolicyActor] = {}
     telemetry = TrainingTelemetry.create(
         run_dir,
@@ -251,6 +259,11 @@ def _run(arguments: argparse.Namespace) -> None:
                 checkpoint=checkpoint,
                 session=rollout_session,
             )
+            if rollout_session.semantic_curriculum is not None:
+                _write_json_atomic(
+                    curriculum_state_path,
+                    rollout_session.semantic_curriculum.state_dict(),
+                )
             reached_match_target = (
                 arguments.matches is not None
                 and total_matches + result.matches >= arguments.matches
@@ -325,6 +338,7 @@ def _run(arguments: argparse.Namespace) -> None:
                     replay_path=replay_path,
                     blue_policy=f"{config.policy_id}@{result.policy_version}",
                     yellow_policy=opponent_id,
+                    semantic_context=result.curriculum,
                 )
                 if rollout_session.curriculum is not None:
                     for descriptor in analyze_replay(replay_path).failure_descriptors():
@@ -470,6 +484,16 @@ def _promote(arguments: argparse.Namespace) -> None:
 
 def _timestamp() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _write_json_atomic(path: Path, value: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(f"{path.suffix}.tmp")
+    temporary.write_text(
+        json.dumps(value, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(path)
 
 
 if __name__ == "__main__":

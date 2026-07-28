@@ -353,6 +353,30 @@ export default function App() {
           <p className="side-heading">POLICY MATCHUP</p>
           <Policy team="BLUE" value={replay?.header.policies.blue} />
           <Policy team="YELLOW" value={replay?.header.policies.yellow} yellow />
+          {replay?.header.semantic_context ? (
+            <>
+              <div className="section-rule" />
+              <p className="side-heading">SEMANTIC CURRICULUM</p>
+              <dl className="details">
+                <div>
+                  <dt>Success / failure</dt>
+                  <dd>
+                    {replay.header.semantic_context.outcomes?.success ?? 0}
+                    {" / "}
+                    {replay.header.semantic_context.outcomes?.failure ?? 0}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Unresolved</dt>
+                  <dd>{replay.header.semantic_context.outcomes?.unresolved ?? 0}</dd>
+                </div>
+                <div>
+                  <dt>Captured trials</dt>
+                  <dd>{replay.header.semantic_context.trials?.length ?? 0}</dd>
+                </div>
+              </dl>
+            </>
+          ) : null}
           <div className="section-rule" />
           <dl className="details">
             <div><dt>Iteration</dt><dd>{iteration ?? "—"}</dd></div>

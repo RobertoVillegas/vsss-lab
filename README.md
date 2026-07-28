@@ -207,6 +207,10 @@ The adaptive-training layer provides:
 
 - immutable holdouts plus routine, frontier, and deduplicated failure scenarios;
 - validity-checked scenario mutation and learning-progress allocation;
+- semantic approach, interception, save/deflection, clearance, shot, and
+  pass/receive drills with mirrored colors and moving balls;
+- causal outcomes, early termination, independent difficulty axes, and bounded
+  anti-farming skill rewards;
 - persistent multiobjective Optuna studies with smoke, screen, and confirmation
   fidelities;
 - bounded reward and PPO search parameters with commit, seed, parent, compute,
@@ -224,6 +228,13 @@ The adaptive-training layer provides:
 Rapier remains the authoritative physics engine. A faster alternate backend is
 adoptable only if it preserves contact and goal traces and improves end-to-end
 throughput by a material margin.
+
+Semantic evaluation is paired across colors and at least five immutable seeds
+per family. Its confidence intervals and time-to-resolution complement
+full-match evaluation; neither drill success nor shaped return replaces
+transfer evidence. Scenario authoring, predicates, dashboards, evaluation,
+resume, and rollback are covered by
+[the M15 semantic curriculum guide](docs/m15-semantic-curriculum.md).
 
 ## Inspirations and references
 

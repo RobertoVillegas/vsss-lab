@@ -127,7 +127,8 @@ def test_curriculum_advances_mastered_family_and_deduplicates_failures() -> None
     assert curriculum.telemetry()["failure_count"] == 1
     for _ in range(8):
         curriculum.record(scenario, success=True)
-    assert curriculum.levels[scenario.parameters.family] > 0.05
+    levels = curriculum.levels[scenario.parameters.family]
+    assert max(levels.values()) > 0.05
     assert curriculum.telemetry()["failure_count"] == 0
 
 
@@ -136,3 +137,61 @@ def test_curriculum_can_reserve_full_matches_outside_skill_gradients() -> None:
     selection = curriculum.select_training(0)
     assert selection.scenario is None
     assert selection.source == "full_match"
+
+
+def test_curriculum_enforces_observed_full_match_floor() -> None:
+    curriculum = SemanticSkillCurriculum(
+        STATE,
+        CONFIG,
+        seed=18,
+        full_match_fraction=0.25,
+    )
+    for index in range(40):
+        curriculum.select_training(index)
+        telemetry = curriculum.telemetry()
+        assert telemetry["allocation_valid"] is True
+        observed = telemetry["observed_full_match_fraction"]
+        assert isinstance(observed, float)
+        assert observed >= 0.25
+
+
+def test_holdouts_are_paired_immutable_and_excluded_from_training_feedback() -> None:
+    curriculum = SemanticSkillCurriculum(STATE, CONFIG, seed=19)
+    holdouts = curriculum.holdouts(seeds=(101,))
+    assert len(holdouts) == len(SKILL_FAMILIES) * 2
+    assert {scenario.parameters.controlled_team for scenario in holdouts} == {
+        "blue",
+        "yellow",
+    }
+    assert all(
+        scenario.parameters.holdout
+        and scenario.scenario.immutable
+        and scenario.scenario.role == "holdout"
+        for scenario in holdouts
+    )
+    with pytest.raises(ValueError, match="holdouts"):
+        curriculum.record(holdouts[0], success=True)
+
+
+def test_curriculum_state_round_trip_preserves_difficulty_history_and_failures() -> None:
+    original = SemanticSkillCurriculum(
+        STATE,
+        CONFIG,
+        seed=23,
+        full_match_fraction=0.0,
+        window=4,
+    )
+    selection = original.select_training(0)
+    assert selection.scenario is not None
+    original.record(selection.scenario, success=False)
+    for _ in range(8):
+        original.record(selection.scenario, success=True)
+    restored = SemanticSkillCurriculum(
+        STATE,
+        CONFIG,
+        seed=23,
+        full_match_fraction=0.0,
+        window=4,
+    )
+    restored.load_state_dict(original.state_dict())
+    assert restored.state_dict() == original.state_dict()

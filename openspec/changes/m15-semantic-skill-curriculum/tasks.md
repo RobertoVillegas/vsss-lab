@@ -26,49 +26,49 @@
 - [x] Implement goal-bound save/deflection and clearance predicates
 - [x] Implement shot and pass/receive contact-chain predicates
 - [x] Add short confirmation windows and semantic early termination
-- [ ] Add golden near-miss, opponent-touch, rebound, own-goal, timeout, and
+- [x] Add golden near-miss, opponent-touch, rebound, own-goal, timeout, and
       repeated-contact anti-farming traces
 
 ## 4. Curriculum and rewards
 
-- [ ] Allocate semantic frontier, routine rehearsal, full matches, and
+- [x] Allocate semantic frontier, routine rehearsal, full matches, and
       deduplicated failures with immutable holdouts excluded from gradients
-- [ ] Advance independent difficulty axes from rolling success and learning
+- [x] Advance independent difficulty axes from rolling success and learning
       progress
 - [x] Mirror allocation across controlled colors and avoid fixed player roles
 - [x] Add bounded terminal skill outcome reward with separate attribution
-- [ ] Compare predicates-only, terminal skill reward, and dense shaping arms
-- [ ] Reject any shaping arm that farms events or fails full-match transfer
+- [x] Compare predicates-only, terminal skill reward, and dense shaping arms
+- [x] Reject any shaping arm that farms events or fails full-match transfer
 
 ## 5. Evaluation and observability
 
-- [ ] Implement paired multi-seed per-family evaluation with confidence
+- [x] Implement paired multi-seed per-family evaluation with confidence
       intervals and time-to-resolution
-- [ ] Record coverage, success/failure/unresolved, physical validity,
+- [x] Record coverage, success/failure/unresolved, physical validity,
       trajectory quality, and resolved drills/s by difficulty
-- [ ] Add scenario and semantic outcome contracts to metrics and replay
+- [x] Add scenario and semantic outcome contracts to metrics and replay
       artifacts
-- [ ] Add terminal-dashboard scenario telemetry
-- [ ] Add viewer filters, labels, timelines, and comparisons for family,
+- [x] Add terminal-dashboard scenario telemetry
+- [x] Add viewer filters, labels, timelines, and comparisons for family,
       difficulty, controlled color, and semantic outcome
 
 ## 6. Training decision
 
-- [ ] Run short learnability probes against random and deterministic heuristic
+- [x] Run short learnability probes against random and deterministic heuristic
       controls
-- [ ] Run M14-static versus M15-semantic curriculum ablation at matched compute
-- [ ] Run a full-match-heavy control to measure catastrophic specialization
-- [ ] Evaluate the candidate against frozen M14, heuristic, historical league,
+- [x] Run M14-static versus M15-semantic curriculum ablation at matched compute
+- [x] Run a full-match-heavy control to measure catastrophic specialization
+- [x] Evaluate the candidate against frozen M14, heuristic, historical league,
       and immutable skill holdouts with paired colors and at least five seeds
-- [ ] Write a machine-readable promote/reject decision before authorizing a
+- [x] Write a machine-readable promote/reject decision before authorizing a
       high-budget run
-- [ ] Publish the exact recommended next-run command only if the entry gates
+- [x] Publish the exact recommended next-run command only if the entry gates
       pass
 
 ## 7. Delivery
 
-- [ ] Document scenario authoring, predicate definitions, dashboards,
+- [x] Document scenario authoring, predicate definitions, dashboards,
       evaluation commands, artifacts, limitations, and rollback
-- [ ] Record CPU/CUDA frames/s, matches/s, resolved drills/s, and total compute
+- [x] Record CPU/CUDA frames/s, matches/s, resolved drills/s, and total compute
 - [ ] Run doctor, build, test, lint, CUDA smoke, and strict OpenSpec validation
 - [ ] Commit small signed Conventional Commits and push to main

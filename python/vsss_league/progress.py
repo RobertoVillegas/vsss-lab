@@ -201,6 +201,28 @@ class TrainingDashboard:
                 ),
                 "",
             )
+        if latest is not None and latest.curriculum is not None:
+            outcomes = latest.curriculum.get("outcomes")
+            if isinstance(outcomes, dict):
+                table.add_row(
+                    "skill outcomes S/F/U",
+                    " / ".join(
+                        str(outcomes.get(status, 0))
+                        for status in ("success", "failure", "unresolved")
+                    ),
+                    "",
+                )
+            rates = latest.curriculum.get("success_rate")
+            if isinstance(rates, dict) and rates:
+                table.add_row(
+                    "skill success",
+                    "  ".join(
+                        f"{str(family)[:4]}:{float(value):.0%}"
+                        for family, value in sorted(rates.items())
+                        if isinstance(value, (int, float))
+                    ),
+                    "",
+                )
         table.add_row("latest checkpoint", self._checkpoint, "")
         return table
 

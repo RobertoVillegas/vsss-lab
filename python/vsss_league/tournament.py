@@ -15,7 +15,7 @@ from vsss_train.ablations import (
     RecurrentSharedActor,
     RecurrentState,
 )
-from vsss_train.marl import SharedActor
+from vsss_train.marl import SharedActor, build_team_observation
 from vsss_train.marl_env import MarlMatchEnv
 
 from vsss_league.ratings import elo_update
@@ -64,6 +64,18 @@ class CheckpointScorecard:
     goals_for: int
     goals_against: int
     mean_progress: float
+    matches: int
+
+
+@dataclass(frozen=True)
+class PolicyPairScorecard:
+    candidate: str
+    opponent: str
+    wins: int
+    draws: int
+    losses: int
+    goals_for: int
+    goals_against: int
     matches: int
 
 
@@ -213,6 +225,82 @@ def evaluate_candidate_vs_heuristic(
         draws=sum(record.outcome == "draw" for record in records),
         losses=sum(record.outcome == "loss" for record in records),
         matches=tuple(records),
+    )
+
+
+def evaluate_policy_pair_scorecard(
+    candidate_actor: SharedActor,
+    opponent_actor: SharedActor,
+    config_json: str,
+    state_json: str,
+    *,
+    candidate: str,
+    opponent: str,
+    seeds: tuple[int, ...],
+    ticks: int,
+) -> PolicyPairScorecard:
+    """Evaluate two policies on paired colors without heavyweight replays."""
+    outcomes: list[str] = []
+    goals_for = goals_against = 0
+    candidate_device = next(candidate_actor.parameters()).device
+    opponent_device = next(opponent_actor.parameters()).device
+    for seed in seeds:
+        for candidate_team in (0, 1):
+            environment = MarlMatchEnv(config_json, state_json, stage=8, horizon=ticks)
+            environment.reset(seed)
+            blue_score = yellow_score = 0
+            done = False
+            while not done:
+                with torch.inference_mode():
+                    candidate_action = (
+                        candidate_actor.deterministic_action(
+                            build_team_observation(
+                                environment.state,
+                                team=candidate_team,
+                            ).to(candidate_device)
+                        )
+                        .cpu()
+                        .numpy()
+                    )
+                    opponent_action = (
+                        opponent_actor.deterministic_action(
+                            build_team_observation(
+                                environment.state,
+                                team=1 - candidate_team,
+                            ).to(opponent_device)
+                        )
+                        .cpu()
+                        .numpy()
+                    )
+                blue_action = candidate_action if candidate_team == 0 else opponent_action
+                yellow_action = opponent_action if candidate_team == 0 else candidate_action
+                _, _, done, info = environment.step(
+                    np.asarray(blue_action, dtype=np.float32),
+                    np.asarray(yellow_action, dtype=np.float32),
+                )
+                events = int(info["events"])
+                blue_score += int(bool(events & 1))
+                yellow_score += int(bool(events & 2))
+            candidate_score = blue_score if candidate_team == 0 else yellow_score
+            opponent_score = yellow_score if candidate_team == 0 else blue_score
+            goals_for += candidate_score
+            goals_against += opponent_score
+            outcomes.append(
+                "win"
+                if candidate_score > opponent_score
+                else "loss"
+                if candidate_score < opponent_score
+                else "draw"
+            )
+    return PolicyPairScorecard(
+        candidate=candidate,
+        opponent=opponent,
+        wins=outcomes.count("win"),
+        draws=outcomes.count("draw"),
+        losses=outcomes.count("loss"),
+        goals_for=goals_for,
+        goals_against=goals_against,
+        matches=len(outcomes),
     )
 
 

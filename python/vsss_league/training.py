@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import torch
@@ -34,6 +34,7 @@ from vsss_train.semantic_scenarios import (
 )
 from vsss_train.skill_predicates import (
     SkillEvaluator,
+    SkillOutcome,
     SkillStatus,
     skill_frame_from_native,
 )
@@ -67,6 +68,7 @@ class RolloutSession:
     semantic_scenarios: list[SemanticScenario | None] = field(default_factory=list)
     skill_evaluators: list[SkillEvaluator | None] = field(default_factory=list)
     skill_outcomes: dict[str, int] = field(default_factory=dict)
+    skill_trials: list[dict[str, object]] = field(default_factory=list)
     blue_host_actions: torch.Tensor | None = None
     opponent_host_actions: torch.Tensor | None = None
     initialized: bool = False
@@ -95,7 +97,7 @@ def create_rollout_session(config: MarlConfig, config_json: str, state_json: str
         else None
     )
     return RolloutSession(
-        VectorMarlMatchEnv(
+        environment=VectorMarlMatchEnv(
             config_json,
             state_json,
             num_envs=config.num_envs,
@@ -119,12 +121,12 @@ def create_rollout_session(config: MarlConfig, config_json: str, state_json: str
             stagnation_seconds=config.stagnation_seconds,
             stagnation_ball_distance=config.stagnation_ball_distance,
         ),
-        [0] * config.num_envs,
-        curriculum,
-        semantic_curriculum,
-        [None] * config.num_envs,
-        [None] * config.num_envs,
-        [None] * config.num_envs,
+        episode_counts=[0] * config.num_envs,
+        curriculum=curriculum,
+        semantic_curriculum=semantic_curriculum,
+        scenarios=[None] * config.num_envs,
+        semantic_scenarios=[None] * config.num_envs,
+        skill_evaluators=[None] * config.num_envs,
     )
 
 
@@ -279,6 +281,7 @@ def collect_self_play_trajectory(
             step_events,
             step_terminated,
         ) = environment.step(blue_actions, opponent_actions)
+        step_skill_outcomes: list[SkillOutcome | None] = [None] * learner.config.num_envs
         for world, evaluator in enumerate(session.skill_evaluators):
             if evaluator is None:
                 continue
@@ -289,6 +292,7 @@ def collect_self_play_trajectory(
                     events=int(step_events[world]),
                 )
             )
+            step_skill_outcomes[world] = outcome
             if not outcome.terminal:
                 continue
             step_done[world] = True
@@ -323,18 +327,39 @@ def collect_self_play_trajectory(
                 semantic_scenario = session.semantic_scenarios[world]
                 if session.semantic_curriculum is not None and semantic_scenario is not None:
                     evaluator = session.skill_evaluators[world]
+                    skill_outcome = step_skill_outcomes[world]
+                    if evaluator is not None and (
+                        skill_outcome is None or not skill_outcome.terminal
+                    ):
+                        skill_outcome = evaluator.observe(
+                            skill_frame_from_native(
+                                environment.states[world],
+                                step=semantic_scenario.context.horizon,
+                                events=int(step_events[world]),
+                            )
+                        )
+                    if skill_outcome is not None:
+                        session.skill_trials.append(
+                            {
+                                "schema_version": 1,
+                                "scenario_id": semantic_scenario.scenario.scenario_id,
+                                "family": semantic_scenario.parameters.family,
+                                "controlled_team": (semantic_scenario.parameters.controlled_team),
+                                "difficulty": asdict(semantic_scenario.parameters.difficulty),
+                                "parameter_hash": semantic_scenario.parameters.digest,
+                                "state_hash": semantic_scenario.scenario.digest,
+                                "status": skill_outcome.status.value,
+                                "reason": skill_outcome.reason.value,
+                                "steps": skill_outcome.step,
+                                "controlled_touches": skill_outcome.controlled_touches,
+                                "opponent_touches": skill_outcome.opponent_touches,
+                            }
+                        )
                     session.semantic_curriculum.record(
                         semantic_scenario,
                         success=bool(
-                            evaluator is not None
-                            and evaluator.observe(
-                                skill_frame_from_native(
-                                    environment.states[world],
-                                    step=int(environment.steps[world]),
-                                    events=int(step_events[world]),
-                                )
-                            ).status
-                            is SkillStatus.SUCCESS
+                            skill_outcome is not None
+                            and skill_outcome.status is SkillStatus.SUCCESS
                         ),
                     )
                 _reset_world(
@@ -504,13 +529,22 @@ def _reset_world(session: RolloutSession, world: int, index: int) -> TeamBatch:
         match_config = session.semantic_curriculum.config
         robot = match_config["robot"]
         ball = match_config["ball"]
-        session.skill_evaluators[world] = SkillEvaluator(
+        evaluator = SkillEvaluator(
             semantic.context,
             robot_radius=(float(robot["length"]) ** 2 + float(robot["width"]) ** 2) ** 0.5 / 2,
             ball_radius=float(ball["radius"]),
             goal_half_width=float(match_config["field"]["goal_width"]) / 2,
         )
-        return session.environment.reset_state(world, semantic.scenario.state)
+        observation = session.environment.reset_state(world, semantic.scenario.state)
+        evaluator.observe(
+            skill_frame_from_native(
+                session.environment.states[world],
+                step=0,
+                events=0,
+            )
+        )
+        session.skill_evaluators[world] = evaluator
+        return observation
     if session.curriculum is None:
         session.environment.set_controlled_team(world, 0)
         session.scenarios[world] = None
@@ -528,7 +562,9 @@ def _curriculum_telemetry(session: RolloutSession | None) -> dict[str, object] |
     if session.semantic_curriculum is not None:
         telemetry = session.semantic_curriculum.telemetry(reset=True)
         telemetry["outcomes"] = dict(session.skill_outcomes)
+        telemetry["trials"] = tuple(session.skill_trials)
         session.skill_outcomes.clear()
+        session.skill_trials.clear()
         return telemetry
     if session.curriculum is not None:
         return session.curriculum.telemetry(reset=True)

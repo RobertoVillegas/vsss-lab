@@ -139,6 +139,9 @@ class SkillEvaluator:
                 self._support_touched
                 and self.context.controlled_robot_id in controlled
                 and not opponents
+                and abs(frame.ball_y - self.context.target_y) <= self.context.target_half_width
+                and math.hypot(frame.ball_vx, frame.ball_vy)
+                <= max(0.25, self.context.initial_ball_speed * 1.5)
             ):
                 return self._make(SkillStatus.SUCCESS, SkillReason.PASS_RECEIVED, frame.step)
         return self._make(SkillStatus.RUNNING, SkillReason.IN_PROGRESS, frame.step)
