@@ -28,8 +28,8 @@
 
 ## 4. Simulation and policy evaluation
 
-- [ ] 4.1 Generate timestamped synthetic camera measurements from canonical truth
-- [ ] 4.2 Add seeded latency, noise, occlusion, false detection, and
+- [x] 4.1 Generate timestamped synthetic camera measurements from canonical truth
+- [x] 4.2 Add seeded latency, noise, occlusion, false detection, and
   misassociation profiles
 - [ ] 4.3 Record exact estimates used at each policy decision
 - [ ] 4.4 Add a versioned optional predictive observation adapter
