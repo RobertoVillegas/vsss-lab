@@ -26,5 +26,7 @@ def test_profile_emits_phase_evidence(tmp_path: Path) -> None:
         "inference",
         "device_to_host",
         "physics_reward_reset",
+        "rollout_end_to_end",
+        "ppo_update",
     ):
         assert phase in payload

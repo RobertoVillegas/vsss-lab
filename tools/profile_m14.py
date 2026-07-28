@@ -6,13 +6,15 @@ import argparse
 import json
 import time
 from collections import defaultdict
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
 import torch
-from vsss_league.training import create_rollout_session
+from vsss_league.training import collect_self_play_trajectory, create_rollout_session
 from vsss_train.config import load_marl_config
 from vsss_train.marl import SharedActor, build_team_observation, stack_team_batches
+from vsss_train.marl_ppo import MarlLearner
 
 
 def main() -> None:
@@ -65,6 +67,29 @@ def main() -> None:
         environment.step(actions, None)
         timings["physics_reward_reset"] += time.perf_counter() - phase
     elapsed = time.perf_counter() - started
+    probe_config = replace(
+        config,
+        device="cuda" if device.type == "cuda" else "cpu",
+        num_envs=min(config.num_envs, 8),
+        rollout_steps=8,
+        epochs=1,
+        minibatch_size=24,
+    )
+    learner = MarlLearner(probe_config)
+    phase = time.perf_counter()
+    trajectory, *_ = collect_self_play_trajectory(
+        learner,
+        None,
+        config_json,
+        state_json,
+        seed=config.seed + 90_000,
+        opponent_id="heuristic-profile",
+    )
+    timings["rollout_end_to_end"] = time.perf_counter() - phase
+    phase = time.perf_counter()
+    learner.optimize(trajectory)
+    _synchronize(device)
+    timings["ppo_update"] = time.perf_counter() - phase
     total = sum(timings.values())
     report = {
         "schema_version": 1,

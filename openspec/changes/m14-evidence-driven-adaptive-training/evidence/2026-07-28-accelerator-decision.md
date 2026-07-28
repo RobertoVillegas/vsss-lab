@@ -10,13 +10,15 @@ just profile-m14 100 reports/m14/profile-local.json
 
 RTX 3070, 64 worlds, CUDA actor:
 
-- 25,600 environment frames in 2.504 seconds;
-- 10,224 frames/s in the isolated rollout profile;
-- Rust/Rapier physics + reward + reset: 76.63%;
-- CPU observation construction: 12.58%;
-- CUDA inference: 7.05%;
-- host-to-device: 3.25%;
-- device-to-host: 0.50%.
+- 25,600 environment frames in 2.299 seconds;
+- 11,136 frames/s in the isolated rollout profile;
+- within the isolated rollout, Rust/Rapier physics + reward + reset: 77.36%;
+- CPU observation construction: 11.94%;
+- CUDA inference: 6.66%;
+- host-to-device: 3.56%;
+- device-to-host: 0.47%;
+- a separate eight-world/eight-step probe measured 0.221 seconds for rollout
+  assembly and 0.338 seconds for one PPO update.
 
 The separate shared-actor microbenchmark measured 42.86 µs for observation
 construction and 75.16 µs for one three-agent actor call. These measurements
