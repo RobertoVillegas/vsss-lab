@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import math
 from dataclasses import asdict, dataclass
@@ -30,6 +31,16 @@ class Possession:
 
 
 @dataclass(frozen=True)
+class AnalyticsEvent:
+    time: float
+    kind: str
+    team: Team
+    robot_id: str | None
+    x: float
+    y: float
+
+
+@dataclass(frozen=True)
 class ReplayAnalytics:
     schema_version: int
     definition_version: str
@@ -40,11 +51,36 @@ class ReplayAnalytics:
     teams: dict[str, dict[str, Any]]
     robots: dict[str, dict[str, Any]]
     possessions: tuple[Possession, ...]
+    events: tuple[AnalyticsEvent, ...]
+    ball_heatmap: tuple[tuple[int, ...], ...]
 
     def to_dict(self) -> dict[str, Any]:
         value = asdict(self)
         value["possessions"] = [asdict(interval) for interval in self.possessions]
+        value["events"] = [asdict(event) for event in self.events]
         return value
+
+    def write_json(self, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(self.to_dict(), indent=2, sort_keys=True) + "\n")
+
+    def write_team_csv(self, path: Path) -> None:
+        """Write a stable flat summary suitable for external analysis."""
+        rows = []
+        for team, stats in self.teams.items():
+            row = {"team": team}
+            for key, value in stats.items():
+                if isinstance(value, dict):
+                    row.update({f"{key}_{nested}": amount for nested, amount in value.items()})
+                else:
+                    row[key] = value
+            rows.append(row)
+        fieldnames = sorted({key for row in rows for key in row})
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8", newline="") as stream:
+            writer = csv.DictWriter(stream, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
 
 
 def analyze_replay(path: Path) -> ReplayAnalytics:
@@ -56,6 +92,8 @@ def analyze_replay(path: Path) -> ReplayAnalytics:
     config = header.get("config", {})
     field = config.get("field", {})
     field_length = float(field.get("length", 1.5))
+    field_width = float(field.get("width", 1.3))
+    goal_width = float(field.get("goal_width", 0.4))
     robot = config.get("robot", {})
     robot_radius = (
         math.hypot(
@@ -73,6 +111,11 @@ def analyze_replay(path: Path) -> ReplayAnalytics:
             "possession_seconds": 0.0,
             "pressure": {"defensive": 0.0, "neutral": 0.0, "attacking": 0.0},
             "passes": 0,
+            "assists": 0,
+            "shots": 0,
+            "saves": 0,
+            "clearances": 0,
+            "interceptions": 0,
             "double_commit_seconds": 0.0,
             "congestion_seconds": 0.0,
             "goals": 0,
@@ -83,11 +126,14 @@ def analyze_replay(path: Path) -> ReplayAnalytics:
     }
     robot_stats: dict[str, dict[str, Any]] = {}
     possessions: list[Possession] = []
+    analytics_events: list[AnalyticsEvent] = []
+    heatmap = [[0 for _ in range(12)] for _ in range(10)]
     active: dict[str, Any] | None = None
     previous_contacts: set[str] = set()
     previous_time: float | None = None
     previous_positions: dict[str, tuple[float, float]] = {}
     last_touch: tuple[Team, str, float] | None = None
+    previous_team_touch: dict[Team, tuple[str, float] | None] = {"blue": None, "yellow": None}
     sampled_seconds = 0.0
 
     for record in ticks:
@@ -99,6 +145,9 @@ def analyze_replay(path: Path) -> ReplayAnalytics:
         ball = snapshot["ball"]
         ball_x = float(ball["x"])
         ball_y = float(ball["y"])
+        heat_x = min(11, max(0, int((ball_x / field_length + 0.5) * 12)))
+        heat_y = min(9, max(0, int((ball_y / field_width + 0.5) * 10)))
+        heatmap[heat_y][heat_x] += 1
         robots = [item for item in snapshot["robots"] if bool(item.get("enabled", True))]
 
         contacts: list[tuple[float, Team, str]] = []
@@ -192,6 +241,10 @@ def analyze_replay(path: Path) -> ReplayAnalytics:
             robot_stats[touch_robot]["touches"] += 1
             if active is not None and active["team"] != touch_team:
                 possessions.append(_finish_possession(active, time, ball_x, "opponent_touch"))
+                team_stats[touch_team]["interceptions"] += 1
+                analytics_events.append(
+                    AnalyticsEvent(time, "interception", touch_team, touch_robot, ball_x, ball_y)
+                )
                 active = None
             if (
                 last_touch is not None
@@ -201,6 +254,28 @@ def analyze_replay(path: Path) -> ReplayAnalytics:
                 direction = 1.0 if touch_team == "blue" else -1.0
                 if direction * (ball_x - last_touch[2]) >= 0.03:
                     team_stats[touch_team]["passes"] += 1
+                    previous_team_touch[touch_team] = (last_touch[1], time)
+                    analytics_events.append(
+                        AnalyticsEvent(time, "pass", touch_team, touch_robot, ball_x, ball_y)
+                    )
+            velocity_x = float(ball.get("vx", 0.0))
+            attack_sign = 1.0 if touch_team == "blue" else -1.0
+            if attack_sign * velocity_x > 0.15 and abs(ball_y) <= goal_width / 2 + 0.08:
+                team_stats[touch_team]["shots"] += 1
+                analytics_events.append(
+                    AnalyticsEvent(time, "shot", touch_team, touch_robot, ball_x, ball_y)
+                )
+            if attack_sign * ball_x < -field_length / 6:
+                if attack_sign * velocity_x < -0.05:
+                    team_stats[touch_team]["saves"] += 1
+                    analytics_events.append(
+                        AnalyticsEvent(time, "save", touch_team, touch_robot, ball_x, ball_y)
+                    )
+                elif attack_sign * velocity_x > 0.05:
+                    team_stats[touch_team]["clearances"] += 1
+                    analytics_events.append(
+                        AnalyticsEvent(time, "clearance", touch_team, touch_robot, ball_x, ball_y)
+                    )
             last_touch = (touch_team, touch_robot, ball_x)
             if active is None:
                 active = {
@@ -219,6 +294,19 @@ def analyze_replay(path: Path) -> ReplayAnalytics:
             team_stats[goal_team]["goals"] += 1
             team_stats[opponent]["goals_conceded"] += 1
             team_stats[opponent]["last_defender_failures"] += 1
+            analytics_events.append(AnalyticsEvent(time, "goal", goal_team, None, ball_x, ball_y))
+            assister = previous_team_touch[goal_team]
+            if (
+                last_touch is not None
+                and last_touch[0] == goal_team
+                and assister is not None
+                and assister[0] != last_touch[1]
+                and time - assister[1] <= 5.0
+            ):
+                team_stats[goal_team]["assists"] += 1
+                analytics_events.append(
+                    AnalyticsEvent(time, "assist", goal_team, assister[0], ball_x, ball_y)
+                )
             if active is not None:
                 possessions.append(_finish_possession(active, time, ball_x, "goal"))
                 active = None
@@ -251,6 +339,8 @@ def analyze_replay(path: Path) -> ReplayAnalytics:
         teams=team_stats,
         robots=robot_stats,
         possessions=tuple(possessions),
+        events=tuple(analytics_events),
+        ball_heatmap=tuple(tuple(row) for row in heatmap),
     )
 
 

@@ -54,6 +54,7 @@ def test_derives_possession_pass_pressure_and_goal_without_reward_input(tmp_path
     assert report.schema_version == 1
     assert report.definition_version == "m14.1"
     assert report.teams["blue"]["passes"] == 1
+    assert report.teams["blue"]["assists"] == 1
     assert report.teams["blue"]["goals"] == 1
     assert report.teams["yellow"]["goals_conceded"] == 1
     assert report.teams["blue"]["possession_seconds"] == pytest.approx(0.3)
@@ -61,6 +62,20 @@ def test_derives_possession_pass_pressure_and_goal_without_reward_input(tmp_path
     assert report.possessions[0].ended_by == "goal"
     assert report.robots["R0"]["touches"] == 1
     assert report.robots["R1"]["touches"] == 1
+    assert {event.kind for event in report.events} >= {"pass", "assist", "goal"}
+    assert sum(sum(row) for row in report.ball_heatmap) == report.sample_count
+
+
+def test_analytics_exports_json_and_flat_team_csv(tmp_path: Path) -> None:
+    replay = tmp_path / "match.jsonl"
+    _write(replay, [_tick(1, 0.0, 0.0, {"R0": 0.0}), _tick(2, 0.1, 0.1, {})])
+    report = analyze_replay(replay)
+    json_output = tmp_path / "analytics.json"
+    csv_output = tmp_path / "teams.csv"
+    report.write_json(json_output)
+    report.write_team_csv(csv_output)
+    assert '"definition_version": "m14.1"' in json_output.read_text()
+    assert "pressure_attacking" in csv_output.read_text()
 
 
 def test_opponent_touch_ends_possession_and_team_view_mirrors_pressure(tmp_path: Path) -> None:
