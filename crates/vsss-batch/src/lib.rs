@@ -64,4 +64,10 @@ impl<B: PhysicsBackend> PhysicsBatch<B> {
     pub fn world(&self, index: usize) -> &B {
         &self.worlds[index]
     }
+
+    /// Returns one world for mutation.
+    #[must_use]
+    pub fn world_mut(&mut self, index: usize) -> &mut B {
+        &mut self.worlds[index]
+    }
 }

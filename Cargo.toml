@@ -3,6 +3,7 @@ members = [
     "crates/vsss-batch",
     "crates/vsss-physics-api",
     "crates/vsss-physics-rapier",
+    "crates/vsss-python",
     "crates/vsss-spec",
 ]
 resolver = "3"

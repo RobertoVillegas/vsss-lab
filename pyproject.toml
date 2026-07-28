@@ -8,14 +8,27 @@ license = "Apache-2.0"
 authors = [{ name = "Roberto Villegas" }]
 dependencies = []
 
+[build-system]
+requires = ["maturin>=1.9,<2"]
+build-backend = "maturin"
+
 [dependency-groups]
 dev = [
+  "gymnasium>=1.2,<2",
+  "maturin>=1.9,<2",
   "mypy>=1.17,<2",
+  "numpy>=2.3,<3",
+  "pettingzoo>=1.25,<2",
   "pytest>=8.4,<9",
 ]
 
 [tool.uv]
 package = false
+
+[tool.maturin]
+manifest-path = "crates/vsss-python/Cargo.toml"
+python-source = "python"
+module-name = "vsss_env._native"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -37,3 +50,11 @@ select = ["E", "F", "I", "B", "UP", "RUF"]
 [tool.mypy]
 python_version = "3.13"
 strict = true
+
+[[tool.mypy.overrides]]
+module = ["pettingzoo", "pettingzoo.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "vsss_env.adapters"
+disallow_subclassing_any = false
