@@ -82,6 +82,8 @@ class MarlConfig:
     schema_version: int = 1
     algorithm: Literal["ippo", "mappo"] = "mappo"
     policy_architecture: Literal["mlp", "attention"] = "mlp"
+    adaptive_curriculum: bool = False
+    scenario_suite: str = ""
     seed: int = 7
     device: Literal["auto", "cpu", "cuda"] = "auto"
     num_envs: int = 64
@@ -129,6 +131,8 @@ class MarlConfig:
             raise ValueError("algorithm must be ippo or mappo")
         if self.policy_architecture not in ("mlp", "attention"):
             raise ValueError("policy_architecture must be mlp or attention")
+        if self.adaptive_curriculum and not self.scenario_suite:
+            raise ValueError("adaptive_curriculum requires scenario_suite")
         if self.curriculum_stage not in (7, 8):
             raise ValueError("curriculum_stage must be 7 or 8")
         if self.device not in ("auto", "cpu", "cuda"):

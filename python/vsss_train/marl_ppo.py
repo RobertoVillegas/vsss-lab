@@ -35,6 +35,8 @@ LEGACY_NEUTRAL_CONFIG = {
     "league_heuristic_weight": 0.0,
     "league_history_window": 16,
     "policy_architecture": "mlp",
+    "adaptive_curriculum": False,
+    "scenario_suite": "",
 }
 ACTION_EPSILON = 1e-6
 

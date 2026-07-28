@@ -325,6 +325,10 @@ class VectorMarlMatchEnv:
 
     def reset(self, world: int, seed: int) -> TeamBatch:
         snapshot = _seeded_snapshot(self._template, seed)
+        return self.reset_state(world, snapshot)
+
+    def reset_state(self, world: int, snapshot: dict[str, Any]) -> TeamBatch:
+        """Restore one validated scenario without disturbing neighboring worlds."""
         self.states[world] = self._native.restore_state(
             world, json.dumps(snapshot, separators=(",", ":"))
         )

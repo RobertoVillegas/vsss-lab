@@ -3,12 +3,18 @@ from __future__ import annotations
 import copy
 import json
 from pathlib import Path
+from typing import cast
 
 import pytest
+from vsss_league.training import create_rollout_session, train_iteration
+from vsss_train.config import MarlConfig
+from vsss_train.marl_ppo import MarlLearner
 from vsss_train.scenarios import (
     BucketProgress,
     Scenario,
+    ScenarioCurriculum,
     allocate_scenarios,
+    load_suite,
     mutate_scenario,
     validate_scenario,
     write_suite,
@@ -73,3 +79,73 @@ def test_suite_rejects_duplicate_states_and_writes_atomically(tmp_path: Path) ->
     write_suite(output, (scenario(),))
     assert json.loads(output.read_text())["scenarios"][0]["role"] == "routine"
     assert not tuple(tmp_path.glob("*.tmp"))
+
+
+def test_curriculum_deduplicates_failures_and_never_trains_on_holdout() -> None:
+    routine = scenario(scenario_id="routine")
+    frontier = scenario(scenario_id="frontier", role="frontier")
+    holdout = scenario(scenario_id="holdout", role="holdout", immutable=True)
+    teacher = ScenarioCurriculum((routine, frontier, holdout), CONFIG, seed=14)
+    teacher.record(frontier, success=False)
+    teacher.record(frontier, success=False)
+    selections = [teacher.select_training(index) for index in range(90)]
+    assert all(selection.scenario.role != "holdout" for selection in selections)
+    assert {selection.source for selection in selections} == {"routine", "frontier", "failure"}
+    assert teacher.failure_count == 1
+    telemetry = teacher.telemetry()
+    assert telemetry["mixture"] == {
+        "routine": 20,
+        "frontier": 50,
+        "failure": 20,
+        "holdout": 1,
+    }
+    teacher.record(frontier, success=True)
+    assert teacher.failure_count == 0
+
+
+def test_committed_m14_suite_is_valid_and_covers_all_skill_kinds() -> None:
+    suite = load_suite(ROOT / "experiments/scenarios/m14-v1.json", CONFIG)
+    assert len(suite) == 9
+    assert {item.kind for item in suite} == {
+        "kickoff",
+        "approach",
+        "interception",
+        "clearance",
+        "defense",
+        "pass_receive",
+        "shot",
+        "congestion_recovery",
+        "mixed",
+    }
+
+
+def test_adaptive_curriculum_drives_real_vector_rollout_and_telemetry() -> None:
+    config = MarlConfig(
+        device="cpu",
+        adaptive_curriculum=True,
+        scenario_suite=str(ROOT / "experiments/scenarios/m14-v1.json"),
+        num_envs=2,
+        hidden_size=8,
+        rollout_steps=2,
+        horizon=1,
+        action_repeat=1,
+        epochs=1,
+        minibatch_size=6,
+    )
+    learner = MarlLearner(config)
+    session = create_rollout_session(config, json.dumps(CONFIG), json.dumps(STATE))
+    result = train_iteration(
+        learner,
+        None,
+        json.dumps(CONFIG),
+        json.dumps(STATE),
+        iteration=1,
+        seed=14,
+        opponent_id="heuristic",
+        checkpoint=None,
+        session=session,
+    )
+    assert result.curriculum is not None
+    mixture = cast(dict[str, int], result.curriculum["mixture"])
+    assert sum(mixture[source] for source in ("routine", "frontier", "failure")) >= 2
+    assert mixture["holdout"] == 2

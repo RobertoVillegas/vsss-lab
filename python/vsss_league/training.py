@@ -21,6 +21,7 @@ from vsss_train.marl_ppo import (
     TrajectoryMetadata,
     sample_bounded_action,
 )
+from vsss_train.scenarios import Scenario, ScenarioCurriculum, load_suite
 
 
 @dataclass(frozen=True)
@@ -36,6 +37,7 @@ class IterationResult:
     checkpoint: str | None
     losses: dict[str, float]
     terminations: dict[str, int] = field(default_factory=dict)
+    curriculum: dict[str, object] | None = None
 
 
 @dataclass
@@ -44,10 +46,21 @@ class RolloutSession:
 
     environment: VectorMarlMatchEnv
     episode_counts: list[int]
+    curriculum: ScenarioCurriculum | None = None
+    scenarios: list[Scenario | None] = field(default_factory=list)
     initialized: bool = False
 
 
 def create_rollout_session(config: MarlConfig, config_json: str, state_json: str) -> RolloutSession:
+    curriculum = (
+        ScenarioCurriculum(
+            load_suite(Path(config.scenario_suite), json.loads(config_json)),
+            json.loads(config_json),
+            seed=config.seed,
+        )
+        if config.adaptive_curriculum
+        else None
+    )
     return RolloutSession(
         VectorMarlMatchEnv(
             config_json,
@@ -72,6 +85,8 @@ def create_rollout_session(config: MarlConfig, config_json: str, state_json: str
             stagnation_ball_distance=config.stagnation_ball_distance,
         ),
         [0] * config.num_envs,
+        curriculum,
+        [None] * config.num_envs,
     )
 
 
@@ -95,9 +110,9 @@ def collect_self_play_trajectory(
             build_team_observation(state, team=0) for state in environment.states
         ]
     else:
-        observations_by_world = [
-            environment.reset(world, seed + world) for world in range(learner.config.num_envs)
-        ]
+        observations_by_world = []
+        for world in range(learner.config.num_envs):
+            observations_by_world.append(_reset_world(session, world, seed + world))
         session.initialized = True
     environment.mark_progress_origin()
     observation = stack_team_batches(observations_by_world).to(learner.device)
@@ -144,7 +159,7 @@ def collect_self_play_trajectory(
             next_observation,
             step_rewards,
             step_done,
-            _step_events,
+            step_events,
             step_terminated,
         ) = environment.step(blue_actions, opponent_actions)
         returns = [
@@ -160,7 +175,14 @@ def collect_self_play_trajectory(
                 completed_progress[world] += float(progress_scores[world])
                 session.episode_counts[world] += 1
                 completed_matches += 1
-                environment.reset(
+                scenario = session.scenarios[world]
+                if session.curriculum is not None and scenario is not None:
+                    session.curriculum.record(
+                        scenario,
+                        success=bool(int(step_events[world]) & 1),
+                    )
+                _reset_world(
+                    session,
                     world,
                     seed + (session.episode_counts[world] + 1) * learner.config.num_envs + world,
                 )
@@ -279,4 +301,20 @@ def train_iteration(
         checkpoint=str(checkpoint.resolve()) if checkpoint is not None else None,
         losses=losses,
         terminations=termination_counts,
+        curriculum=(
+            session.curriculum.telemetry(reset=True)
+            if session is not None and session.curriculum is not None
+            else None
+        ),
     )
+
+
+def _reset_world(session: RolloutSession, world: int, index: int) -> TeamBatch:
+    if session.curriculum is None:
+        session.scenarios[world] = None
+        return session.environment.reset(world, index)
+    selection = session.curriculum.select_training(index)
+    session.scenarios[world] = selection.scenario
+    state = json.loads(json.dumps(selection.scenario.state))
+    state.update(tick=0, simulation_time=0.0, score_blue=0, score_yellow=0, events=0)
+    return session.environment.reset_state(world, state)

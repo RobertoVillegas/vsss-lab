@@ -5,7 +5,7 @@
 - [x] Review Ballchasing, RLGym, RLGymPPO_CPP, and released Nexto deployment
       tooling
 - [ ] Freeze an M13 promoted baseline from a completed multi-seed comparison
-- [ ] Define train, frontier, failure-replay, and immutable holdout suites
+- [x] Define train, frontier, failure-replay, and immutable holdout suites
 - [x] Implement paired multi-seed evaluation with confidence intervals
 - [x] Add constrained promotion and machine-readable decision artifacts
 
@@ -24,8 +24,8 @@
 ## 3. Adaptive scenarios and reward search
 
 - [x] Define the typed, validity-checked scenario parameter space
-- [ ] Implement learning-progress allocation and deduplicated failure replay
-- [ ] Add routine/frontier/failure/holdout mixture telemetry
+- [x] Implement learning-progress allocation and deduplicated failure replay
+- [x] Add routine/frontier/failure/holdout mixture telemetry
 - [x] Add resumable Optuna study storage and lineage manifests
 - [ ] Implement smoke, screen, and confirm fidelities with pruning
 - [ ] Run a fixed-reward curriculum ablation before joint reward search

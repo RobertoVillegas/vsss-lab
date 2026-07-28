@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "base_state": "../../tests/golden/m1_match_state.json",
+  "scenarios": [
+    {
+      "scenario_id": "routine-kickoff-center",
+      "kind": "kickoff",
+      "role": "routine",
+      "patch": {"ball": {"x": 0.0, "y": 0.0}}
+    },
+    {
+      "scenario_id": "routine-approach-left",
+      "kind": "approach",
+      "role": "routine",
+      "patch": {"ball": {"x": -0.1, "y": 0.18}}
+    },
+    {
+      "scenario_id": "frontier-interception-right",
+      "kind": "interception",
+      "role": "frontier",
+      "patch": {"ball": {"x": -0.25, "y": -0.10, "vx": -0.3}}
+    },
+    {
+      "scenario_id": "frontier-clearance-center",
+      "kind": "clearance",
+      "role": "frontier",
+      "patch": {"ball": {"x": -0.42, "y": 0.0}}
+    },
+    {
+      "scenario_id": "frontier-defense-left",
+      "kind": "defense",
+      "role": "frontier",
+      "patch": {"ball": {"x": -0.48, "y": 0.16, "vx": -0.2}}
+    },
+    {
+      "scenario_id": "frontier-pass-receive",
+      "kind": "pass_receive",
+      "role": "frontier",
+      "patch": {"ball": {"x": -0.12, "y": -0.28}}
+    },
+    {
+      "scenario_id": "frontier-shot-right",
+      "kind": "shot",
+      "role": "frontier",
+      "patch": {"ball": {"x": 0.34, "y": 0.12}}
+    },
+    {
+      "scenario_id": "holdout-congestion",
+      "kind": "congestion_recovery",
+      "role": "holdout",
+      "immutable": true,
+      "patch": {"ball": {"x": 0.08, "y": 0.31}}
+    },
+    {
+      "scenario_id": "holdout-mixed",
+      "kind": "mixed",
+      "role": "holdout",
+      "immutable": true,
+      "patch": {"ball": {"x": 0.27, "y": -0.33, "vy": 0.2}}
+    }
+  ]
+}

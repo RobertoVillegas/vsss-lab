@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import math
 import random
+from collections import Counter, defaultdict, deque
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
@@ -58,6 +60,115 @@ class Allocation:
     failure: int
     holdout: int
     frontier_kinds: tuple[ScenarioKind, ...]
+
+
+@dataclass(frozen=True)
+class CurriculumSelection:
+    scenario: Scenario
+    source: Literal["routine", "frontier", "failure"]
+
+
+class ScenarioCurriculum:
+    """Stateful deterministic teacher with deduplicated failure rehearsal."""
+
+    def __init__(
+        self,
+        scenarios: tuple[Scenario, ...],
+        config: dict[str, object],
+        *,
+        seed: int,
+        history: int = 32,
+    ) -> None:
+        if not scenarios:
+            raise ValueError("curriculum requires scenarios")
+        for scenario in scenarios:
+            validate_scenario(scenario, config)
+        if not any(scenario.role == "routine" for scenario in scenarios):
+            raise ValueError("curriculum requires routine scenarios")
+        if not any(scenario.role == "frontier" for scenario in scenarios):
+            raise ValueError("curriculum requires frontier scenarios")
+        if not any(scenario.role == "holdout" and scenario.immutable for scenario in scenarios):
+            raise ValueError("curriculum requires immutable holdouts")
+        self.scenarios = scenarios
+        self.config = config
+        self.seed = seed
+        self.history = history
+        self._outcomes: dict[ScenarioKind, deque[float]] = defaultdict(
+            lambda: deque(maxlen=2 * history)
+        )
+        self._failures: dict[str, Scenario] = {}
+        self._counts: Counter[str] = Counter()
+
+    @property
+    def holdouts(self) -> tuple[Scenario, ...]:
+        return tuple(scenario for scenario in self.scenarios if scenario.role == "holdout")
+
+    @property
+    def failure_count(self) -> int:
+        return len(self._failures)
+
+    def select_training(self, index: int) -> CurriculumSelection:
+        """Select a 20/50/20 training mixture; holdouts never enter optimization."""
+        slot = index % 90
+        source: Literal["routine", "frontier", "failure"]
+        if slot < 20:
+            source = "routine"
+        elif slot < 70:
+            source = "frontier"
+        else:
+            source = "failure"
+        candidates = self._candidates(source)
+        if not candidates:
+            source = "frontier"
+            candidates = self._candidates(source)
+        ranked = sorted(candidates, key=lambda item: item.scenario_id)
+        generator = random.Random(self.seed + index)
+        scenario = ranked[generator.randrange(len(ranked))]
+        self._counts[source] += 1
+        return CurriculumSelection(scenario, source)
+
+    def record(self, scenario: Scenario, *, success: bool) -> None:
+        self._outcomes[scenario.kind].append(float(success))
+        if success:
+            self._failures.pop(scenario.digest, None)
+        elif not scenario.immutable:
+            self._failures.setdefault(scenario.digest, scenario)
+
+    def telemetry(self, *, reset: bool = False) -> dict[str, object]:
+        result: dict[str, object] = {
+            "mixture": {
+                "routine": self._counts["routine"],
+                "frontier": self._counts["frontier"],
+                "failure": self._counts["failure"],
+                "holdout": len(self.holdouts),
+            },
+            "deduplicated_failures": len(self._failures),
+            "learning_progress": {
+                kind: _window_progress(values, self.history)
+                for kind, values in sorted(self._outcomes.items())
+            },
+        }
+        if reset:
+            self._counts.clear()
+        return result
+
+    def _candidates(self, source: str) -> tuple[Scenario, ...]:
+        if source == "failure":
+            return tuple(self._failures.values())
+        role = "routine" if source == "routine" else "frontier"
+        candidates = tuple(scenario for scenario in self.scenarios if scenario.role == role)
+        if source != "frontier":
+            return candidates
+        progress = {
+            kind: _window_progress(values, self.history) for kind, values in self._outcomes.items()
+        }
+        if not progress:
+            return candidates
+        maximum = max((progress.get(item.kind, 0.0) for item in candidates), default=0.0)
+        selected = tuple(
+            item for item in candidates if progress.get(item.kind, 0.0) >= maximum - 1e-12
+        )
+        return selected or candidates
 
 
 def validate_scenario(
@@ -183,6 +294,30 @@ def write_suite(path: Path, scenarios: tuple[Scenario, ...]) -> None:
     temporary.replace(path)
 
 
+def load_suite(path: Path, config: dict[str, object]) -> tuple[Scenario, ...]:
+    document = json.loads(path.read_text(encoding="utf-8"))
+    if document.get("schema_version") != 1:
+        raise ValueError("unsupported scenario suite schema")
+    base_state: dict[str, object] | None = None
+    if "base_state" in document:
+        base_path = (path.parent / str(document["base_state"])).resolve()
+        base_state = json.loads(base_path.read_text(encoding="utf-8"))
+    scenarios = tuple(
+        Scenario(
+            scenario_id=str(item["scenario_id"]),
+            kind=item["kind"],
+            role=item["role"],
+            state=_scenario_state(item, base_state),
+            immutable=bool(item.get("immutable", False)),
+            parent=item.get("parent"),
+        )
+        for item in document["scenarios"]
+    )
+    for scenario in scenarios:
+        validate_scenario(scenario, config)
+    return scenarios
+
+
 def _mapping(value: object) -> dict[str, object]:
     if not isinstance(value, dict):
         raise ValueError("scenario field must be a mapping")
@@ -198,3 +333,31 @@ def _number(value: object) -> float:
     if not isinstance(value, int | float):
         raise ValueError("scenario numeric field must be a number")
     return float(value)
+
+
+def _scenario_state(
+    item: dict[str, object],
+    base_state: dict[str, object] | None,
+) -> dict[str, object]:
+    if "state" in item:
+        return _mapping(item["state"])
+    if base_state is None:
+        raise ValueError("scenario requires state or suite base_state")
+    state = copy.deepcopy(base_state)
+    patch = _mapping(item.get("patch", {}))
+    ball_patch = _mapping(patch.get("ball", {}))
+    _mapping(state["ball"]).update(ball_patch)
+    return state
+
+
+def _window_progress(values: deque[float], history: int) -> float:
+    if len(values) < 2:
+        return 0.0
+    recent = tuple(values)[-history:]
+    previous = tuple(values)[-2 * history : -history]
+    if not previous:
+        midpoint = max(1, len(recent) // 2)
+        previous, recent = recent[:midpoint], recent[midpoint:]
+    if not recent or not previous:
+        return 0.0
+    return abs(sum(recent) / len(recent) - sum(previous) / len(previous))
