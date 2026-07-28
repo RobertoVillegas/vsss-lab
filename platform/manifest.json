@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "milestone": "M0",
+  "toolchains": {
+    "mise": "2026.7.14",
+    "python": "3.13.14",
+    "rust": "1.97.1",
+    "uv": "0.11.32",
+    "ruff": "0.16.0",
+    "just": "1.57.0"
+  },
+  "images": {
+    "dev_cpu": "ubuntu:26.04@sha256:3131b4cc82a783df6c9df078f86e01819a13594b865c2cad47bd1bca2b7063bb",
+    "train_cuda": "pytorch/pytorch:2.13.0-cuda13.0-cudnn9-runtime@sha256:db80a41f8428644cebcb3d75b0b62df334ab6c0e75785951eb25f48bfbd42407"
+  },
+  "devbox": {
+    "os": "Ubuntu 26.04 LTS on WSL2",
+    "gpu": "NVIDIA GeForce RTX 3070",
+    "cuda_driver_api": "13.1",
+    "active_storage": "Linux ext4"
+  }
+}
