@@ -17,4 +17,3 @@ Python SHALL snapshot and restore individual worlds without changing neighbors.
 #### Scenario: Replay through Python
 - **WHEN** a snapshot is restored and identical actions are replayed
 - **THEN** the resulting state row is exactly equal
-

@@ -18,4 +18,3 @@ Gymnasium centralized-team adapters with valid spaces and return signatures.
 #### Scenario: Parallel API validation
 - **WHEN** PettingZoo's parallel API test runs for random actions
 - **THEN** the adapter satisfies the contract without warnings or shape errors
-
