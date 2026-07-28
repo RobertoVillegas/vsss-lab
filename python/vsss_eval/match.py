@@ -79,12 +79,13 @@ def run_scripted_match(
                 "snapshot": snapshot,
             }
             _write(replay, record)
-            frame = VisualFrame.from_replay_record(
-                record,
-                timestep=timestep,
-            )
-            for observer in observer_sinks:
-                observer.publish(frame)
+            if observer_sinks:
+                frame = VisualFrame.from_replay_record(
+                    record,
+                    timestep=timestep,
+                )
+                for observer in observer_sinks:
+                    observer.publish(frame)
     return MatchSummary(
         ticks=ticks,
         score_blue=int(state[3]),

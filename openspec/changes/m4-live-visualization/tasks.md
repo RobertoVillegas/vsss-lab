@@ -8,7 +8,7 @@
 ## 2. Observer foundation
 
 - [x] 2.1 Add a backend-neutral visual-frame adapter outside `vsss-spec`
-- [ ] 2.2 Implement null, lossless replay, bounded latest-frame, and metrics sinks
+- [x] 2.2 Implement null, lossless replay, bounded latest-frame, and metrics sinks
 - [x] 2.3 Integrate optional sinks into scripted match execution
 - [x] 2.4 Add contract tests for monotonic frames, drop accounting, lossless
   recording, and checksum equivalence
