@@ -218,7 +218,9 @@ def _run(arguments: argparse.Namespace) -> None:
     previous_sigterm = signal.signal(signal.SIGTERM, request_stop)
     try:
         for iteration in range(start_iteration, final_iteration + 1):
-            opponent = copy.deepcopy(learner.actor).eval()
+            in_heuristic_curriculum = iteration <= config.curriculum_heuristic_iterations
+            opponent = None if in_heuristic_curriculum else copy.deepcopy(learner.actor).eval()
+            opponent_id = "heuristic-dynamic" if in_heuristic_curriculum else parent_key
             save_checkpoint = (
                 iteration % arguments.checkpoint_every == 0 or iteration == final_iteration
             )
@@ -232,7 +234,7 @@ def _run(arguments: argparse.Namespace) -> None:
                 state_json,
                 iteration=iteration,
                 seed=config.seed + iteration,
-                opponent_id=parent_key,
+                opponent_id=opponent_id,
                 checkpoint=checkpoint,
                 session=rollout_session,
             )

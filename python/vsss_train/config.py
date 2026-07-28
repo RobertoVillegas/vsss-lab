@@ -90,6 +90,7 @@ class MarlConfig:
     gae_lambda: float = 0.95
     clip_epsilon: float = 0.2
     entropy_coefficient: float = 1e-3
+    minimum_log_std: float = -5.0
     value_coefficient: float = 0.5
     max_grad_norm: float = 0.5
     epochs: int = 4
@@ -100,6 +101,11 @@ class MarlConfig:
     rollout_steps: int = 256
     action_repeat: int = 4
     action_delta_coefficient: float = 0.01
+    wheel_effort_coefficient: float = 0.0
+    ball_direction_coefficient: float = 0.0
+    attacker_alignment_coefficient: float = 0.0
+    time_penalty_coefficient: float = 0.0
+    movement_speed_threshold: float = 0.03
     teammate_spacing: float = 0.14
     teammate_congestion_coefficient: float = 0.002
     defensive_coverage_coefficient: float = 1.0
@@ -108,6 +114,7 @@ class MarlConfig:
     stagnation_penalty: float = 0.10
     stagnation_seconds: float = 5.0
     stagnation_ball_distance: float = 0.02
+    curriculum_heuristic_iterations: int = 0
 
     def __post_init__(self) -> None:
         if self.schema_version != 1:
@@ -124,6 +131,10 @@ class MarlConfig:
             raise ValueError("horizon and rollout_steps must be positive")
         non_negative = (
             self.action_delta_coefficient,
+            self.wheel_effort_coefficient,
+            self.ball_direction_coefficient,
+            self.attacker_alignment_coefficient,
+            self.time_penalty_coefficient,
             self.teammate_congestion_coefficient,
             self.defensive_coverage_coefficient,
             self.draw_penalty,
@@ -133,8 +144,16 @@ class MarlConfig:
             raise ValueError("MARL reward coefficients must be non-negative")
         if self.teammate_spacing <= 0.075:
             raise ValueError("teammate_spacing must exceed the robot body width")
-        if self.stagnation_seconds <= 0.0 or self.stagnation_ball_distance <= 0.0:
+        if (
+            self.stagnation_seconds <= 0.0
+            or self.stagnation_ball_distance <= 0.0
+            or self.movement_speed_threshold <= 0.0
+        ):
             raise ValueError("stagnation thresholds must be positive")
+        if self.minimum_log_std > 0.0:
+            raise ValueError("minimum_log_std must not be positive")
+        if self.curriculum_heuristic_iterations < 0:
+            raise ValueError("curriculum_heuristic_iterations must be non-negative")
 
     def fingerprint(self) -> str:
         payload = json.dumps(asdict(self), sort_keys=True, separators=(",", ":"))

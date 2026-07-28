@@ -10,7 +10,11 @@ from vsss_league.promotion import FixtureResult, decide_promotion
 from vsss_league.ratings import elo_update
 from vsss_league.registry import LeagueRegistry, PolicyCategory, PolicyEntry
 from vsss_league.replay import run_policy_replay
-from vsss_league.tournament import TournamentReport, evaluate_candidate_vs_heuristic
+from vsss_league.tournament import (
+    TournamentReport,
+    evaluate_candidate_vs_heuristic,
+    evaluate_checkpoint_scorecard,
+)
 from vsss_league.training import create_rollout_session, train_iteration
 from vsss_train.config import MarlConfig
 from vsss_train.marl import SharedActor
@@ -133,6 +137,25 @@ def test_promotion_is_reproducible_and_blocks_regression() -> None:
         fixtures=regressive,
         required_margin=0.0,
     ).promoted
+
+
+def test_checkpoint_scorecard_uses_terminal_outcomes_without_replays(tmp_path: Path) -> None:
+    actor = SharedActor(8)
+    checkpoint = tmp_path / "iteration-000001.pt"
+    checkpoint.write_bytes(b"checkpoint")
+    scorecard = evaluate_checkpoint_scorecard(
+        actor,
+        CONFIG,
+        STATE,
+        checkpoint=checkpoint,
+        policy_version=1,
+        seeds=(17,),
+        ticks=2,
+    )
+    assert scorecard.matches == 2
+    assert scorecard.wins + scorecard.draws + scorecard.losses == scorecard.matches
+    assert scorecard.checkpoint == str(checkpoint.resolve())
+    assert tuple(tmp_path.iterdir()) == (checkpoint,)
 
 
 def test_real_self_play_iteration_updates_version_and_checkpoint(tmp_path: Path) -> None:

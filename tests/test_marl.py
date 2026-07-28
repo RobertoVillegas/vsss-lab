@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -18,6 +19,8 @@ from vsss_train.marl import (
 )
 from vsss_train.marl_env import (
     MarlMatchEnv,
+    _attacker_alignment_reward,
+    _ball_direction_reward,
     _defensive_threat,
     _teammate_congestion,
     distill_dynamic_teacher,
@@ -150,6 +153,25 @@ def test_ippo_and_mappo_update_finite_losses() -> None:
         assert not torch.equal(before, learner.actor.action_head.weight)
 
 
+def test_optimizer_preserves_exploration_floor() -> None:
+    learner = MarlLearner(
+        MarlConfig(
+            device="cpu",
+            num_envs=1,
+            hidden_size=8,
+            epochs=1,
+            minibatch_size=4,
+            minimum_log_std=-2.0,
+        )
+    )
+    with torch.no_grad():
+        learner.actor.log_std.fill_(-10.0)
+
+    learner.optimize(trajectory(learner))
+
+    assert torch.all(learner.actor.log_std >= -2.0)
+
+
 def test_stale_trajectory_is_rejected_before_update() -> None:
     learner = MarlLearner(MarlConfig(device="cpu", num_envs=1, hidden_size=8, epochs=1))
     stale = trajectory(learner)
@@ -188,12 +210,48 @@ def test_marl_checkpoint_round_trip_and_algorithm_guard(tmp_path: Path) -> None:
         ).load(checkpoint)
 
 
+def test_legacy_checkpoint_accepts_only_neutral_new_fields(tmp_path: Path) -> None:
+    config = MarlConfig(device="cpu", num_envs=1, hidden_size=8, epochs=1)
+    learner = MarlLearner(config)
+    checkpoint = tmp_path / "legacy.pt"
+    learner.save(checkpoint)
+    payload = torch.load(checkpoint, map_location="cpu", weights_only=True)
+    for key in (
+        "minimum_log_std",
+        "wheel_effort_coefficient",
+        "ball_direction_coefficient",
+        "attacker_alignment_coefficient",
+        "time_penalty_coefficient",
+        "movement_speed_threshold",
+        "curriculum_heuristic_iterations",
+    ):
+        payload["config"].pop(key)
+    payload["config_fingerprint"] = "legacy-fingerprint"
+    torch.save(payload, checkpoint)
+
+    MarlLearner(config).load(checkpoint)
+    with pytest.raises(ValueError, match="fingerprint"):
+        MarlLearner(
+            MarlConfig(
+                device="cpu",
+                num_envs=1,
+                hidden_size=8,
+                epochs=1,
+                ball_direction_coefficient=1.0,
+            )
+        ).load(checkpoint)
+
+
 def test_versioned_marl_configs() -> None:
     assert load_marl_config(ROOT / "experiments/configs/m6-ippo.toml").algorithm == "ippo"
     assert load_marl_config(ROOT / "experiments/configs/m6-mappo.toml").algorithm == "mappo"
-    coordinated = load_marl_config(ROOT / "experiments/configs/m12-mappo-coordinated.toml")
+    coordinated = load_marl_config(ROOT / "experiments/configs/m13-mappo-directional.toml")
     assert coordinated.teammate_congestion_coefficient > 0.0
     assert coordinated.defensive_coverage_coefficient > 0.0
+    assert coordinated.ball_direction_coefficient == 1.0
+    assert coordinated.time_penalty_coefficient == 1.0
+    assert coordinated.minimum_log_std == -2.0
+    assert coordinated.curriculum_heuristic_iterations == 250
 
 
 def test_c7_and_c8_have_explicit_opponent_modes_and_team_rewards() -> None:
@@ -219,6 +277,44 @@ def test_action_delta_regularization_penalizes_abrupt_commands() -> None:
     environment.reset(9)
     _, reward, _, _ = environment.step(np.ones((3, 2), dtype=np.float32))
     assert reward.action_delta == pytest.approx(-0.25)
+
+
+def test_directional_reward_favors_enemy_goal_and_dynamic_attacker_motion() -> None:
+    state = initial_state()
+    config = json.loads(CONFIG)
+    state[5:9] = (0.0, 0.0, 0.4, 0.0)
+    toward_enemy = _ball_direction_reward(state, config, speed_threshold=0.03)
+    state[7] = -0.4
+    toward_ally = _ball_direction_reward(state, config, speed_threshold=0.03)
+    assert toward_enemy > 0.0
+    assert toward_ally < 0.0
+
+    state = initial_state()
+    state[5:7] = state[12:14] + np.asarray((0.2, 0.0), dtype=np.float32)
+    state[15:17] = (0.2, 0.0)
+    aligned = _attacker_alignment_reward(state, speed_threshold=0.03)
+    state[15:17] = (-0.2, 0.0)
+    opposed = _attacker_alignment_reward(state, speed_threshold=0.03)
+    assert aligned > opposed
+    assert aligned == pytest.approx(0.0)
+
+
+def test_time_and_wheel_effort_are_bounded_by_episode_scale() -> None:
+    environment = MarlMatchEnv(
+        CONFIG,
+        STATE,
+        stage=7,
+        horizon=1_500,
+        action_repeat=1,
+        time_penalty_coefficient=1.0,
+        wheel_effort_coefficient=0.0002,
+    )
+    environment.reset(9)
+
+    _, reward, _, _ = environment.step(np.ones((3, 2), dtype=np.float32))
+
+    assert reward.time == pytest.approx(-1.0 / 1_500)
+    assert reward.wheel_effort == pytest.approx(-0.0002)
 
 
 def test_coordination_reward_detects_congestion_and_scales_defensive_threat() -> None:

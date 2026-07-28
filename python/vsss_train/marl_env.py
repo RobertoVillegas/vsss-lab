@@ -30,9 +30,12 @@ ROBOT_WIDTH = 11
 @dataclass(frozen=True)
 class TeamReward:
     ball_progress: float
-    approach_progress: float
+    ball_direction: float
+    attacker_alignment: float
+    time: float
     goal: float
     action_delta: float = 0.0
+    wheel_effort: float = 0.0
     teammate_congestion: float = 0.0
     defensive_coverage: float = 0.0
 
@@ -40,9 +43,12 @@ class TeamReward:
     def total(self) -> float:
         return (
             self.ball_progress
-            + self.approach_progress
+            + self.ball_direction
+            + self.attacker_alignment
+            + self.time
             + self.goal
             + self.action_delta
+            + self.wheel_effort
             + self.teammate_congestion
             + self.defensive_coverage
         )
@@ -69,6 +75,11 @@ class MarlMatchEnv:
         horizon: int = 1_000,
         action_repeat: int = 4,
         action_delta_coefficient: float = 0.0,
+        wheel_effort_coefficient: float = 0.0,
+        ball_direction_coefficient: float = 0.0,
+        attacker_alignment_coefficient: float = 0.0,
+        time_penalty_coefficient: float = 0.0,
+        movement_speed_threshold: float = 0.03,
         teammate_spacing: float = 0.14,
         teammate_congestion_coefficient: float = 0.0,
         defensive_coverage_coefficient: float = 0.0,
@@ -89,6 +100,11 @@ class MarlMatchEnv:
         self.horizon = horizon
         self.action_repeat = action_repeat
         self.action_delta_coefficient = action_delta_coefficient
+        self.wheel_effort_coefficient = wheel_effort_coefficient
+        self.ball_direction_coefficient = ball_direction_coefficient
+        self.attacker_alignment_coefficient = attacker_alignment_coefficient
+        self.time_penalty_coefficient = time_penalty_coefficient
+        self.movement_speed_threshold = movement_speed_threshold
         self.teammate_spacing = teammate_spacing
         self.teammate_congestion_coefficient = teammate_congestion_coefficient
         self.defensive_coverage_coefficient = defensive_coverage_coefficient
@@ -168,8 +184,14 @@ class MarlMatchEnv:
         )
         draw = self.steps >= self.horizon and not goal_complete and not stagnated
         reward = TeamReward(
-            ball_progress=4.0 * (ball_x - self._ball_x),
-            approach_progress=2.0 * (self._closest - closest),
+            ball_progress=0.0,
+            ball_direction=self.ball_direction_coefficient
+            * _ball_direction_reward(self.state, self._config, self.movement_speed_threshold)
+            / self.horizon,
+            attacker_alignment=self.attacker_alignment_coefficient
+            * _attacker_alignment_reward(self.state, self.movement_speed_threshold)
+            / self.horizon,
+            time=-self.time_penalty_coefficient / self.horizon,
             goal=(
                 10.0 * float(bool(events & 1))
                 - 10.0 * float(bool(events & 2))
@@ -177,6 +199,7 @@ class MarlMatchEnv:
                 - self.stagnation_penalty * float(stagnated)
             ),
             action_delta=-self.action_delta_coefficient * float(np.square(action_delta).mean()),
+            wheel_effort=-self.wheel_effort_coefficient * float(np.square(normalized_blue).mean()),
             teammate_congestion=-self.teammate_congestion_coefficient
             * _teammate_congestion(self.state, self.teammate_spacing),
             defensive_coverage=self.defensive_coverage_coefficient
@@ -246,6 +269,11 @@ class VectorMarlMatchEnv:
         horizon: int,
         action_repeat: int,
         action_delta_coefficient: float,
+        wheel_effort_coefficient: float,
+        ball_direction_coefficient: float,
+        attacker_alignment_coefficient: float,
+        time_penalty_coefficient: float,
+        movement_speed_threshold: float,
         teammate_spacing: float,
         teammate_congestion_coefficient: float,
         defensive_coverage_coefficient: float,
@@ -267,6 +295,11 @@ class VectorMarlMatchEnv:
         self.horizon = horizon
         self.action_repeat = action_repeat
         self.action_delta_coefficient = action_delta_coefficient
+        self.wheel_effort_coefficient = wheel_effort_coefficient
+        self.ball_direction_coefficient = ball_direction_coefficient
+        self.attacker_alignment_coefficient = attacker_alignment_coefficient
+        self.time_penalty_coefficient = time_penalty_coefficient
+        self.movement_speed_threshold = movement_speed_threshold
         self.teammate_spacing = teammate_spacing
         self.teammate_congestion_coefficient = teammate_congestion_coefficient
         self.defensive_coverage_coefficient = defensive_coverage_coefficient
@@ -374,11 +407,29 @@ class VectorMarlMatchEnv:
         )
         draw = (self.steps >= self.horizon) & ~goal_complete & ~stagnated
         rewards = (
-            4.0 * (ball_x - self._ball_x)
-            + 2.0 * (self._closest - closest)
+            self.ball_direction_coefficient
+            * np.asarray(
+                [
+                    _ball_direction_reward(state, self._config, self.movement_speed_threshold)
+                    for state in self.states
+                ],
+                dtype=np.float32,
+            )
+            / self.horizon
+            + self.attacker_alignment_coefficient
+            * np.asarray(
+                [
+                    _attacker_alignment_reward(state, self.movement_speed_threshold)
+                    for state in self.states
+                ],
+                dtype=np.float32,
+            )
+            / self.horizon
+            - self.time_penalty_coefficient / self.horizon
             + 10.0 * ((events & 1) != 0)
             - 10.0 * ((events & 2) != 0)
             - self.action_delta_coefficient * np.square(action_delta).mean(axis=(1, 2))
+            - self.wheel_effort_coefficient * np.square(normalized_blue).mean(axis=(1, 2))
             - self.teammate_congestion_coefficient * congestion
             + self.defensive_coverage_coefficient
             * threat
@@ -466,6 +517,53 @@ def _teammate_congestion(state: FloatArray, spacing: float) -> float:
         for first, second in ((0, 1), (0, 2), (1, 2))
     ]
     return sum(penalties) / len(penalties)
+
+
+def _cosine_similarity(first: tuple[float, float], second: tuple[float, float]) -> float:
+    first_norm = math.hypot(*first)
+    second_norm = math.hypot(*second)
+    if first_norm <= 1e-9 or second_norm <= 1e-9:
+        return 0.0
+    similarity = (first[0] * second[0] + first[1] * second[1]) / (first_norm * second_norm)
+    return float(np.clip(similarity, -1.0, 1.0))
+
+
+def _ball_direction_reward(
+    state: FloatArray,
+    config: dict[str, Any],
+    speed_threshold: float,
+) -> float:
+    velocity = (float(state[7]), float(state[8]))
+    if math.hypot(*velocity) < speed_threshold:
+        return 0.0
+    ball = (float(state[5]), float(state[6]))
+    goal_x = float(config["field"]["length"]) / 2.0
+    enemy = (goal_x - ball[0], -ball[1])
+    ally = (-goal_x - ball[0], -ball[1])
+    enemy_similarity = _cosine_similarity(enemy, velocity)
+    ally_similarity = _cosine_similarity(ally, velocity)
+    return math.tanh(enemy_similarity) - math.tanh(ally_similarity)
+
+
+def _attacker_alignment_reward(state: FloatArray, speed_threshold: float) -> float:
+    ball = (float(state[5]), float(state[6]))
+    attacker = min(
+        range(3),
+        key=lambda slot: math.hypot(
+            ball[0] - float(state[ROBOT_BASE + slot * ROBOT_WIDTH + 2]),
+            ball[1] - float(state[ROBOT_BASE + slot * ROBOT_WIDTH + 3]),
+        ),
+    )
+    base = ROBOT_BASE + attacker * ROBOT_WIDTH
+    position = (float(state[base + 2]), float(state[base + 3]))
+    velocity = (float(state[base + 5]), float(state[base + 6]))
+    if math.hypot(*velocity) <= speed_threshold:
+        return -2.0 * math.tanh(1.0)
+    similarity = _cosine_similarity(
+        (ball[0] - position[0], ball[1] - position[1]),
+        velocity,
+    )
+    return math.tanh(similarity) - math.tanh(1.0)
 
 
 def _defensive_distance(state: FloatArray, config: dict[str, Any]) -> float:

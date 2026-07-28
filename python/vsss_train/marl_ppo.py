@@ -19,6 +19,15 @@ from vsss_train.ppo import seed_everything
 
 MARL_CHECKPOINT_SCHEMA = 1
 TRAJECTORY_SCHEMA = 1
+LEGACY_NEUTRAL_CONFIG = {
+    "minimum_log_std": -5.0,
+    "wheel_effort_coefficient": 0.0,
+    "ball_direction_coefficient": 0.0,
+    "attacker_alignment_coefficient": 0.0,
+    "time_penalty_coefficient": 0.0,
+    "movement_speed_threshold": 0.03,
+    "curriculum_heuristic_iterations": 0,
+}
 
 
 @dataclass(frozen=True)
@@ -167,6 +176,8 @@ class MarlLearner:
                     self.config.max_grad_norm,
                 )
                 self.optimizer.step()
+                with torch.no_grad():
+                    self.actor.log_std.clamp_(min=self.config.minimum_log_std)
                 totals["policy_loss"] += float(policy_loss.detach())
                 totals["value_loss"] += float(value_loss.detach())
                 totals["entropy"] += float(entropy.detach())
@@ -213,7 +224,7 @@ class MarlLearner:
             raise ValueError("incompatible MARL checkpoint schema")
         if payload.get("algorithm") != self.config.algorithm:
             raise ValueError("MARL checkpoint algorithm mismatch")
-        if payload.get("config_fingerprint") != self.config.fingerprint():
+        if not _checkpoint_config_compatible(payload, self.config):
             raise ValueError("MARL checkpoint configuration fingerprint mismatch")
         self.actor.load_state_dict(payload["actor"])
         self.critic.load_state_dict(payload["critic"])
@@ -231,6 +242,22 @@ class MarlLearner:
         torch.set_rng_state(payload["torch_rng"])
         if self.device.type == "cuda" and payload.get("torch_cuda_rng") is not None:
             torch.cuda.set_rng_state_all(payload["torch_cuda_rng"])
+
+
+def _checkpoint_config_compatible(payload: dict[str, Any], config: MarlConfig) -> bool:
+    if payload.get("config_fingerprint") == config.fingerprint():
+        return True
+    stored = payload.get("config")
+    if not isinstance(stored, dict):
+        return False
+    current = asdict(config)
+    if any(key not in current or current[key] != value for key, value in stored.items()):
+        return False
+    missing = set(current) - set(stored)
+    return all(
+        key in LEGACY_NEUTRAL_CONFIG and current[key] == LEGACY_NEUTRAL_CONFIG[key]
+        for key in missing
+    )
 
 
 def resolve_device(requested: str) -> torch.device:
