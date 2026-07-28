@@ -5,6 +5,9 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+import numpy as np
+from numpy.typing import NDArray
+
 from vsss_vision.contracts import BallEstimate, Prediction
 
 
@@ -36,6 +39,8 @@ def analytic_ball_prediction(
     stale = generated_time - estimate.effective_time > maximum_age
     x, vx, ax, y, vy, ay = estimate.state
     samples = []
+    uncertainty = []
+    covariance = np.asarray(estimate.covariance)
     count = math.floor(horizon / interval)
     for index in range(count + 1):
         elapsed = index * interval
@@ -43,11 +48,13 @@ def analytic_ball_prediction(
         projected_x = x + (vx * elapsed + 0.5 * ax * elapsed * elapsed) * decay
         projected_y = y + (vy * elapsed + 0.5 * ay * elapsed * elapsed) * decay
         samples.append((elapsed, projected_x, projected_y))
+        uncertainty.append(_position_uncertainty(covariance, elapsed))
     return Prediction(
         source_time=estimate.effective_time,
         generated_time=generated_time,
         model_id="m12-analytic-ca-v1",
         samples=tuple(samples),
+        uncertainty=tuple(uncertainty),
         stale=stale,
     )
 
@@ -70,9 +77,12 @@ def collision_aware_ball_prediction(
     elapsed = 0.0
     next_sample = 0.0
     samples: list[tuple[float, float, float]] = []
+    uncertainty: list[tuple[float, float, float]] = []
+    covariance = np.asarray(estimate.covariance)
     while elapsed <= horizon + integration_step / 2.0:
         if elapsed + integration_step / 2.0 >= next_sample:
             samples.append((next_sample, x, y))
+            uncertainty.append(_position_uncertainty(covariance, next_sample))
             next_sample += interval
         step = min(integration_step, horizon - elapsed)
         if step <= 0.0:
@@ -122,7 +132,29 @@ def collision_aware_ball_prediction(
         generated_time=generated_time,
         model_id=model.model_id,
         samples=tuple(samples),
+        uncertainty=tuple(uncertainty),
         stale=generated_time - estimate.effective_time > maximum_age,
+    )
+
+
+def _position_uncertainty(
+    covariance: NDArray[np.float64], elapsed: float
+) -> tuple[float, float, float]:
+    transition = np.array(
+        [
+            [1.0, elapsed, 0.5 * elapsed * elapsed, 0.0, 0.0, 0.0],
+            [0.0, 1.0, elapsed, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0, elapsed, 0.5 * elapsed * elapsed],
+            [0.0, 0.0, 0.0, 0.0, 1.0, elapsed],
+            [0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+        ]
+    )
+    projected = transition @ covariance @ transition.T
+    return (
+        elapsed,
+        math.sqrt(max(0.0, float(projected[0, 0]))),
+        math.sqrt(max(0.0, float(projected[3, 3]))),
     )
 
 

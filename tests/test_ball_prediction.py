@@ -13,7 +13,9 @@ def estimate(*, x: float = 0.0, vx: float = 1.0, y: float = 0.0, vy: float = 0.0
         update_time=1.02,
         source_sequence=4,
         state=(x, vx, 0.0, y, vy, 0.0),
-        covariance=tuple(tuple(0.0 for _ in range(6)) for _ in range(6)),
+        covariance=tuple(
+            tuple(0.01 if row == column else 0.0 for column in range(6)) for row in range(6)
+        ),
         measurement_accepted=True,
         rejection_reason=None,
     )
@@ -27,6 +29,7 @@ def test_analytic_prediction_is_causal_and_marks_stale_estimate() -> None:
 
     assert first == second
     assert first.samples[-1][1] > first.samples[0][1]
+    assert first.uncertainty[-1][1] > first.uncertainty[0][1]
     assert not first.stale
     assert stale.stale
 

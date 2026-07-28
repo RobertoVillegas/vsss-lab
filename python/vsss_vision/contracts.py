@@ -78,6 +78,7 @@ class Prediction:
     generated_time: float
     model_id: str
     samples: tuple[tuple[float, float, float], ...]
+    uncertainty: tuple[tuple[float, float, float], ...]
     stale: bool
     schema_version: int = SCHEMA_VERSION
 

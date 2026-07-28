@@ -23,7 +23,7 @@
 - [x] 3.2 Implement collision-aware projection against canonical walls, goals,
   damping, restitution, and chamfers
 - [x] 3.3 Implement goalkeeper-line and general segment interception queries
-- [ ] 3.4 Add uncertainty propagation and stale-estimate limits
+- [x] 3.4 Add uncertainty propagation and stale-estimate limits
 - [ ] 3.5 Add a future-truth mutation test that blocks information leakage
 
 ## 4. Simulation and policy evaluation
@@ -39,7 +39,7 @@
 ## 5. Replay viewer
 
 - [x] 5.1 Render selectable truth, measured, estimated, and predicted layers
-- [ ] 5.2 Render path samples at labeled future offsets and an uncertainty band
+- [x] 5.2 Render path samples at labeled future offsets and an uncertainty band
 - [ ] 5.3 Render goalkeeper interception point and time
 - [ ] 5.4 Render accepted/rejected measurements, estimate age, visibility, and
   association confidence

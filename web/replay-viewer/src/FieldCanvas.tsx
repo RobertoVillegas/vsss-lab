@@ -150,6 +150,24 @@ export function FieldCanvas({ header, frame, layers }: Props) {
     if (layers.predicted && prediction && prediction.samples.length > 1) {
       context.beginPath();
       prediction.samples.forEach((sample, index) => {
+        const sigma = prediction.uncertainty[index];
+        const [sampleX, sampleY] = point(sample[1], sample[2]);
+        const radius = Math.max(sigma?.[1] ?? 0, sigma?.[2] ?? 0) * scale * 2;
+        if (index === 0) context.moveTo(sampleX, sampleY - radius);
+        else context.lineTo(sampleX, sampleY - radius);
+      });
+      [...prediction.samples].reverse().forEach((sample, reverseIndex) => {
+        const index = prediction.samples.length - reverseIndex - 1;
+        const sigma = prediction.uncertainty[index];
+        const [sampleX, sampleY] = point(sample[1], sample[2]);
+        const radius = Math.max(sigma?.[1] ?? 0, sigma?.[2] ?? 0) * scale * 2;
+        context.lineTo(sampleX, sampleY + radius);
+      });
+      context.closePath();
+      context.fillStyle = "rgba(72, 224, 255, 0.10)";
+      context.fill();
+      context.beginPath();
+      prediction.samples.forEach((sample, index) => {
         const [sampleX, sampleY] = point(sample[1], sample[2]);
         if (index === 0) context.moveTo(sampleX, sampleY);
         else context.lineTo(sampleX, sampleY);

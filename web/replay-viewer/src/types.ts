@@ -86,6 +86,7 @@ export interface ReplayFrame {
     } | null;
     ball_prediction: {
       samples: [number, number, number][];
+      uncertainty: [number, number, number][];
       stale: boolean;
       model_id: string;
     } | null;
