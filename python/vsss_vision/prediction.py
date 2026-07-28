@@ -12,6 +12,9 @@ from vsss_vision.contracts import BallEstimate, Prediction
 class FieldPredictionModel:
     length: float = 1.5
     width: float = 1.3
+    goal_width: float = 0.4
+    goal_depth: float = 0.1
+    corner_chamfer: float = 0.07
     ball_radius: float = 0.0215
     linear_damping: float = 0.15
     restitution: float = 0.3
@@ -59,6 +62,8 @@ def collision_aware_ball_prediction(
     x, vx, _ax, y, vy, _ay = estimate.state
     limit_x = model.length / 2.0 - model.ball_radius
     limit_y = model.width / 2.0 - model.ball_radius
+    goal_limit_x = model.length / 2.0 + model.goal_depth - model.ball_radius
+    goal_limit_y = model.goal_width / 2.0 - model.ball_radius
     elapsed = 0.0
     next_sample = 0.0
     samples: list[tuple[float, float, float]] = []
@@ -74,12 +79,40 @@ def collision_aware_ball_prediction(
         vy *= decay
         x += vx * step
         y += vy * step
-        if abs(x) > limit_x:
+        in_goal_mouth = abs(y) <= goal_limit_y
+        if abs(x) > limit_x and not in_goal_mouth:
             x = math.copysign(2.0 * limit_x - abs(x), x)
             vx = -vx * model.restitution
-        if abs(y) > limit_y:
+        elif abs(x) > goal_limit_x:
+            x = math.copysign(2.0 * goal_limit_x - abs(x), x)
+            vx = -vx * model.restitution
+        if abs(x) > limit_x and abs(y) > goal_limit_y:
+            y = math.copysign(2.0 * goal_limit_y - abs(y), y)
+            vy = -vy * model.restitution
+        elif abs(y) > limit_y:
             y = math.copysign(2.0 * limit_y - abs(y), y)
             vy = -vy * model.restitution
+        inside_corner_zone = (
+            abs(x) > limit_x - model.corner_chamfer
+            and abs(y) > limit_y - model.corner_chamfer
+            and abs(x) <= limit_x
+            and abs(y) <= limit_y
+        )
+        chamfer_limit = (
+            limit_x + limit_y - model.corner_chamfer - model.ball_radius * math.sqrt(2.0)
+        )
+        excess = abs(x) + abs(y) - chamfer_limit
+        if inside_corner_zone and excess > 0.0:
+            sign_x = math.copysign(1.0, x)
+            sign_y = math.copysign(1.0, y)
+            x -= sign_x * excess / 2.0
+            y -= sign_y * excess / 2.0
+            normal_x = sign_x / math.sqrt(2.0)
+            normal_y = sign_y / math.sqrt(2.0)
+            outward_speed = vx * normal_x + vy * normal_y
+            if outward_speed > 0.0:
+                vx -= (1.0 + model.restitution) * outward_speed * normal_x
+                vy -= (1.0 + model.restitution) * outward_speed * normal_y
         elapsed += step
     return Prediction(
         source_time=estimate.effective_time,

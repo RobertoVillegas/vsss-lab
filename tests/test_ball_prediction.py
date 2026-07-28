@@ -33,7 +33,7 @@ def test_analytic_prediction_is_causal_and_marks_stale_estimate() -> None:
 
 def test_collision_prediction_reflects_from_field_wall() -> None:
     prediction = collision_aware_ball_prediction(
-        estimate(x=0.70, vx=2.0),
+        estimate(x=0.70, vx=2.0, y=0.3),
         generated_time=1.0,
         model=FieldPredictionModel(restitution=1.0, linear_damping=0.0001),
         horizon=0.3,
@@ -61,3 +61,31 @@ def test_segment_interception_returns_time_and_point() -> None:
     assert 0.49 < time < 0.51
     assert abs(x - 0.5) < 1e-9
     assert abs(y) < 1e-9
+
+
+def test_collision_prediction_enters_goal_mouth_and_hits_back_wall() -> None:
+    prediction = collision_aware_ball_prediction(
+        estimate(x=0.70, vx=2.0),
+        generated_time=1.0,
+        model=FieldPredictionModel(restitution=1.0, linear_damping=0.0001),
+        horizon=0.3,
+        interval=0.01,
+    )
+
+    xs = [sample[1] for sample in prediction.samples]
+    assert max(xs) > 0.75
+    assert max(xs) <= 0.75 + 0.1 - 0.0215
+    assert xs[-1] < max(xs)
+
+
+def test_collision_prediction_deflects_from_chamfer() -> None:
+    prediction = collision_aware_ball_prediction(
+        estimate(x=0.60, vx=1.0, y=0.50, vy=1.0),
+        generated_time=1.0,
+        model=FieldPredictionModel(restitution=1.0, linear_damping=0.0001),
+        horizon=0.4,
+        interval=0.01,
+    )
+
+    reach = max(x + y for _, x, y in prediction.samples)
+    assert reach < 1.31
