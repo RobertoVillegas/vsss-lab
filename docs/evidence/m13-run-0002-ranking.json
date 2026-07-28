@@ -1,0 +1,84 @@
+{
+  "config": "/home/rob/src/vsss-lab/experiments/configs/m12-mappo-coordinated.toml",
+  "ranking": [
+    {
+      "checkpoint": "/home/rob/runs/vsss-training-run-0002/checkpoints/iteration-002750.pt",
+      "draws": 5,
+      "goals_against": 0,
+      "goals_for": 5,
+      "losses": 0,
+      "matches": 10,
+      "mean_progress": 0.3392933174166208,
+      "policy_version": 2750,
+      "wins": 5
+    },
+    {
+      "checkpoint": "/home/rob/runs/vsss-training-run-0002/checkpoints/iteration-000500.pt",
+      "draws": 6,
+      "goals_against": 1,
+      "goals_for": 3,
+      "losses": 1,
+      "matches": 10,
+      "mean_progress": 0.6442163586749419,
+      "policy_version": 500,
+      "wins": 3
+    },
+    {
+      "checkpoint": "/home/rob/runs/vsss-training-run-0002/checkpoints/iteration-003052.pt",
+      "draws": 6,
+      "goals_against": 1,
+      "goals_for": 3,
+      "losses": 1,
+      "matches": 10,
+      "mean_progress": 0.29671053417832405,
+      "policy_version": 3052,
+      "wins": 3
+    },
+    {
+      "checkpoint": "/home/rob/runs/vsss-training-run-0002/checkpoints/iteration-001500.pt",
+      "draws": 7,
+      "goals_against": 1,
+      "goals_for": 2,
+      "losses": 1,
+      "matches": 10,
+      "mean_progress": 0.4641096691892729,
+      "policy_version": 1500,
+      "wins": 2
+    },
+    {
+      "checkpoint": "/home/rob/runs/vsss-training-run-0002/checkpoints/iteration-001000.pt",
+      "draws": 7,
+      "goals_against": 1,
+      "goals_for": 2,
+      "losses": 1,
+      "matches": 10,
+      "mean_progress": 0.4171344072259001,
+      "policy_version": 1000,
+      "wins": 2
+    },
+    {
+      "checkpoint": "/home/rob/runs/vsss-training-run-0002/checkpoints/iteration-002250.pt",
+      "draws": 9,
+      "goals_against": 0,
+      "goals_for": 1,
+      "losses": 0,
+      "matches": 10,
+      "mean_progress": -0.0460748078200847,
+      "policy_version": 2250,
+      "wins": 1
+    },
+    {
+      "checkpoint": "/home/rob/runs/vsss-training-run-0002/checkpoints/iteration-000750.pt",
+      "draws": 8,
+      "goals_against": 1,
+      "goals_for": 1,
+      "losses": 1,
+      "matches": 10,
+      "mean_progress": 0.5081776767772068,
+      "policy_version": 750,
+      "wins": 1
+    }
+  ],
+  "schema_version": 1,
+  "seeds": 5
+}

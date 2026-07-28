@@ -3,11 +3,13 @@
 A modular platform for high-throughput Very Small Size Soccer simulation,
 multi-agent reinforcement learning, self-play, and reproducible competition.
 
-The implemented M0–M11 path includes canonical contracts, deterministic Rapier
+The implemented M0–M13 path includes canonical contracts, deterministic Rapier
 physics, Python batch environments, scripted and RL baselines, MAPPO, league
 self-play, replay viewers, an external FlatBuffers/ZeroMQ match server, reference
 calibration, an opt-in ROS 2/Gazebo validation backend, and seeded domain
-randomization. Vision and hardware integration remain M12 work.
+randomization. M12 adds the calibrated physical field and vision diagnostics;
+M13 adds directional rewards, an exploration floor, staged self-play, and
+terminal checkpoint ranking. Hardware integration remains future work.
 
 ## Quick start
 
@@ -90,6 +92,32 @@ additional work; checkpoints and 60-second captures can be spaced independently:
 just league-live-steps 20000000 25 60 25 auto 64
 ```
 
+New runs use `experiments/configs/m13-mappo-directional.toml`. Its dense signal
+rewards ball velocity toward the opponent goal and the dynamically selected
+attacker moving toward the ball. It no longer rewards mere proximity, which can
+teach a robot to camp beside the ball. A bounded time cost encourages terminal
+goals, while small wheel-effort, action-change, congestion, and defensive terms
+regularize play. The first 250 PPO iterations face the dynamic heuristic before
+switching to self-play. Policy standard deviation is clamped to a configured
+floor so a long run cannot silently collapse all exploration.
+
+This is a new reward fingerprint: start a fresh automatic run rather than
+resuming an M12 checkpoint. Historical M12 checkpoints remain loadable with
+their original config and can be ranked by actual terminal results:
+
+```bash
+just league-rank-checkpoints \
+  /home/rob/runs/vsss-training-run-0002 \
+  500,750,1000,1500,2250,2750,3052 \
+  experiments/configs/m12-mappo-coordinated.toml \
+  10 \
+  reports/checkpoint-ranking.json
+```
+
+The ranker plays every checkpoint from reflected field setups against the same
+heuristic and orders win/loss balance, goal difference, then mean progress. Do
+not select a deployment policy solely because it is the latest checkpoint.
+
 The trainer reports return, progress, throughput, ETA, and checkpoint writes.
 `Ctrl+C` requests a clean stop: the current iteration finishes and the latest
 policy is checkpointed before exit. Training and viewing are independent:
@@ -130,8 +158,9 @@ Fast simulation intentionally computes virtual time faster than wall time while
 preserving the 5 ms physics step and 20 ms control period. A 60-second replay is
 always 60 simulated seconds even when the host produces it in a few seconds.
 
-See `docs/calibration/m11-wheel-action-scale.md` before comparing old
-checkpoints or planning a physical-robot deployment.
+See `docs/calibration/m11-wheel-action-scale.md` and
+`docs/evidence/m13-directional-reward.md` before comparing old checkpoints or
+planning a physical-robot deployment.
 
 The native WSLg viewer remains available for a single iteration:
 

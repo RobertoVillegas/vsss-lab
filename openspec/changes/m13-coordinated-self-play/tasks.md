@@ -12,10 +12,17 @@
 - [x] Add a fresh coordinated MAPPO experiment
 - [x] Make new automatic runs select the coordinated experiment
 - [x] Validate one CUDA iteration and checkpoint
-- [ ] Run the 20 million-step paired experiment
-- [ ] Compare congestion, defense, goals, progress, and throughput to run 0001
+- [x] Diagnose the completed 50 million-step M12 experiment
+- [x] Replace proximity shaping with directional ball and attacker signals
+- [x] Add a policy exploration floor and heuristic-to-self-play curriculum
+- [x] Preserve strict historical-checkpoint compatibility
+- [x] Add terminal checkpoint ranking without replay generation
+- [ ] Run a fresh 50 million-step M13 paired experiment
+- [ ] Compare goals, terminal outcomes, clustering, exploration, and throughput
+      against run 0002
 
 ## 3. Gates
 
-- [x] Run build, test, lint, and OpenSpec validation
-- [ ] Record the final comparison and archive this change
+- [x] Run build, test, lint, CUDA smoke, and OpenSpec validation
+- [x] Record historical run diagnosis and checkpoint ranking
+- [ ] Record the fresh M13 comparison and archive this change
