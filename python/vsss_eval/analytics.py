@@ -13,8 +13,9 @@ from vsss_eval.replay import inspect_replay
 
 Team = Literal["blue", "yellow"]
 TEAMS: tuple[Team, Team] = ("blue", "yellow")
-ANALYTICS_SCHEMA_VERSION = 1
-DEFINITION_VERSION = "m14.1"
+ANALYTICS_SCHEMA_VERSION = 2
+DEFINITION_VERSION = "m15.1"
+FORCED_OWN_GOAL_WINDOW_SECONDS = 2.0
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,8 @@ class AnalyticsEvent:
     robot_id: str | None
     x: float
     y: float
+    attribution: str | None = None
+    related_team: Team | None = None
 
 
 @dataclass(frozen=True)
@@ -101,7 +104,16 @@ class ReplayAnalytics:
         with path.open("w", encoding="utf-8", newline="") as stream:
             writer = csv.DictWriter(
                 stream,
-                fieldnames=("time", "kind", "team", "robot_id", "x", "y"),
+                fieldnames=(
+                    "time",
+                    "kind",
+                    "team",
+                    "robot_id",
+                    "x",
+                    "y",
+                    "attribution",
+                    "related_team",
+                ),
             )
             writer.writeheader()
             writer.writerows(asdict(event) for event in self.events)
@@ -182,6 +194,8 @@ def analyze_replay(path: Path) -> ReplayAnalytics:
             "congestion_seconds": 0.0,
             "goals": 0,
             "goals_conceded": 0,
+            "own_goals": 0,
+            "forced_own_goals": 0,
             "last_defender_failures": 0,
         }
         for team in TEAMS
@@ -194,7 +208,10 @@ def analyze_replay(path: Path) -> ReplayAnalytics:
     previous_contacts: set[str] = set()
     previous_time: float | None = None
     previous_positions: dict[str, tuple[float, float]] = {}
-    last_touch: tuple[Team, str, float] | None = None
+    # Contacts are inferred from replay geometry because canonical replays do not
+    # yet expose Rapier contact callbacks. Keep attribution explicit downstream.
+    last_touch: tuple[Team, str, float, float] | None = None
+    previous_touch: tuple[Team, str, float, float] | None = None
     previous_team_touch: dict[Team, tuple[str, float] | None] = {"blue": None, "yellow": None}
     sampled_seconds = 0.0
 
@@ -338,7 +355,8 @@ def analyze_replay(path: Path) -> ReplayAnalytics:
                     analytics_events.append(
                         AnalyticsEvent(time, "clearance", touch_team, touch_robot, ball_x, ball_y)
                     )
-            last_touch = (touch_team, touch_robot, ball_x)
+            previous_touch = last_touch
+            last_touch = (touch_team, touch_robot, ball_x, time)
             if active is None:
                 active = {
                     "team": touch_team,
@@ -356,7 +374,39 @@ def analyze_replay(path: Path) -> ReplayAnalytics:
             team_stats[goal_team]["goals"] += 1
             team_stats[opponent]["goals_conceded"] += 1
             team_stats[opponent]["last_defender_failures"] += 1
-            analytics_events.append(AnalyticsEvent(time, "goal", goal_team, None, ball_x, ball_y))
+            analytics_events.append(
+                AnalyticsEvent(
+                    time,
+                    "goal",
+                    goal_team,
+                    last_touch[1] if last_touch and last_touch[0] == goal_team else None,
+                    ball_x,
+                    ball_y,
+                    "inferred_proximity" if last_touch is not None else "unattributed",
+                )
+            )
+            if last_touch is not None and last_touch[0] == opponent:
+                own_goal_robot = last_touch[1]
+                forced = (
+                    previous_touch is not None
+                    and previous_touch[0] == goal_team
+                    and time - previous_touch[3] <= FORCED_OWN_GOAL_WINDOW_SECONDS
+                )
+                team_stats[opponent]["own_goals"] += 1
+                if forced:
+                    team_stats[goal_team]["forced_own_goals"] += 1
+                analytics_events.append(
+                    AnalyticsEvent(
+                        time,
+                        "forced_own_goal" if forced else "own_goal",
+                        opponent,
+                        own_goal_robot,
+                        ball_x,
+                        ball_y,
+                        "inferred_proximity",
+                        goal_team,
+                    )
+                )
             assister = previous_team_touch[goal_team]
             if (
                 last_touch is not None
@@ -373,6 +423,7 @@ def analyze_replay(path: Path) -> ReplayAnalytics:
                 possessions.append(_finish_possession(active, time, ball_x, "goal"))
                 active = None
             last_touch = None
+            previous_touch = None
 
     if active is not None and previous_time is not None:
         possessions.append(

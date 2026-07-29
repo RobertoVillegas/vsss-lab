@@ -99,6 +99,8 @@ export interface ReplayAnalytics {
     interceptions: number;
     double_commit_seconds: number;
     congestion_seconds: number;
+    own_goals: number;
+    forced_own_goals: number;
   }>;
   events: {
     time: number;
@@ -107,6 +109,8 @@ export interface ReplayAnalytics {
     robot_id: string | null;
     x: number;
     y: number;
+    attribution: "inferred_proximity" | "unattributed" | null;
+    related_team: "blue" | "yellow" | null;
   }[];
   ball_heatmap: number[][];
 }

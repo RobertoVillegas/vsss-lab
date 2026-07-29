@@ -51,8 +51,8 @@ def test_derives_possession_pass_pressure_and_goal_without_reward_input(tmp_path
         ],
     )
     report = analyze_replay(replay)
-    assert report.schema_version == 1
-    assert report.definition_version == "m14.1"
+    assert report.schema_version == 2
+    assert report.definition_version == "m15.1"
     assert report.teams["blue"]["passes"] == 1
     assert report.teams["blue"]["assists"] == 1
     assert report.teams["blue"]["goals"] == 1
@@ -76,9 +76,34 @@ def test_analytics_exports_json_and_flat_team_csv(tmp_path: Path) -> None:
     report.write_json(json_output)
     report.write_team_csv(csv_output)
     report.write_event_csv(event_output)
-    assert '"definition_version": "m14.1"' in json_output.read_text()
+    assert '"definition_version": "m15.1"' in json_output.read_text()
     assert "pressure_attacking" in csv_output.read_text()
-    assert event_output.read_text().startswith("time,kind,team,robot_id,x,y")
+    assert event_output.read_text().startswith(
+        "time,kind,team,robot_id,x,y,attribution,related_team"
+    )
+
+
+def test_attributes_own_goal_and_forced_own_goal_from_touch_sequence(tmp_path: Path) -> None:
+    replay = tmp_path / "own-goal.jsonl"
+    _write(
+        replay,
+        [
+            _tick(1, 0.1, 0.30, {"R3": 0.30}),
+            _tick(2, 0.2, -0.30, {}),
+            _tick(3, 0.3, -0.68, {"R0": -0.68}),
+            _tick(4, 0.4, -0.78, {}, events=2),
+        ],
+    )
+
+    report = analyze_replay(replay)
+
+    assert report.teams["blue"]["own_goals"] == 1
+    assert report.teams["yellow"]["forced_own_goals"] == 1
+    event = next(item for item in report.events if item.kind == "forced_own_goal")
+    assert event.team == "blue"
+    assert event.robot_id == "R0"
+    assert event.related_team == "yellow"
+    assert event.attribution == "inferred_proximity"
 
 
 def test_opponent_touch_ends_possession_and_team_view_mirrors_pressure(tmp_path: Path) -> None:

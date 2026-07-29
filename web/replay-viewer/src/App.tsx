@@ -395,6 +395,8 @@ export default function App() {
             <div><dt>Shots B/Y</dt><dd>{analytics ? `${analytics.teams.blue.shots} / ${analytics.teams.yellow.shots}` : "—"}</dd></div>
             <div><dt>Saves B/Y</dt><dd>{analytics ? `${analytics.teams.blue.saves} / ${analytics.teams.yellow.saves}` : "—"}</dd></div>
             <div><dt>Interceptions B/Y</dt><dd>{analytics ? `${analytics.teams.blue.interceptions} / ${analytics.teams.yellow.interceptions}` : "—"}</dd></div>
+            <div><dt>Own goals B/Y</dt><dd>{analytics ? `${analytics.teams.blue.own_goals} / ${analytics.teams.yellow.own_goals}` : "—"}</dd></div>
+            <div><dt>Forced own goals B/Y</dt><dd>{analytics ? `${analytics.teams.blue.forced_own_goals} / ${analytics.teams.yellow.forced_own_goals}` : "—"}</dd></div>
             <div><dt>Congestion B/Y</dt><dd>{analytics ? `${analytics.teams.blue.congestion_seconds.toFixed(1)}s / ${analytics.teams.yellow.congestion_seconds.toFixed(1)}s` : "—"}</dd></div>
           </dl>
           {analytics ? (
