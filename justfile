@@ -125,6 +125,10 @@ m15-candidate-probe output_dir="experiments/reports/m15/candidate" iterations="5
   mise run train-env
   uv run --group train python -m tools.m15_candidate_probe --output-dir "{{output_dir}}" --iterations {{iterations}} --device "{{device}}"
 
+m18-ppo-ablation output="experiments/reports/m18/ppo-ablation.json" device="auto" seeds="2" iterations="3" worlds="64" rollout_steps="64":
+  mise run train-env
+  uv run --group train python -m tools.m18_ppo_ablation --output "{{output}}" --device "{{device}}" --seeds {{seeds}} --iterations {{iterations}} --worlds {{worlds}} --rollout-steps {{rollout_steps}}
+
 league-run run_dir="/home/rob/runs/vsss-lab-demo" iterations="3" capture_every="1" capture_seconds="60" checkpoint_every="100" device="auto" num_envs="64" config="experiments/configs/m14-mappo-adaptive.toml":
   mise run train-env
   uv run --group train python -m vsss_league.cli run --config "{{config}}" --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --run-dir "{{run_dir}}" --iterations {{iterations}} --capture-every {{capture_every}} --capture-seconds {{capture_seconds}} --checkpoint-every {{checkpoint_every}} --device "{{device}}" --num-envs {{num_envs}}

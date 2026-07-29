@@ -315,6 +315,7 @@ class VectorMarlMatchEnv:
         progress_coefficient: float,
         wheel_effort_coefficient: float,
         ball_direction_coefficient: float,
+        useful_touch_impulse_coefficient: float,
         attacker_alignment_coefficient: float,
         time_penalty_coefficient: float,
         movement_speed_threshold: float,
@@ -348,6 +349,7 @@ class VectorMarlMatchEnv:
         self.progress_coefficient = progress_coefficient
         self.wheel_effort_coefficient = wheel_effort_coefficient
         self.ball_direction_coefficient = ball_direction_coefficient
+        self.useful_touch_impulse_coefficient = useful_touch_impulse_coefficient
         self.attacker_alignment_coefficient = attacker_alignment_coefficient
         self.time_penalty_coefficient = time_penalty_coefficient
         self.movement_speed_threshold = movement_speed_threshold
@@ -380,6 +382,8 @@ class VectorMarlMatchEnv:
         self._stagnation_anchor = np.zeros((num_envs, 2), dtype=np.float32)
         self._stagnation_steps = np.zeros(num_envs, dtype=np.int64)
         self._previous_ball_positions = np.zeros((num_envs, 2), dtype=np.float32)
+        self._previous_ball_velocities = np.zeros((num_envs, 2), dtype=np.float32)
+        self._controlled_ball_contact = np.zeros(num_envs, dtype=np.bool_)
         self._ally_contact_streaks = np.zeros((num_envs, 3), dtype=np.int64)
         self._opponent_contact_streaks = np.zeros((num_envs, 9), dtype=np.int64)
         self.ally_contact_steps = np.zeros(num_envs, dtype=np.int64)
@@ -422,6 +426,12 @@ class VectorMarlMatchEnv:
         )
         self._stagnation_anchor[world] = self.states[world, 5:7]
         self._previous_ball_positions[world] = self.states[world, 5:7]
+        self._previous_ball_velocities[world] = self.states[world, 7:9]
+        self._controlled_ball_contact[world] = _team_touches_ball(
+            self.states[world],
+            int(self.controlled_teams[world]),
+            self._config,
+        )
         self._stagnation_steps[world] = 0
         self._ally_contact_streaks[world].fill(0)
         self._opponent_contact_streaks[world].fill(0)
@@ -566,6 +576,33 @@ class VectorMarlMatchEnv:
         )
         draw = (self.steps >= self.horizon) & ~goal_complete & ~stagnated
         attack_sign = np.where(self.controlled_teams == 0, 1.0, -1.0)
+        current_ball_contact = np.asarray(
+            [
+                _team_touches_ball(state, int(team), self._config)
+                for state, team in zip(self.states, self.controlled_teams, strict=True)
+            ],
+            dtype=np.bool_,
+        )
+        useful_touch_impulse = np.asarray(
+            [
+                _useful_touch_impulse(
+                    float(state[7]),
+                    float(previous_velocity[0]),
+                    int(team),
+                    bool(contact),
+                    bool(previous_contact),
+                )
+                for state, previous_velocity, team, contact, previous_contact in zip(
+                    self.states,
+                    self._previous_ball_velocities,
+                    self.controlled_teams,
+                    current_ball_contact,
+                    self._controlled_ball_contact,
+                    strict=True,
+                )
+            ],
+            dtype=np.float32,
+        )
         scored = np.where(self.controlled_teams == 0, (events & 1) != 0, (events & 2) != 0)
         conceded = np.where(
             self.controlled_teams == 0,
@@ -589,6 +626,7 @@ class VectorMarlMatchEnv:
                 dtype=np.float32,
             )
             / self.horizon
+            + self.useful_touch_impulse_coefficient * np.tanh(useful_touch_impulse)
             + self.attacker_alignment_coefficient
             * np.asarray(
                 [
@@ -619,6 +657,8 @@ class VectorMarlMatchEnv:
         np.copyto(self._previous_blue_actions, normalized_blue)
         np.copyto(self._ball_x, ball_x)
         np.copyto(self._previous_ball_positions, ball_positions)
+        np.copyto(self._previous_ball_velocities, self.states[:, 7:9])
+        np.copyto(self._controlled_ball_contact, current_ball_contact)
         self._closest = closest
         self._defensive_distance = defensive_distance
         done = draw | goal_complete | stagnated
@@ -703,6 +743,42 @@ def _seeded_snapshot(template: dict[str, Any], seed: int) -> dict[str, Any]:
         robot["twist"].update(vx=0.0, vy=0.0, omega=0.0)
         robot.update(wheel_speed_left=0.0, wheel_speed_right=0.0)
     return snapshot
+
+
+def _team_touches_ball(
+    state: FloatArray,
+    team: int,
+    config: dict[str, Any],
+) -> bool:
+    """Return whether an enabled team robot overlaps the ball contact envelope."""
+    robot = config["robot"]
+    robot_radius = math.hypot(float(robot["length"]), float(robot["width"])) / 2.0
+    contact_radius = robot_radius + float(config["ball"]["radius"]) + 0.002
+    offset = 0 if team == 0 else 3
+    ball_x, ball_y = float(state[5]), float(state[6])
+    return any(
+        bool(float(state[ROBOT_BASE + slot * ROBOT_WIDTH + 10]))
+        and math.hypot(
+            ball_x - float(state[ROBOT_BASE + slot * ROBOT_WIDTH + 2]),
+            ball_y - float(state[ROBOT_BASE + slot * ROBOT_WIDTH + 3]),
+        )
+        <= contact_radius
+        for slot in range(offset, offset + 3)
+    )
+
+
+def _useful_touch_impulse(
+    ball_vx: float,
+    previous_ball_vx: float,
+    team: int,
+    contact: bool,
+    previous_contact: bool,
+) -> float:
+    """Measure new contact's positive ball-velocity delta toward the enemy goal."""
+    if not contact or previous_contact:
+        return 0.0
+    attack_sign = 1.0 if team == 0 else -1.0
+    return max(0.0, attack_sign * (ball_vx - previous_ball_vx))
 
 
 def _closest_team_distance(state: FloatArray, team: int = 0) -> float:

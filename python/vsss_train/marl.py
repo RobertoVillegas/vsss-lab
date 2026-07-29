@@ -18,6 +18,22 @@ ROBOT_WIDTH = 11
 TEAM_SIZE = 3
 
 
+def _activation(name: str) -> nn.Module:
+    if name == "tanh":
+        return nn.Tanh()
+    if name == "relu":
+        return nn.ReLU()
+    raise ValueError(f"unsupported network activation: {name}")
+
+
+def _hidden_block(size: int, activation: str, layer_norm: bool) -> list[nn.Module]:
+    modules: list[nn.Module] = [nn.Linear(size, size)]
+    if layer_norm:
+        modules.append(nn.LayerNorm(size))
+    modules.append(_activation(activation))
+    return modules
+
+
 class TeamBatch(NamedTuple):
     """Structured team observations with explicit set axes."""
 
@@ -196,14 +212,27 @@ def _relative_entity(
 class AgentEncoder(nn.Module):
     """Deep Sets encoder shared over agents and entity set members."""
 
-    def __init__(self, hidden_size: int) -> None:
+    def __init__(
+        self,
+        hidden_size: int,
+        *,
+        activation: str = "tanh",
+        layer_norm: bool = False,
+    ) -> None:
         super().__init__()
-        self.entity = nn.Sequential(nn.Linear(6, hidden_size), nn.Tanh())
+        entity: list[nn.Module] = [nn.Linear(6, hidden_size)]
+        if layer_norm:
+            entity.append(nn.LayerNorm(hidden_size))
+        entity.append(_activation(activation))
+        self.entity = nn.Sequential(*entity)
+        fusion_input = nn.Linear(8 + 7 + 4 + 4 + 2 * hidden_size, hidden_size)
+        fusion: list[nn.Module] = [fusion_input]
+        if layer_norm:
+            fusion.append(nn.LayerNorm(hidden_size))
+        fusion.append(_activation(activation))
+        fusion.extend(_hidden_block(hidden_size, activation, layer_norm))
         self.fusion = nn.Sequential(
-            nn.Linear(8 + 7 + 4 + 4 + 2 * hidden_size, hidden_size),
-            nn.Tanh(),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Tanh(),
+            *fusion,
         )
 
     def forward(self, observation: TeamBatch) -> Tensor:
@@ -226,9 +255,19 @@ class AgentEncoder(nn.Module):
 class SharedActor(nn.Module):
     """One decentralized actor applied equivariantly to all team agents."""
 
-    def __init__(self, hidden_size: int = 64) -> None:
+    def __init__(
+        self,
+        hidden_size: int = 64,
+        *,
+        activation: str = "tanh",
+        layer_norm: bool = False,
+    ) -> None:
         super().__init__()
-        self.encoder = AgentEncoder(hidden_size)
+        self.encoder = AgentEncoder(
+            hidden_size,
+            activation=activation,
+            layer_norm=layer_norm,
+        )
         self.action_head = nn.Linear(hidden_size, 2)
         self.log_std = nn.Parameter(torch.full((2,), -0.5))
 
@@ -244,14 +283,26 @@ class SharedActor(nn.Module):
 class RoleSharedActor(nn.Module):
     """Shared actor conditioned on transient responsibility, never robot identity."""
 
-    def __init__(self, hidden_size: int = 64) -> None:
+    def __init__(
+        self,
+        hidden_size: int = 64,
+        *,
+        activation: str = "tanh",
+        layer_norm: bool = False,
+    ) -> None:
         super().__init__()
-        self.entity = nn.Sequential(nn.Linear(6, hidden_size), nn.Tanh())
+        entity: list[nn.Module] = [nn.Linear(6, hidden_size)]
+        if layer_norm:
+            entity.append(nn.LayerNorm(hidden_size))
+        entity.append(_activation(activation))
+        self.entity = nn.Sequential(*entity)
+        fusion: list[nn.Module] = [nn.Linear(8 + 7 + 4 + 9 + 2 * hidden_size, hidden_size)]
+        if layer_norm:
+            fusion.append(nn.LayerNorm(hidden_size))
+        fusion.append(_activation(activation))
+        fusion.extend(_hidden_block(hidden_size, activation, layer_norm))
         self.fusion = nn.Sequential(
-            nn.Linear(8 + 7 + 4 + 9 + 2 * hidden_size, hidden_size),
-            nn.Tanh(),
-            nn.Linear(hidden_size, hidden_size),
-            nn.Tanh(),
+            *fusion,
         )
         self.action_head = nn.Linear(hidden_size, 2)
         self.log_std = nn.Parameter(torch.full((2,), -0.5))
@@ -283,9 +334,19 @@ class RoleSharedActor(nn.Module):
 class LocalCritic(nn.Module):
     """Shared local critic used by IPPO."""
 
-    def __init__(self, hidden_size: int = 64) -> None:
+    def __init__(
+        self,
+        hidden_size: int = 64,
+        *,
+        activation: str = "tanh",
+        layer_norm: bool = False,
+    ) -> None:
         super().__init__()
-        self.encoder = AgentEncoder(hidden_size)
+        self.encoder = AgentEncoder(
+            hidden_size,
+            activation=activation,
+            layer_norm=layer_norm,
+        )
         self.value_head = nn.Linear(hidden_size, 1)
 
     def forward(self, observation: TeamBatch) -> Tensor:
@@ -295,14 +356,24 @@ class LocalCritic(nn.Module):
 class CentralizedCritic(nn.Module):
     """Permutation-equivariant team critic used only while training MAPPO."""
 
-    def __init__(self, hidden_size: int = 64) -> None:
+    def __init__(
+        self,
+        hidden_size: int = 64,
+        *,
+        activation: str = "tanh",
+        layer_norm: bool = False,
+    ) -> None:
         super().__init__()
-        self.encoder = AgentEncoder(hidden_size)
-        self.value_head = nn.Sequential(
-            nn.Linear(2 * hidden_size, hidden_size),
-            nn.Tanh(),
-            nn.Linear(hidden_size, 1),
+        self.encoder = AgentEncoder(
+            hidden_size,
+            activation=activation,
+            layer_norm=layer_norm,
         )
+        value: list[nn.Module] = [nn.Linear(2 * hidden_size, hidden_size)]
+        if layer_norm:
+            value.append(nn.LayerNorm(hidden_size))
+        value.extend((_activation(activation), nn.Linear(hidden_size, 1)))
+        self.value_head = nn.Sequential(*value)
 
     def forward(self, observation: TeamBatch) -> Tensor:
         local = self.encoder(observation)

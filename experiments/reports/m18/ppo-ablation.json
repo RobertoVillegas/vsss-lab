@@ -1,0 +1,188 @@
+{
+  "arms": [
+    {
+      "actor_parameters": 54148,
+      "arm": "128_tanh",
+      "compute_seconds": 51.090066602999286,
+      "critic_parameters": 86273,
+      "environment_steps": 81920,
+      "frames_per_second": 2162.326430656389,
+      "mean_approx_kl": 0.002094495363418185,
+      "mean_clip_fraction": 0.019951339912040567,
+      "mean_progress": -0.11065575098182308,
+      "mean_return": -0.8467260241110066,
+      "mean_value_loss": 0.3925379245442855,
+      "promotion_floors_passed": 0,
+      "semantic_family_success": {
+        "approach": 0.0,
+        "clearance": 0.0,
+        "interception": 0.0,
+        "pass_receive": 0.0,
+        "rotation_recovery": 0.0,
+        "save_deflection": 0.0,
+        "shot": 0.0
+      },
+      "semantic_success_rate": 0.0,
+      "semantic_unresolved_rate": 0.42857142857142855,
+      "terminal_score": 0.5
+    },
+    {
+      "actor_parameters": 206596,
+      "arm": "256_tanh",
+      "compute_seconds": 52.25145831400005,
+      "critic_parameters": 336385,
+      "environment_steps": 81920,
+      "frames_per_second": 2109.4106508996047,
+      "mean_approx_kl": 0.0034852486506959505,
+      "mean_clip_fraction": 0.040728446888351755,
+      "mean_progress": -0.09149229627946624,
+      "mean_return": -0.8434272707802789,
+      "mean_value_loss": 0.395569297333077,
+      "promotion_floors_passed": 0,
+      "semantic_family_success": {
+        "approach": 0.25,
+        "clearance": 0.0,
+        "interception": 0.125,
+        "pass_receive": 0.0,
+        "rotation_recovery": 0.0,
+        "save_deflection": 0.25,
+        "shot": 0.0
+      },
+      "semantic_success_rate": 0.08928571428571429,
+      "semantic_unresolved_rate": 0.4732142857142857,
+      "terminal_score": 0.5
+    },
+    {
+      "actor_parameters": 208132,
+      "arm": "256_tanh_ln",
+      "compute_seconds": 52.560806485002104,
+      "critic_parameters": 338433,
+      "environment_steps": 81920,
+      "frames_per_second": 2103.949225814866,
+      "mean_approx_kl": 0.01013428263276283,
+      "mean_clip_fraction": 0.11431703875132371,
+      "mean_progress": -0.11766144962311956,
+      "mean_return": -0.8394553863995997,
+      "mean_value_loss": 0.3519246625364758,
+      "promotion_floors_passed": 0,
+      "semantic_family_success": {
+        "approach": 0.0,
+        "clearance": 0.0,
+        "interception": 0.0,
+        "pass_receive": 0.0,
+        "rotation_recovery": 0.0,
+        "save_deflection": 0.0,
+        "shot": 0.0
+      },
+      "semantic_success_rate": 0.0,
+      "semantic_unresolved_rate": 0.48214285714285715,
+      "terminal_score": 0.5
+    },
+    {
+      "actor_parameters": 208132,
+      "arm": "256_relu_ln",
+      "compute_seconds": 53.0738038060008,
+      "critic_parameters": 338433,
+      "environment_steps": 81920,
+      "frames_per_second": 2084.631739502474,
+      "mean_approx_kl": 0.007607132312388144,
+      "mean_clip_fraction": 0.08897566623236344,
+      "mean_progress": -0.11870032664446625,
+      "mean_return": -0.8183543584628378,
+      "mean_value_loss": 0.3569999034749344,
+      "promotion_floors_passed": 2,
+      "semantic_family_success": {
+        "approach": 0.0,
+        "clearance": 0.0625,
+        "interception": 0.375,
+        "pass_receive": 0.0,
+        "rotation_recovery": 0.0,
+        "save_deflection": 0.375,
+        "shot": 0.0
+      },
+      "semantic_success_rate": 0.11607142857142858,
+      "semantic_unresolved_rate": 0.4910714285714286,
+      "terminal_score": 0.5
+    },
+    {
+      "actor_parameters": 208132,
+      "arm": "256_relu_ln_2epoch",
+      "compute_seconds": 54.13746799100045,
+      "critic_parameters": 338433,
+      "environment_steps": 81920,
+      "frames_per_second": 2049.095431664047,
+      "mean_approx_kl": 0.010138259615357206,
+      "mean_clip_fraction": 0.11152141614293214,
+      "mean_progress": -0.10429252334724878,
+      "mean_return": -0.718236225604486,
+      "mean_value_loss": 0.33736189049086535,
+      "promotion_floors_passed": 0,
+      "semantic_family_success": {
+        "approach": 0.0,
+        "clearance": 0.0,
+        "interception": 0.0,
+        "pass_receive": 0.0,
+        "rotation_recovery": 0.0,
+        "save_deflection": 0.0,
+        "shot": 0.0
+      },
+      "semantic_success_rate": 0.0,
+      "semantic_unresolved_rate": 0.4464285714285714,
+      "terminal_score": 0.5
+    },
+    {
+      "actor_parameters": 208132,
+      "arm": "256_relu_ln_impulse",
+      "compute_seconds": 53.384168522003165,
+      "critic_parameters": 338433,
+      "environment_steps": 81920,
+      "frames_per_second": 2055.082635562039,
+      "mean_approx_kl": 0.007745000829875849,
+      "mean_clip_fraction": 0.09117757704243559,
+      "mean_progress": -0.1073440437190584,
+      "mean_return": -0.7103312732348831,
+      "mean_value_loss": 0.32231653774506414,
+      "promotion_floors_passed": 1,
+      "semantic_family_success": {
+        "approach": 0.125,
+        "clearance": 0.0,
+        "interception": 0.125,
+        "pass_receive": 0.25,
+        "rotation_recovery": 0.0,
+        "save_deflection": 0.125,
+        "shot": 0.0
+      },
+      "semantic_success_rate": 0.08928571428571427,
+      "semantic_unresolved_rate": 0.4107142857142857,
+      "terminal_score": 0.5
+    }
+  ],
+  "candidate": "256_relu_ln",
+  "decision": "candidate_requires_longer_confirmation",
+  "protocol": {
+    "environment_steps_per_arm": 81920,
+    "iterations": 10,
+    "paired_seeds": [
+      1800007,
+      1800008
+    ],
+    "rollout_steps": 64,
+    "selection_order": [
+      "promotion_floors_passed",
+      "semantic_success_rate",
+      "terminal_score",
+      "semantic_unresolved_rate",
+      "frames_per_second"
+    ],
+    "worlds": 64
+  },
+  "ranking": [
+    "256_relu_ln",
+    "256_relu_ln_impulse",
+    "256_tanh",
+    "128_tanh",
+    "256_relu_ln_2epoch",
+    "256_tanh_ln"
+  ],
+  "schema_version": 1
+}
