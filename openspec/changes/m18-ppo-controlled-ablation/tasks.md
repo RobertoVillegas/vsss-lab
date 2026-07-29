@@ -6,4 +6,4 @@
 - [x] Implement matched-step paired-seed M18 runner
 - [x] Run CUDA smoke screening and persist the report
 - [x] Run full gates and document evidence
-- [ ] Commit, push, and merge immediately
+- [x] Commit and push to `main`
