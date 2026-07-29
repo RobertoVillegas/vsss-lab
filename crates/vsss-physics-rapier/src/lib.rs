@@ -66,6 +66,11 @@ impl RapierBackend {
         let ball_body = RigidBodyBuilder::dynamic()
             .translation(Vector::new(state.ball.x.get(), state.ball.y.get()))
             .ccd_enabled(true)
+            // Rapier's generic sleep threshold is 0.4 length-units/s. In our
+            // metre-scale VSSS field that can freeze a visibly moving ball
+            // after two seconds. Keep the single ball active so damping,
+            // contacts, and low-speed roll remain physically continuous.
+            .can_sleep(false)
             .linear_damping(0.15)
             .angular_damping(0.1)
             .build();

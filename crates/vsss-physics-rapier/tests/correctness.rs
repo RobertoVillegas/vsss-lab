@@ -119,6 +119,59 @@ fn ball_center_crossing_alone_is_not_a_goal() {
 }
 
 #[test]
+fn low_speed_ball_decelerates_continuously_past_rapier_sleep_window() {
+    let mut backend = world();
+    let mut snapshot = backend.snapshot();
+    snapshot.ball.x = Distance(0.0);
+    snapshot.ball.y = Distance(0.0);
+    snapshot.ball.vx.0 = 0.0;
+    snapshot.ball.vy.0 = 0.2;
+    snapshot.ball.omega.0 = 0.0;
+    backend.restore(&snapshot).unwrap();
+
+    let mut previous_speed = snapshot.ball.vy.get();
+    for _ in 0..600 {
+        let state = backend.step(&stopped()).unwrap();
+        let speed = state.ball.vx.get().hypot(state.ball.vy.get());
+        assert!(speed > 0.0, "ball froze at tick {}", state.tick);
+        assert!(
+            speed <= previous_speed + 1.0e-6,
+            "free motion accelerated from {previous_speed} to {speed}"
+        );
+        previous_speed = speed;
+    }
+
+    let state = backend.snapshot();
+    assert!((0.12..0.14).contains(&previous_speed), "{previous_speed}");
+    assert!(
+        (0.45..0.55).contains(&state.ball.y.get()),
+        "{}",
+        state.ball.y.get()
+    );
+}
+
+#[test]
+fn active_stationary_ball_does_not_drift() {
+    let mut backend = world();
+    let mut snapshot = backend.snapshot();
+    snapshot.ball.x = Distance(0.0);
+    snapshot.ball.y = Distance(0.0);
+    snapshot.ball.vx.0 = 0.0;
+    snapshot.ball.vy.0 = 0.0;
+    snapshot.ball.omega.0 = 0.0;
+    backend.restore(&snapshot).unwrap();
+    let initial = snapshot.ball;
+    for _ in 0..1_200 {
+        backend.step(&stopped()).unwrap();
+    }
+    let ball = backend.snapshot().ball;
+    assert_eq!(ball.x, initial.x);
+    assert_eq!(ball.y, initial.y);
+    assert_eq!(ball.vx, initial.vx);
+    assert_eq!(ball.vy, initial.vy);
+}
+
+#[test]
 fn resetting_one_batch_world_preserves_neighbor() {
     let mut batch = PhysicsBatch::new(vec![world(), world()]);
     batch.step(&[stopped(), stopped()]).unwrap();
