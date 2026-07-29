@@ -158,6 +158,8 @@ The reward is intentionally decomposed instead of relying only on goals:
 - pass-like teammate transitions provide a small cooperation signal;
 - inactivity, unnecessary wheel effort, and abrupt control changes are
   regularized;
+- sustained turn-in-place behavior is penalized only after a grace period when
+  the robot is slow and outside the ball-control envelope;
 - episode duration is bounded so deadlocks cannot dominate data collection.
 
 Attacking geometry uses discounted potential change:
@@ -344,7 +346,9 @@ replay capture every 25 learner iterations, 60-second captures, checkpoints ever
 selection, and 64 parallel worlds:
 
 ```bash
-just league-live-m20 50000000 25 60 25 auto 64
+just league-live-m21 \
+  /path/to/healthy-checkpoint.pt \
+  50000000 25 60 25 auto 64
 ```
 
 The command allocates a directory such as
