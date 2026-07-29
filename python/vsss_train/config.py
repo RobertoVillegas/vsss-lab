@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import tomllib
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
@@ -90,6 +90,7 @@ class MarlConfig:
     semantic_terminal_reward: float = 2.0
     semantic_regression_patience: int = 0
     semantic_regression_warmup_evaluations: int = 0
+    semantic_promotion_floors: dict[str, float] = field(default_factory=dict)
     observation_dropout: float = 0.0
     observation_noise_std: float = 0.0
     seed: int = 7
@@ -122,6 +123,10 @@ class MarlConfig:
     movement_speed_threshold: float = 0.03
     teammate_spacing: float = 0.14
     teammate_congestion_coefficient: float = 0.002
+    contact_distance: float = 0.082
+    contact_grace_seconds: float = 0.5
+    ally_deadlock_coefficient: float = 0.0
+    opponent_deadlock_coefficient: float = 0.0
     defensive_coverage_coefficient: float = 1.0
     defensive_activation_x: float = 0.15
     draw_penalty: float = 0.25
@@ -157,6 +162,19 @@ class MarlConfig:
             raise ValueError("semantic_regression_patience must be non-negative")
         if self.semantic_regression_warmup_evaluations < 0:
             raise ValueError("semantic_regression_warmup_evaluations must be non-negative")
+        known_families = {
+            "approach",
+            "clearance",
+            "interception",
+            "pass_receive",
+            "rotation_recovery",
+            "save_deflection",
+            "shot",
+        }
+        if set(self.semantic_promotion_floors) - known_families:
+            raise ValueError("semantic promotion floor has an unknown skill family")
+        if any(not 0.0 <= value <= 1.0 for value in self.semantic_promotion_floors.values()):
+            raise ValueError("semantic promotion floors must be in [0, 1]")
         if not 0.0 <= self.observation_dropout < 1.0:
             raise ValueError("observation_dropout must be in [0, 1)")
         if self.observation_noise_std < 0.0:
@@ -178,6 +196,8 @@ class MarlConfig:
             self.attacker_alignment_coefficient,
             self.time_penalty_coefficient,
             self.teammate_congestion_coefficient,
+            self.ally_deadlock_coefficient,
+            self.opponent_deadlock_coefficient,
             self.defensive_coverage_coefficient,
             self.draw_penalty,
             self.stagnation_penalty,
@@ -189,6 +209,10 @@ class MarlConfig:
             raise ValueError("MARL reward coefficients must be non-negative")
         if self.teammate_spacing <= 0.075:
             raise ValueError("teammate_spacing must exceed the robot body width")
+        if self.contact_distance <= 0.075:
+            raise ValueError("contact_distance must exceed the robot body width")
+        if self.contact_grace_seconds <= 0.0:
+            raise ValueError("contact_grace_seconds must be positive")
         if (
             self.stagnation_seconds <= 0.0
             or self.stagnation_ball_distance <= 0.0

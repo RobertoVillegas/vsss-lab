@@ -226,10 +226,33 @@ class TrainingDashboard:
             rotation = latest.curriculum.get("rotation")
             if isinstance(rotation, dict):
                 table.add_row(
-                    "rotations / uncovered",
+                    "rotations done/tries · uncovered",
                     (
-                        f"{int(rotation.get('role_switches', 0)):,} / "
+                        f"{int(rotation.get('completed', 0))}/"
+                        f"{int(rotation.get('attempts', 0))} · "
                         f"{float(rotation.get('uncovered_ratio', 0.0)):.1%}"
+                    ),
+                    "",
+                )
+            contact = latest.curriculum.get("contact")
+            if isinstance(contact, dict):
+                table.add_row(
+                    "contact ally/enemy · deadlocks · escapes",
+                    (
+                        f"{float(contact.get('ally_seconds', 0.0)):.1f}s/"
+                        f"{float(contact.get('opponent_seconds', 0.0)):.1f}s · "
+                        f"{int(contact.get('ally_deadlocks', 0))}/"
+                        f"{int(contact.get('opponent_deadlocks', 0))} · "
+                        f"{int(contact.get('escapes', 0))}"
+                    ),
+                    "",
+                )
+            rosters = latest.curriculum.get("allocation_by_roster")
+            if isinstance(rosters, dict) and rosters:
+                table.add_row(
+                    "roster curriculum",
+                    "  ".join(
+                        f"{roster}:{int(count)}" for roster, count in sorted(rosters.items())
                     ),
                     "",
                 )

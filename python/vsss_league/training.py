@@ -114,6 +114,10 @@ def create_rollout_session(config: MarlConfig, config_json: str, state_json: str
             movement_speed_threshold=config.movement_speed_threshold,
             teammate_spacing=config.teammate_spacing,
             teammate_congestion_coefficient=config.teammate_congestion_coefficient,
+            contact_distance=config.contact_distance,
+            contact_grace_seconds=config.contact_grace_seconds,
+            ally_deadlock_coefficient=config.ally_deadlock_coefficient,
+            opponent_deadlock_coefficient=config.opponent_deadlock_coefficient,
             defensive_coverage_coefficient=config.defensive_coverage_coefficient,
             defensive_activation_x=config.defensive_activation_x,
             draw_penalty=config.draw_penalty,
@@ -356,6 +360,7 @@ def collect_self_play_trajectory(
                                 "family": semantic_scenario.parameters.family,
                                 "controlled_team": (semantic_scenario.parameters.controlled_team),
                                 "difficulty": asdict(semantic_scenario.parameters.difficulty),
+                                "roster": semantic_scenario.parameters.roster,
                                 "parameter_hash": semantic_scenario.parameters.digest,
                                 "state_hash": semantic_scenario.scenario.digest,
                                 "status": skill_outcome.status.value,
@@ -401,6 +406,7 @@ def collect_self_play_trajectory(
                 dtype=torch.float32,
                 device=learner.device,
             )
+            * policy_observation.self_features[..., -1]
         )
         terminated.append(
             torch.tensor(
@@ -577,14 +583,39 @@ def _curriculum_telemetry(session: RolloutSession | None) -> dict[str, object] |
         telemetry["outcomes"] = dict(session.skill_outcomes)
         telemetry["trials"] = tuple(session.skill_trials)
         total_steps = max(1, int(session.environment.role_decisions.sum()))
+        rotation_trials = [
+            trial for trial in session.skill_trials if trial["family"] == "rotation_recovery"
+        ]
+        completed_rotations = sum(
+            trial["status"] == SkillStatus.SUCCESS.value for trial in rotation_trials
+        )
         telemetry["rotation"] = {
             "role_switches": int(session.environment.role_switches.sum()),
             "uncovered_world_steps": int(session.environment.uncovered_steps.sum()),
             "uncovered_ratio": float(session.environment.uncovered_steps.sum()) / total_steps,
+            "completed": completed_rotations,
+            "attempts": len(rotation_trials),
+            "completion_rate": completed_rotations / len(rotation_trials)
+            if rotation_trials
+            else None,
+        }
+        telemetry["contact"] = {
+            "ally_seconds": float(session.environment.ally_contact_steps.sum())
+            * session.environment.decision_period,
+            "opponent_seconds": float(session.environment.opponent_contact_steps.sum())
+            * session.environment.decision_period,
+            "ally_deadlocks": int(session.environment.ally_deadlocks.sum()),
+            "opponent_deadlocks": int(session.environment.opponent_deadlocks.sum()),
+            "escapes": int(session.environment.contact_escapes.sum()),
         }
         session.environment.role_switches.fill(0)
         session.environment.uncovered_steps.fill(0)
         session.environment.role_decisions.fill(0)
+        session.environment.ally_contact_steps.fill(0)
+        session.environment.opponent_contact_steps.fill(0)
+        session.environment.ally_deadlocks.fill(0)
+        session.environment.opponent_deadlocks.fill(0)
+        session.environment.contact_escapes.fill(0)
         session.skill_outcomes.clear()
         session.skill_trials.clear()
         return telemetry

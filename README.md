@@ -123,7 +123,7 @@ CUDA accelerates the neural part of the workload. It does not automatically move
 Rapier physics onto the GPU, so throughput depends on both CPU simulation and GPU
 batch efficiency.
 
-Training begins with a heuristic bootstrap and then transitions to self-play.
+Training begins with a short heuristic bootstrap and then transitions to self-play.
 The opponent population mixes the current policy, recent historical
 checkpoints, and a heuristic opponent. This reduces overfitting to a single
 mirror opponent and makes regressions easier to detect.
@@ -153,6 +153,8 @@ The reward is intentionally decomposed instead of relying only on goals:
   penalizes danger toward the own goal;
 - defense rewards useful coverage and intervention;
 - spacing and congestion terms discourage persistent clustering;
+- contextual contact terms permit brief and productive challenges while
+  discouraging sustained ally deadlocks and opponent pushing with a stagnant ball;
 - pass-like teammate transitions provide a small cooperation signal;
 - inactivity, unnecessary wheel effort, and abrupt control changes are
   regularized;
@@ -213,10 +215,14 @@ The adaptive-training layer provides:
 - validity-checked scenario mutation and learning-progress allocation;
 - semantic approach, interception, save/deflection, clearance, shot,
   pass/receive, and rotation/recovery drills with mirrored colors and moving balls;
+- roster-scaled practice: 1v0/1v1 for control, 2v1/2v2 for coordination, and
+  3v2/3v3 for team rotation, with simpler skills retained as rehearsal;
 - graduated immutable holdouts at 0.10, 0.25, 0.40, and 0.65 difficulty,
   plus regression stopping that preserves the best semantic checkpoint;
 - causal outcomes, early termination, independent difficulty axes, and bounded
   anti-farming skill rewards;
+- promotion floors for pass, rotation, clearance, interception, and save skills
+  so aggregate success cannot hide a coordination regression;
 - persistent multiobjective Optuna studies with smoke, screen, and confirmation
   fidelities;
 - bounded reward and PPO search parameters with commit, seed, parent, compute,
