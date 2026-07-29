@@ -259,6 +259,9 @@ def test_legacy_checkpoint_accepts_only_neutral_new_fields(tmp_path: Path) -> No
         "time_penalty_coefficient",
         "movement_speed_threshold",
         "curriculum_heuristic_iterations",
+        "semantic_curriculum",
+        "semantic_full_match_fraction",
+        "semantic_terminal_reward",
     ):
         payload["config"].pop(key)
     payload["config_fingerprint"] = "legacy-fingerprint"
@@ -275,6 +278,44 @@ def test_legacy_checkpoint_accepts_only_neutral_new_fields(tmp_path: Path) -> No
                 ball_direction_coefficient=1.0,
             )
         ).load(checkpoint)
+
+
+def test_policy_warm_start_allows_reward_change_and_resets_version(tmp_path: Path) -> None:
+    source = MarlLearner(MarlConfig(device="cpu", num_envs=1, hidden_size=8, epochs=1))
+    source.policy_version = 700
+    checkpoint = tmp_path / "source.pt"
+    source.save(checkpoint)
+    target = MarlLearner(
+        MarlConfig(
+            device="cpu",
+            num_envs=1,
+            hidden_size=8,
+            epochs=1,
+            semantic_curriculum=True,
+            entropy_coefficient=0.003,
+            minimum_log_std=-1.2,
+        )
+    )
+
+    source_version = target.initialize_policy(checkpoint)
+
+    assert source_version == 700
+    assert target.policy_version == 0
+    for actual, expected in zip(target.actor.parameters(), source.actor.parameters(), strict=True):
+        assert torch.equal(actual, expected)
+    for actual, expected in zip(
+        target.critic.parameters(), source.critic.parameters(), strict=True
+    ):
+        assert torch.equal(actual, expected)
+
+
+def test_policy_warm_start_rejects_architecture_change(tmp_path: Path) -> None:
+    source = MarlLearner(MarlConfig(device="cpu", num_envs=1, hidden_size=8, epochs=1))
+    checkpoint = tmp_path / "source.pt"
+    source.save(checkpoint)
+    target = MarlLearner(MarlConfig(device="cpu", num_envs=1, hidden_size=16, epochs=1))
+    with pytest.raises(ValueError, match="architecture mismatch"):
+        target.initialize_policy(checkpoint)
 
 
 def test_versioned_marl_configs() -> None:

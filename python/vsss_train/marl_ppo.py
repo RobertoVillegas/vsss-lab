@@ -47,6 +47,9 @@ LEGACY_NEUTRAL_CONFIG = {
     "observation_noise_std": 0.0,
     "goal_coefficient": 10.0,
     "progress_coefficient": 0.0,
+    "semantic_curriculum": False,
+    "semantic_full_match_fraction": 0.25,
+    "semantic_terminal_reward": 2.0,
 }
 ACTION_EPSILON = 1e-6
 
@@ -289,6 +292,35 @@ class MarlLearner:
             },
             path,
         )
+
+    def initialize_policy(self, path: Path) -> int:
+        """Warm-start actor and critic while retaining a fresh optimizer and RNG."""
+        payload = cast(
+            dict[str, Any],
+            torch.load(path, map_location="cpu", weights_only=True),
+        )
+        if payload.get("schema_version") != MARL_CHECKPOINT_SCHEMA:
+            raise ValueError("incompatible MARL warm-start checkpoint schema")
+        if payload.get("algorithm") != self.config.algorithm:
+            raise ValueError("MARL warm-start checkpoint algorithm mismatch")
+        stored = payload.get("config")
+        if not isinstance(stored, dict):
+            raise ValueError("MARL warm-start checkpoint lacks configuration")
+        current = asdict(self.config)
+        architectural = ("hidden_size", "policy_architecture", "action_parser")
+        mismatch = [
+            key
+            for key in architectural
+            if stored.get(key, LEGACY_NEUTRAL_CONFIG.get(key)) != current[key]
+        ]
+        if mismatch:
+            raise ValueError(
+                f"MARL warm-start architecture mismatch: {', '.join(sorted(mismatch))}"
+            )
+        self.actor.load_state_dict(payload["actor"])
+        self.critic.load_state_dict(payload["critic"])
+        self.policy_version = 0
+        return int(payload["policy_version"])
 
     def load(self, path: Path) -> None:
         payload = _load_checkpoint_payload(path, self.config)

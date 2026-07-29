@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import json
 import math
 import signal
@@ -16,6 +17,7 @@ from vsss_eval import analyze_replay
 from vsss_train.config import MarlConfig, load_marl_config
 from vsss_train.marl_env import distill_dynamic_teacher
 from vsss_train.marl_ppo import MarlLearner, PolicyActor, load_policy_actor
+from vsss_train.semantic_evaluation import evaluate_semantic_skills
 
 from vsss_league.progress import TrainingDashboard
 from vsss_league.promotion import FixtureResult, decide_promotion
@@ -71,6 +73,9 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--device", choices=("auto", "cpu", "cuda"))
     run.add_argument("--num-envs", type=int)
     run.add_argument("--resume", action="store_true")
+    run.add_argument("--initialize-from", type=Path)
+    run.add_argument("--semantic-eval-every", type=int, default=0)
+    run.add_argument("--semantic-eval-seeds", type=int, default=3)
     run.add_argument("--bootstrap-samples", type=int, default=2_048)
     run.add_argument("--bootstrap-epochs", type=int, default=20)
     tournament = subcommands.add_parser("tournament")
@@ -118,11 +123,15 @@ def _run(arguments: argparse.Namespace) -> None:
         or arguments.capture_every <= 0
         or arguments.capture_seconds <= 0
         or arguments.checkpoint_every <= 0
+        or arguments.semantic_eval_every < 0
+        or arguments.semantic_eval_seeds <= 0
     ):
         raise ValueError(
             "iterations, matches, steps, capture-every, capture-seconds, and checkpoint-every "
-            "must be positive"
+            "must be positive (semantic-eval-every may be zero)"
         )
+    if arguments.resume and arguments.initialize_from is not None:
+        raise ValueError("--resume and --initialize-from are mutually exclusive")
     run_dir: Path = arguments.run_dir
     checkpoint_dir = run_dir / "checkpoints"
     replay_dir = run_dir / "replays"
@@ -138,6 +147,8 @@ def _run(arguments: argparse.Namespace) -> None:
     match_config = json.loads(config_json)
     capture_frames = round(arguments.capture_seconds / float(match_config["control_period"]))
     learner = MarlLearner(config)
+    if arguments.semantic_eval_every and not config.semantic_curriculum:
+        raise ValueError("semantic evaluation cadence requires semantic_curriculum=true")
     registry = LeagueRegistry.load(run_dir / "registry.json")
     if registry.entries:
         if not arguments.resume:
@@ -151,14 +162,31 @@ def _run(arguments: argparse.Namespace) -> None:
     else:
         if arguments.resume:
             raise ValueError("cannot resume a run without a league registry")
-        distill_dynamic_teacher(
-            learner.actor,
-            config_json,
-            state_json,
-            seed=config.seed,
-            samples=arguments.bootstrap_samples,
-            epochs=arguments.bootstrap_epochs,
-        )
+        warm_start_parent: str | None = None
+        if arguments.initialize_from is not None:
+            source_version = learner.initialize_policy(arguments.initialize_from)
+            source_hash = _sha256(arguments.initialize_from)
+            warm_start_parent = f"warm-start:{source_hash[:12]}@{source_version}"
+            _write_json_atomic(
+                run_dir / "initialization.json",
+                {
+                    "schema_version": 1,
+                    "mode": "policy_without_optimizer",
+                    "source_checkpoint": str(arguments.initialize_from.resolve()),
+                    "source_sha256": source_hash,
+                    "source_policy_version": source_version,
+                    "reset": ["optimizer", "policy_version", "rng", "curriculum"],
+                },
+            )
+        else:
+            distill_dynamic_teacher(
+                learner.actor,
+                config_json,
+                state_json,
+                seed=config.seed,
+                samples=arguments.bootstrap_samples,
+                epochs=arguments.bootstrap_epochs,
+            )
         initial_checkpoint = checkpoint_dir / "iteration-0000.pt"
         learner.save(initial_checkpoint)
         registry.register(
@@ -170,7 +198,7 @@ def _run(arguments: argparse.Namespace) -> None:
                 checkpoint=initial_checkpoint,
                 algorithm=config.algorithm,
                 rating=1_000.0,
-                parent=None,
+                parent=warm_start_parent,
                 created_at=_timestamp(),
                 training_iteration=0,
             )
@@ -194,6 +222,8 @@ def _run(arguments: argparse.Namespace) -> None:
     started_at = time.monotonic()
     rollout_session = create_rollout_session(config, config_json, state_json)
     curriculum_state_path = run_dir / "semantic-curriculum.json"
+    semantic_evaluations_path = run_dir / "semantic-evaluations.jsonl"
+    best_semantic_path = run_dir / "best-semantic.json"
     if arguments.resume and rollout_session.semantic_curriculum is not None:
         if not curriculum_state_path.is_file():
             raise ValueError("semantic resume requires semantic-curriculum.json")
@@ -277,6 +307,69 @@ def _run(arguments: argparse.Namespace) -> None:
                 result = replace(result, checkpoint=str(checkpoint.resolve()))
             if checkpoint is not None:
                 parent_key = _register_candidate(registry, config, result, checkpoint, parent_key)
+            semantic_evaluation: dict[str, object] | None = None
+            if (
+                checkpoint is not None
+                and arguments.semantic_eval_every
+                and iteration % arguments.semantic_eval_every == 0
+                and rollout_session.semantic_curriculum is not None
+            ):
+                holdout_seeds = tuple(
+                    10_007 + index * 30 for index in range(arguments.semantic_eval_seeds)
+                )
+                report = evaluate_semantic_skills(
+                    learner.actor,
+                    rollout_session.semantic_curriculum.holdouts(seeds=holdout_seeds),
+                    config_json,
+                    state_json,
+                    device=learner.device,
+                )
+                successes = sum(family.successes for family in report.families)
+                unresolved = sum(family.unresolved for family in report.families)
+                minimum_family_rate = min(family.success_rate for family in report.families)
+                semantic_evaluation = {
+                    "iteration": iteration,
+                    "checkpoint": str(checkpoint.resolve()),
+                    "successes": successes,
+                    "attempts": report.attempts,
+                    "success_rate": successes / report.attempts,
+                    "minimum_family_success_rate": minimum_family_rate,
+                    "unresolved": unresolved,
+                    "families": {
+                        family.family: {
+                            "success_rate": family.success_rate,
+                            "successes": family.successes,
+                            "attempts": family.attempts,
+                        }
+                        for family in report.families
+                    },
+                }
+                with semantic_evaluations_path.open("a", encoding="utf-8") as evaluations:
+                    evaluations.write(
+                        json.dumps(semantic_evaluation, sort_keys=True, separators=(",", ":"))
+                        + "\n"
+                    )
+                previous_best = (
+                    json.loads(best_semantic_path.read_text())
+                    if best_semantic_path.is_file()
+                    else None
+                )
+                candidate_score = (
+                    minimum_family_rate,
+                    successes / report.attempts,
+                    -unresolved,
+                )
+                previous_score = (
+                    (
+                        float(previous_best["minimum_family_success_rate"]),
+                        float(previous_best["success_rate"]),
+                        -int(previous_best["unresolved"]),
+                    )
+                    if isinstance(previous_best, dict)
+                    else None
+                )
+                if previous_score is None or candidate_score > previous_score:
+                    _write_json_atomic(best_semantic_path, semantic_evaluation)
             if interrupt.stop_requested and checkpoint is None:
                 checkpoint = checkpoint_dir / f"iteration-{iteration:06d}.pt"
                 learner.save(checkpoint)
@@ -302,6 +395,7 @@ def _run(arguments: argparse.Namespace) -> None:
                     "iterations_per_second": rate,
                 },
                 "exploration": {"actor_log_std": actor_log_std},
+                "semantic_evaluation": semantic_evaluation,
             }
             with metrics_path.open("a", encoding="utf-8") as metrics:
                 metrics.write(
@@ -494,6 +588,14 @@ def _write_json_atomic(path: Path, value: dict[str, object]) -> None:
         encoding="utf-8",
     )
     temporary.replace(path)
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 if __name__ == "__main__":
