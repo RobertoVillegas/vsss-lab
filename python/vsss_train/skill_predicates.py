@@ -7,6 +7,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
+from vsss_train.roles import RoleAssignment
 from vsss_train.semantic_scenarios import SkillContext
 
 
@@ -40,6 +41,8 @@ class SkillFrame:
     ball_vy: float
     robot_positions: Mapping[str, tuple[float, float]]
     robot_teams: Mapping[str, str]
+    robot_roles: Mapping[str, str] | None = None
+    coverage_uncovered: bool = False
     events: int = 0
 
 
@@ -81,6 +84,7 @@ class SkillEvaluator:
         self._support_touched = False
         self._opponent_after_support = False
         self._confirmation = 0
+        self._uncovered_steps = 0
         self._outcome: SkillOutcome | None = None
 
     def observe(self, frame: SkillFrame) -> SkillOutcome:
@@ -146,18 +150,24 @@ class SkillEvaluator:
             ):
                 return self._make(SkillStatus.SUCCESS, SkillReason.PASS_RECEIVED, frame.step)
         elif family == "rotation_recovery":
-            attack_sign = 1.0 if self.context.target_goal_x > 0 else -1.0
-            recovery = (
-                frame.robot_positions.get(self.context.support_robot_id)
-                if self.context.support_robot_id is not None
-                else None
+            if frame.coverage_uncovered:
+                self._uncovered_steps += 1
+            roles = frame.robot_roles or {}
+            recovered_to_coverage = (
+                self.context.support_robot_id is not None
+                and roles.get(self.context.support_robot_id) == "coverage"
             )
-            recovered_goal_side = (
-                recovery is not None and attack_sign * (frame.ball_x - recovery[0]) >= 0.12
+            coverage_advanced_to_support = (
+                self.context.relay_robot_id is not None
+                and roles.get(self.context.relay_robot_id) == "support"
             )
+            challenger_assumed_attack = roles.get(self.context.controlled_robot_id) == "attacker"
             safe = (
                 self._primary_touched
-                and recovered_goal_side
+                and challenger_assumed_attack
+                and coverage_advanced_to_support
+                and recovered_to_coverage
+                and self._uncovered_steps <= max(3, self.context.horizon // 10)
                 and not self._threatens_own_goal(frame)
             )
             if self._confirmed(safe):
@@ -217,6 +227,8 @@ def skill_frame_from_native(
     *,
     step: int,
     events: int,
+    role_assignment: RoleAssignment | None = None,
+    controlled_team: str | None = None,
 ) -> SkillFrame:
     """Adapt the stable native state ABI to the semantic predicate contract."""
     robot_positions: dict[str, tuple[float, float]] = {}
@@ -228,6 +240,17 @@ def skill_frame_from_native(
         robot_id = f"R{int(state[base])}"
         robot_positions[robot_id] = (float(state[base + 2]), float(state[base + 3]))
         robot_teams[robot_id] = "blue" if int(state[base + 1]) == 0 else "yellow"
+    robot_roles: dict[str, str] | None = None
+    coverage_uncovered = False
+    if role_assignment is not None:
+        if controlled_team not in ("blue", "yellow"):
+            raise ValueError("controlled_team is required with a role assignment")
+        # RoleAssignment follows native slot order within the controlled team.
+        team_robot_ids = [
+            robot_id for robot_id, team in robot_teams.items() if team == controlled_team
+        ]
+        robot_roles = dict(zip(team_robot_ids, role_assignment.roles, strict=True))
+        coverage_uncovered = role_assignment.uncovered
     return SkillFrame(
         step=step,
         ball_x=float(state[5]),
@@ -236,5 +259,7 @@ def skill_frame_from_native(
         ball_vy=float(state[8]),
         robot_positions=robot_positions,
         robot_teams=robot_teams,
+        robot_roles=robot_roles,
+        coverage_uncovered=coverage_uncovered,
         events=events,
     )

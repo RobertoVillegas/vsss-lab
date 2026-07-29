@@ -15,6 +15,7 @@ def context(family: str, *, horizon: int = 20) -> SkillContext:
         controlled_team="blue",
         controlled_robot_id="R0",
         support_robot_id="R1" if family in ("pass_receive", "rotation_recovery") else None,
+        relay_robot_id="R2" if family == "rotation_recovery" else None,
         target_goal_x=0.75,
         own_goal_x=-0.75,
         target_y=0.0,
@@ -40,6 +41,9 @@ def frame(
     velocity: tuple[float, float] = (0.0, 0.0),
     r0: tuple[float, float] = (0.4, 0.4),
     r1: tuple[float, float] = (-0.4, -0.4),
+    r2: tuple[float, float] = (-0.5, 0.3),
+    roles: dict[str, str] | None = None,
+    uncovered: bool = False,
     opponent: tuple[float, float] = (0.4, -0.4),
     events: int = 0,
 ) -> SkillFrame:
@@ -47,8 +51,10 @@ def frame(
         step,
         *ball,
         *velocity,
-        {"R0": r0, "R1": r1, "R3": opponent},
-        {"R0": "blue", "R1": "blue", "R3": "yellow"},
+        {"R0": r0, "R1": r1, "R2": r2, "R3": opponent},
+        {"R0": "blue", "R1": "blue", "R2": "blue", "R3": "yellow"},
+        roles,
+        uncovered,
         events,
     )
 
@@ -144,15 +150,30 @@ def test_rebound_resets_confirmation_window_until_trajectory_is_safe() -> None:
 
 def test_rotation_requires_replacement_touch_and_failed_attacker_recovery() -> None:
     subject = evaluator("rotation_recovery")
-    subject.observe(frame(1, velocity=(-0.3, 0.0), r0=(0.03, 0.0), r1=(0.2, 0.2)))
-    not_recovered = subject.observe(frame(2, velocity=(0.2, 0.1), r1=(0.1, 0.2)))
+    rotated = {"R0": "attacker", "R1": "coverage", "R2": "support"}
+    subject.observe(frame(1, velocity=(-0.3, 0.0), r0=(0.03, 0.0), roles=rotated))
+    not_recovered = subject.observe(
+        frame(2, velocity=(0.2, 0.1), roles={"R0": "attacker", "R1": "support", "R2": "coverage"})
+    )
     assert not_recovered.status is SkillStatus.RUNNING
-    subject.observe(frame(3, velocity=(0.2, 0.1), r1=(-0.3, 0.0)))
-    result = subject.observe(frame(4, velocity=(0.2, 0.1), r1=(-0.3, 0.0)))
+    subject.observe(frame(3, velocity=(0.2, 0.1), roles=rotated))
+    result = subject.observe(frame(4, velocity=(0.2, 0.1), roles=rotated))
     assert (result.status, result.reason) == (
         SkillStatus.SUCCESS,
         SkillReason.ROTATION_RECOVERED,
     )
+
+
+def test_rotation_rejects_prolonged_uncovered_transition() -> None:
+    subject = evaluator("rotation_recovery", horizon=20)
+    rotated = {"R0": "attacker", "R1": "coverage", "R2": "support"}
+    subject.observe(frame(1, velocity=(0.2, 0.1), r0=(0.03, 0.0), uncovered=True))
+    subject.observe(frame(2, velocity=(0.2, 0.1), uncovered=True))
+    subject.observe(frame(3, velocity=(0.2, 0.1), uncovered=True))
+    subject.observe(frame(4, velocity=(0.2, 0.1), uncovered=True))
+    subject.observe(frame(5, velocity=(0.2, 0.1), roles=rotated))
+    result = subject.observe(frame(6, velocity=(0.2, 0.1), roles=rotated))
+    assert result.status is SkillStatus.RUNNING
 
 
 def test_persistent_overlap_is_one_touch_not_a_farmable_contact_chain() -> None:

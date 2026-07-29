@@ -170,11 +170,11 @@ league-live-steps steps="20000000" capture_every="25" capture_seconds="60" check
 
 league-semantic-steps-at run_dir steps="50000000" capture_every="25" capture_seconds="60" checkpoint_every="25" device="auto" num_envs="64" eval_every="25" eval_seeds="3":
   mise run train-env
-  uv run --group train python -m vsss_league.cli run --config experiments/configs/m16-mappo-rotational.toml --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --run-dir "{{run_dir}}" --steps {{steps}} --capture-every {{capture_every}} --capture-seconds {{capture_seconds}} --checkpoint-every {{checkpoint_every}} --device "{{device}}" --num-envs {{num_envs}} --semantic-eval-every {{eval_every}} --semantic-eval-seeds {{eval_seeds}}
+  uv run --group train python -m vsss_league.cli run --config experiments/configs/m16-mappo-rotational-v2.toml --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --run-dir "{{run_dir}}" --steps {{steps}} --capture-every {{capture_every}} --capture-seconds {{capture_seconds}} --checkpoint-every {{checkpoint_every}} --device "{{device}}" --num-envs {{num_envs}} --semantic-eval-every {{eval_every}} --semantic-eval-seeds {{eval_seeds}}
 
 league-semantic-warm-steps-at run_dir initialize_from steps="50000000" capture_every="25" capture_seconds="60" checkpoint_every="25" device="auto" num_envs="64" eval_every="25" eval_seeds="3":
   mise run train-env
-  uv run --group train python -m vsss_league.cli run --config experiments/configs/m16-mappo-rotational.toml --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --run-dir "{{run_dir}}" --steps {{steps}} --capture-every {{capture_every}} --capture-seconds {{capture_seconds}} --checkpoint-every {{checkpoint_every}} --device "{{device}}" --num-envs {{num_envs}} --initialize-from "{{initialize_from}}" --semantic-eval-every {{eval_every}} --semantic-eval-seeds {{eval_seeds}}
+  uv run --group train python -m vsss_league.cli run --config experiments/configs/m16-mappo-rotational-v2.toml --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --run-dir "{{run_dir}}" --steps {{steps}} --capture-every {{capture_every}} --capture-seconds {{capture_seconds}} --checkpoint-every {{checkpoint_every}} --device "{{device}}" --num-envs {{num_envs}} --initialize-from "{{initialize_from}}" --semantic-eval-every {{eval_every}} --semantic-eval-seeds {{eval_seeds}}
 
 league-live-semantic-at run_dir steps="50000000" capture_every="25" capture_seconds="60" checkpoint_every="25" device="auto" num_envs="64" eval_every="25" eval_seeds="3" port="8765":
   mkdir -p "{{run_dir}}"

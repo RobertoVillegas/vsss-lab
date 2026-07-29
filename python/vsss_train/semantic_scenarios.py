@@ -24,7 +24,7 @@ SkillFamily = Literal[
 ]
 ControlledTeam = Literal["blue", "yellow"]
 
-GENERATOR_REVISION = "m16.0"
+GENERATOR_REVISION = "m16.1"
 DIFFICULTY_AXES = (
     "ball_speed",
     "ball_angle",
@@ -102,6 +102,7 @@ class SkillContext:
     controlled_team: ControlledTeam
     controlled_robot_id: str
     support_robot_id: str | None
+    relay_robot_id: str | None
     target_goal_x: float
     own_goal_x: float
     target_y: float
@@ -155,6 +156,7 @@ class SemanticSkillCurriculum:
         )
         self.failures: dict[str, SkillScenarioParameters] = {}
         self.counts: dict[str, int] = defaultdict(int)
+        self.family_counts: dict[SkillFamily, int] = defaultdict(int)
         self.updates: dict[SkillFamily, int] = defaultdict(int)
 
     def select_training(self, index: int) -> SemanticSelection:
@@ -169,11 +171,11 @@ class SemanticSkillCurriculum:
             parameters = self.failures[key]
             source: Literal["failure", "routine", "frontier"] = "failure"
         else:
-            family = SKILL_FAMILIES[index % len(SKILL_FAMILIES)]
+            family = self._select_family(generator)
             levels = self.levels[family]
             source = "routine" if generator.random() < 0.30 else "frontier"
             amounts = {
-                axis: max(0.0, value - 0.15) if source == "routine" else value
+                axis: max(0.05, value - 0.15) if source == "routine" else value
                 for axis, value in levels.items()
             }
             parameters = SkillScenarioParameters(
@@ -186,10 +188,24 @@ class SemanticSkillCurriculum:
                 ),
             )
         self.counts[source] += 1
+        self.family_counts[parameters.family] += 1
         return SemanticSelection(
             compile_skill_scenario(parameters, self.base_state, self.config),
             source,
         )
+
+    def _select_family(self, generator: random.Random) -> SkillFamily:
+        """Bias practice toward weak skills while retaining a rehearsal floor."""
+        if generator.random() < 0.20:
+            return SKILL_FAMILIES[generator.randrange(len(SKILL_FAMILIES))]
+        weights = []
+        for family in SKILL_FAMILIES:
+            history = self.outcomes[family]
+            success_rate = sum(history) / len(history) if history else 0.5
+            # Every family remains sampleable; weak skills receive up to 26x
+            # the weight of a mastered one.
+            weights.append(0.04 + (1.0 - success_rate) ** 2)
+        return generator.choices(SKILL_FAMILIES, weights=weights, k=1)[0]
 
     def record(self, scenario: SemanticScenario, *, success: bool) -> None:
         if scenario.parameters.holdout:
@@ -211,7 +227,7 @@ class SemanticSkillCurriculum:
         if current >= 0.70 and learning_progress >= -0.05:
             self.levels[family][axis] = min(1.0, self.levels[family][axis] + 0.05)
         elif current < 0.35 and learning_progress <= 0.0:
-            self.levels[family][axis] = max(0.0, self.levels[family][axis] - 0.025)
+            self.levels[family][axis] = max(0.05, self.levels[family][axis] - 0.025)
         self.updates[family] += 1
 
     def holdouts(
@@ -249,6 +265,7 @@ class SemanticSkillCurriculum:
             "schema_version": 1,
             "levels": dict(self.levels),
             "allocation": dict(self.counts),
+            "allocation_by_family": dict(self.family_counts),
             "failure_count": len(self.failures),
             "observed_full_match_fraction": observed_full_match_fraction,
             "allocation_valid": (
@@ -262,6 +279,7 @@ class SemanticSkillCurriculum:
         }
         if reset:
             self.counts.clear()
+            self.family_counts.clear()
         return result
 
     def state_dict(self) -> dict[str, object]:
@@ -358,6 +376,7 @@ def compile_skill_scenario(
     family = parameters.family
     initial_threat = False
     support_id: str | None = None
+    relay_id: str | None = None
     if family == "approach":
         ball = (-0.05, lane)
         _set_ball(state, attack_sign, *ball, speed=0.0, heading=0.0)
@@ -419,10 +438,13 @@ def compile_skill_scenario(
             ball[1] + lane_sign * 0.10,
             -lane_sign * 0.25,
         )
-        # The previous attacker begins beyond the play and must rotate goal-side
-        # while the incoming player assumes the challenge.
+        # The previous attacker begins beyond the play and must rotate through
+        # coverage. The former coverage player advances into support behind the
+        # incoming challenger: all three responsibilities must turn over.
         _park_robot(support, attack_sign, 0.34, -lane_sign * 0.24, math.pi)
+        _park_robot(reserve, attack_sign, -0.38, lane_sign * 0.30, 0.0)
         support_id = str(support["id"])
+        relay_id = str(reserve["id"])
         initial_threat = True
     elif family == "shot":
         ball = (0.28, lane * 0.45)
@@ -501,6 +523,7 @@ def compile_skill_scenario(
         controlled_team=parameters.controlled_team,
         controlled_robot_id=str(primary["id"]),
         support_robot_id=support_id,
+        relay_robot_id=relay_id,
         target_goal_x=target_goal_x,
         own_goal_x=own_goal_x,
         target_y=target_y,
