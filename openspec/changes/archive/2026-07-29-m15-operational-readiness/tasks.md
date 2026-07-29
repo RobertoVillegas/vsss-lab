@@ -9,4 +9,4 @@
 - [x] Validate matched bounded clean and warm-start probes.
 - [x] Run doctor, build, test, lint, CUDA smoke, and strict OpenSpec validation.
 - [x] Update user documentation and evidence.
-- [ ] Commit signed changes and push `main`.
+- [x] Commit signed changes and push `main`.
