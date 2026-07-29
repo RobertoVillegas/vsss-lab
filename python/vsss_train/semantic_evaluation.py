@@ -64,6 +64,7 @@ class SemanticEvaluationReport:
     physical_validity_rate: float
     mean_controlled_touches: float
     difficulty_bands: dict[str, dict[str, float | int]]
+    difficulty_levels: dict[str, dict[str, float | int]]
     families: tuple[FamilyEvaluation, ...]
     trials: tuple[SkillEvaluation, ...]
 
@@ -165,6 +166,7 @@ def evaluate_semantic_skills(
         physical_validity_rate=1.0,
         mean_controlled_touches=sum(trial.controlled_touches for trial in trials) / len(trials),
         difficulty_bands=_difficulty_bands(trials),
+        difficulty_levels=_difficulty_levels(trials),
         families=families,
         trials=trials,
     )
@@ -291,4 +293,30 @@ def _difficulty_bands(
             ),
         }
         for band, selected in grouped.items()
+    }
+
+
+def _difficulty_levels(
+    trials: tuple[SkillEvaluation, ...],
+) -> dict[str, dict[str, float | int]]:
+    """Preserve exact uniform holdout levels instead of merging nearby bands."""
+    grouped: dict[str, list[SkillEvaluation]] = {}
+    for trial in trials:
+        mean = sum(trial.difficulty.values()) / len(trial.difficulty)
+        grouped.setdefault(f"{mean:.2f}", []).append(trial)
+    return {
+        level: {
+            "attempts": len(selected),
+            "success_rate": (
+                sum(trial.status == SkillStatus.SUCCESS for trial in selected) / len(selected)
+                if selected
+                else 0.0
+            ),
+            "unresolved_rate": (
+                sum(trial.status == SkillStatus.UNRESOLVED for trial in selected) / len(selected)
+                if selected
+                else 0.0
+            ),
+        }
+        for level, selected in sorted(grouped.items())
     }

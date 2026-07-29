@@ -572,7 +572,10 @@ class VectorMarlMatchEnv:
                 )
             ]
         )
-        return observations, rewards, done, events, done
+        # Episode completion and value-bootstrap termination have different
+        # semantics for timeouts. Never alias them: the collector may mark a
+        # skill timeout as truncated without cancelling the required reset.
+        return observations, rewards, done, events, done.copy()
 
     def mark_progress_origin(self) -> None:
         self._initial_closest = self._closest.copy()
