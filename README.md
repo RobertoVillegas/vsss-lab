@@ -135,8 +135,12 @@ role context in normalized field coordinates. Policies act through bounded
 differential wheel commands rather than teleportation or direct velocity
 assignment.
 
-Roles provide a coordination prior—such as pressure, support, and defense—without
-hard-coding a complete strategy. The replay viewer exposes each actor's current
+Roles are reassigned dynamically as attacker, support, and coverage by evaluating
+every responsibility permutation from projected interception and defensive cost.
+They are not bound to robot IDs: a covering robot may join the attack when another
+robot can recover more safely. Hysteresis prevents marginal role jitter while an
+emergency may trigger an immediate rotation. This provides a coordination prior
+without hard-coding a complete strategy. The replay viewer exposes each actor's current
 action, wheel intensity, speed, and role so learned behavior can be inspected at
 the same timestamp as the match.
 
@@ -207,8 +211,10 @@ The adaptive-training layer provides:
 
 - immutable holdouts plus routine, frontier, and deduplicated failure scenarios;
 - validity-checked scenario mutation and learning-progress allocation;
-- semantic approach, interception, save/deflection, clearance, shot, and
-  pass/receive drills with mirrored colors and moving balls;
+- semantic approach, interception, save/deflection, clearance, shot,
+  pass/receive, and rotation/recovery drills with mirrored colors and moving balls;
+- graduated immutable holdouts at 0.10, 0.25, 0.40, and 0.65 difficulty,
+  plus regression stopping that preserves the best semantic checkpoint;
 - causal outcomes, early termination, independent difficulty axes, and bounded
   anti-farming skill rewards;
 - persistent multiobjective Optuna studies with smoke, screen, and confirmation
