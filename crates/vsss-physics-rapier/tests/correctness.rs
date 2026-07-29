@@ -273,3 +273,29 @@ fn ball_is_deflected_by_clipped_field_corner() {
     // The chamfer face is x + y = 1.33 m before accounting for ball radius.
     assert!(maximum_corner_reach < 1.31, "{maximum_corner_reach}");
 }
+
+#[test]
+fn oriented_robot_body_cannot_enter_clipped_field_corner() {
+    let mut backend = world();
+    let mut snapshot = backend.snapshot();
+    snapshot.robots[0].pose.x = Distance(0.45);
+    snapshot.robots[0].pose.y = Distance(0.35);
+    snapshot.robots[0].pose.theta = Angle(core::f32::consts::FRAC_PI_4);
+    snapshot.robots[0].wheel_speed_left = AngularVelocity(0.0);
+    snapshot.robots[0].wheel_speed_right = AngularVelocity(0.0);
+    backend.restore(&snapshot).unwrap();
+    let mut actions = stopped();
+    actions[0] = RobotAction::wheel_velocity(AngularVelocity(30.0), AngularVelocity(30.0));
+
+    let mut maximum_body_reach = f32::MIN;
+    for _ in 0..1_000 {
+        let robot = backend.step(&actions).unwrap().robots[0];
+        let (sin, cos) = robot.pose.theta.get().sin_cos();
+        let support = 0.0375 * ((cos - sin).abs() + (sin + cos).abs());
+        maximum_body_reach =
+            maximum_body_reach.max(robot.pose.x.get().abs() + robot.pose.y.get().abs() + support);
+    }
+
+    // The inner face is x + y = 1.33 m; allow only solver-scale penetration.
+    assert!(maximum_body_reach < 1.335, "{maximum_body_reach}");
+}

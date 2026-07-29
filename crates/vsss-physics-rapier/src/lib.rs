@@ -304,10 +304,22 @@ fn add_walls(config: &MatchConfig, colliders: &mut ColliderSet) {
         );
     }
     for (x_sign, y_sign) in [(-1.0_f32, -1.0_f32), (-1.0, 1.0), (1.0, -1.0), (1.0, 1.0)] {
-        let corner = Vector::new(x_sign * half_l, y_sign * half_w);
-        let along_x = Vector::new(x_sign * (half_l - CORNER_CHAMFER), y_sign * half_w);
-        let along_y = Vector::new(x_sign * half_l, y_sign * (half_w - CORNER_CHAMFER));
-        colliders.insert(ColliderBuilder::triangle(corner, along_x, along_y).build());
+        // A finite diagonal wall is robust for both the circular ball and the
+        // oriented square robot. A zero-thickness triangular face allowed a
+        // robot center to remain inside the field while its body crossed the
+        // clipped corner.
+        let midpoint = Vector::new(
+            x_sign * (half_l - CORNER_CHAMFER / 2.0),
+            y_sign * (half_w - CORNER_CHAMFER / 2.0),
+        );
+        let half_length = CORNER_CHAMFER * core::f32::consts::FRAC_1_SQRT_2;
+        let angle = -x_sign * y_sign * core::f32::consts::FRAC_PI_4;
+        colliders.insert(
+            ColliderBuilder::cuboid(half_length, thickness / 2.0)
+                .translation(midpoint)
+                .rotation(angle)
+                .build(),
+        );
     }
 }
 
