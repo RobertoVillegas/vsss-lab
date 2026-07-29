@@ -54,8 +54,18 @@ LEGACY_NEUTRAL_CONFIG = {
     "semantic_terminal_reward": 2.0,
     "semantic_regression_patience": 0,
     "semantic_regression_warmup_evaluations": 0,
+    "semantic_promotion_floors": {},
+    "contact_distance": 0.082,
+    "contact_grace_seconds": 0.5,
+    "ally_deadlock_coefficient": 0.0,
+    "opponent_deadlock_coefficient": 0.0,
 }
 ACTION_EPSILON = 1e-6
+
+
+def _masked_mean(value: Tensor, mask: Tensor) -> Tensor:
+    weights = mask.to(dtype=value.dtype)
+    return (value * weights).sum() / weights.sum().clamp_min(1.0)
 
 
 def sample_bounded_action(distribution: Normal) -> tuple[Tensor, Tensor]:
@@ -181,7 +191,14 @@ class MarlLearner:
                 self.config.gamma,
                 self.config.gae_lambda,
             )
-            advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-8)
+            active = observation.self_features[..., -1] > 0.5
+            active_advantage = advantage[active]
+            advantage = torch.where(
+                active,
+                (advantage - active_advantage.mean())
+                / (active_advantage.std(unbiased=False) + 1e-8),
+                torch.zeros_like(advantage),
+            )
 
         totals = {
             "policy_loss": 0.0,
@@ -201,6 +218,7 @@ class MarlLearner:
                 sample = data[indices]
                 sample_observation = observation.select_batch(indices)
                 sample_advantage = advantage[indices]
+                sample_active = sample_observation.self_features[..., -1] > 0.5
                 if isinstance(self.actor, LatticeSharedActor):
                     logits, _ = self.actor(sample_observation)
                     distribution_discrete = Categorical(logits=logits)
@@ -208,7 +226,10 @@ class MarlLearner:
                         sample["action_index"]
                     )
                     ratio = (log_probability - sample["sample_log_prob"]).exp()
-                    entropy = distribution_discrete.entropy().mean()  # type: ignore[no-untyped-call]
+                    entropy = _masked_mean(
+                        distribution_discrete.entropy(),  # type: ignore[no-untyped-call]
+                        sample_active,
+                    )
                 elif isinstance(self.actor, RecurrentSharedActor):
                     mean, log_std, _ = self.actor.forward_with_state(
                         sample_observation,
@@ -221,27 +242,39 @@ class MarlLearner:
                     log_probability = bounded_action_log_prob(distribution, sample["action"])
                     ratio = (log_probability - sample["sample_log_prob"]).exp()
                     entropy_action = torch.tanh(distribution.rsample())
-                    entropy = -bounded_action_log_prob(distribution, entropy_action).mean()
+                    entropy = -_masked_mean(
+                        bounded_action_log_prob(distribution, entropy_action),
+                        sample_active,
+                    )
                 clipped = ratio.clamp(
                     1.0 - self.config.clip_epsilon,
                     1.0 + self.config.clip_epsilon,
                 )
-                policy_loss = -torch.minimum(
-                    ratio * sample_advantage,
-                    clipped * sample_advantage,
-                ).mean()
+                policy_loss = -_masked_mean(
+                    torch.minimum(
+                        ratio * sample_advantage,
+                        clipped * sample_advantage,
+                    ),
+                    sample_active,
+                )
                 value = self.critic(sample_observation)
-                value_loss = 0.5 * (value - value_target[indices]).square().mean()
+                value_loss = 0.5 * _masked_mean(
+                    (value - value_target[indices]).square(),
+                    sample_active,
+                )
                 log_ratio = log_probability - sample["sample_log_prob"]
-                approx_kl = ((ratio - 1.0) - log_ratio).mean()
-                clip_fraction = ((ratio - 1.0).abs() > self.config.clip_epsilon).float().mean()
+                approx_kl = _masked_mean((ratio - 1.0) - log_ratio, sample_active)
+                clip_fraction = _masked_mean(
+                    ((ratio - 1.0).abs() > self.config.clip_epsilon).float(),
+                    sample_active,
+                )
                 loss = (
                     policy_loss
                     + self.config.value_coefficient * value_loss
                     - self.config.entropy_coefficient * entropy
                 )
                 self.optimizer.zero_grad(set_to_none=True)
-                loss.backward()
+                loss.backward()  # type: ignore[no-untyped-call]
                 nn.utils.clip_grad_norm_(
                     (*self.actor.parameters(), *self.critic.parameters()),
                     self.config.max_grad_norm,

@@ -265,6 +265,7 @@ def _run(arguments: argparse.Namespace) -> None:
     semantic_regressions = 0
     semantic_evaluation_count = 0
     semantic_early_stop = False
+    opponent_counts = {"heuristic": 0, "self": 0, "historical": 0}
     try:
         for iteration in range(start_iteration, final_iteration + 1):
             opponent, opponent_id = _select_training_opponent(
@@ -275,6 +276,14 @@ def _run(arguments: argparse.Namespace) -> None:
                 latest_checkpoint=parent_key,
                 cache=opponent_cache,
             )
+            opponent_kind = (
+                "heuristic"
+                if opponent_id == "heuristic-dynamic"
+                else "self"
+                if opponent_id.startswith(f"{config.policy_id}@")
+                else "historical"
+            )
+            opponent_counts[opponent_kind] += 1
             save_checkpoint = (
                 iteration % arguments.checkpoint_every == 0 or iteration == final_iteration
             )
@@ -331,6 +340,16 @@ def _run(arguments: argparse.Namespace) -> None:
                 successes = sum(family.successes for family in report.families)
                 unresolved = sum(family.unresolved for family in report.families)
                 minimum_family_rate = min(family.success_rate for family in report.families)
+                family_rates = {family.family: family.success_rate for family in report.families}
+                promotion_gates = {
+                    family: {
+                        "floor": floor,
+                        "actual": family_rates.get(family, 0.0),
+                        "passed": family_rates.get(family, 0.0) >= floor,
+                    }
+                    for family, floor in config.semantic_promotion_floors.items()
+                }
+                promotion_eligible = all(bool(gate["passed"]) for gate in promotion_gates.values())
                 semantic_evaluation = {
                     "iteration": iteration,
                     "checkpoint": str(checkpoint.resolve()),
@@ -339,6 +358,8 @@ def _run(arguments: argparse.Namespace) -> None:
                     "success_rate": successes / report.attempts,
                     "minimum_family_success_rate": minimum_family_rate,
                     "unresolved": unresolved,
+                    "promotion_eligible": promotion_eligible,
+                    "promotion_gates": promotion_gates,
                     "difficulty_bands": report.difficulty_bands,
                     "difficulty_levels": report.difficulty_levels,
                     "families": {
@@ -361,12 +382,14 @@ def _run(arguments: argparse.Namespace) -> None:
                     else None
                 )
                 candidate_score = (
+                    promotion_eligible,
                     minimum_family_rate,
                     successes / report.attempts,
                     -unresolved,
                 )
                 previous_score = (
                     (
+                        bool(previous_best.get("promotion_eligible", True)),
                         float(previous_best["minimum_family_success_rate"]),
                         float(previous_best["success_rate"]),
                         -int(previous_best["unresolved"]),
@@ -417,6 +440,7 @@ def _run(arguments: argparse.Namespace) -> None:
                     "iterations_per_second": rate,
                 },
                 "exploration": {"actor_log_std": actor_log_std},
+                "opponent_mixture": dict(opponent_counts),
                 "semantic_evaluation": semantic_evaluation,
             }
             with metrics_path.open("a", encoding="utf-8") as metrics:

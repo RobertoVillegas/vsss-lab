@@ -88,8 +88,21 @@ def assign_roles(
             }
         )
 
+    active = [bool(float(robot[10])) for robot in robots]
+    active_count = sum(active)
+    active_roles = set(ROLES[:active_count])
+
     def raw_cost(roles: tuple[Role, Role, Role]) -> float:
-        return sum(costs[index][role] for index, role in enumerate(roles))
+        return sum(
+            costs[index][role]
+            + (
+                1_000.0
+                if (active[index] and role not in active_roles)
+                or (not active[index] and role in active_roles)
+                else 0.0
+            )
+            for index, role in enumerate(roles)
+        )
 
     candidates = []
     for roles in itertools.permutations(ROLES):
@@ -114,7 +127,7 @@ def assign_roles(
             selected_cost, selected = raw_selected
 
     coverage = robots[selected.index("coverage")]
-    uncovered = (
+    uncovered = active_count == 3 and (
         math.hypot(float(coverage[2]) - own_goal_x, float(coverage[3])) > 0.62
         and attack_sign * ball_x < 0.0
     )

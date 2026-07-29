@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from vsss_train.semantic_scenarios import (
@@ -133,6 +134,50 @@ def test_curriculum_mirrors_colors_and_allocates_every_family() -> None:
         "yellow",
     }
     assert {selection.source for selection in selections} >= {"routine", "frontier"}
+    assert {scenario.parameters.roster for scenario in compiled} >= {
+        "1v0",
+        "1v1",
+        "2v1",
+        "2v2",
+        "3v2",
+        "3v3",
+    }
+
+
+@pytest.mark.parametrize(
+    ("family", "roster", "controlled_count", "opponent_count"),
+    (
+        ("approach", "1v0", 1, 0),
+        ("shot", "1v1", 1, 1),
+        ("pass_receive", "2v1", 2, 1),
+        ("clearance", "2v2", 2, 2),
+        ("rotation_recovery", "3v2", 3, 2),
+        ("rotation_recovery", "3v3", 3, 3),
+    ),
+)
+def test_roster_ladder_enables_only_required_participants(
+    family: str,
+    roster: str,
+    controlled_count: int,
+    opponent_count: int,
+) -> None:
+    scenario = compile_skill_scenario(
+        SkillScenarioParameters(
+            schema_version=1,
+            family=family,  # type: ignore[arg-type]
+            seed=91,
+            controlled_team="blue",
+            difficulty=SkillDifficulty(0.2, 0.2, 0.2, 0.2, 0.2),
+            roster=roster,  # type: ignore[arg-type]
+        ),
+        STATE,
+        CONFIG,
+    )
+    robots = cast(list[dict[str, Any]], scenario.scenario.state["robots"])
+    blue = [robot for robot in robots if robot["team"] == "blue"]
+    yellow = [robot for robot in robots if robot["team"] == "yellow"]
+    assert sum(bool(robot["enabled"]) for robot in blue) == controlled_count
+    assert sum(bool(robot["enabled"]) for robot in yellow) == opponent_count
 
 
 def test_curriculum_advances_mastered_family_and_deduplicates_failures() -> None:

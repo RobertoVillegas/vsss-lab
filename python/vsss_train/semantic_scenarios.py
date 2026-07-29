@@ -23,8 +23,9 @@ SkillFamily = Literal[
     "rotation_recovery",
 ]
 ControlledTeam = Literal["blue", "yellow"]
+Roster = Literal["1v0", "1v1", "2v1", "2v2", "3v2", "3v3"]
 
-GENERATOR_REVISION = "m16.1"
+GENERATOR_REVISION = "m17"
 DIFFICULTY_AXES = (
     "ball_speed",
     "ball_angle",
@@ -66,6 +67,7 @@ class SkillScenarioParameters:
     seed: int
     controlled_team: ControlledTeam
     difficulty: SkillDifficulty
+    roster: Roster = "3v3"
     horizon: int = 250
     holdout: bool = False
     generator_revision: str = GENERATOR_REVISION
@@ -85,6 +87,8 @@ class SkillScenarioParameters:
             raise ValueError(f"unsupported skill family: {self.family}")
         if self.controlled_team not in ("blue", "yellow"):
             raise ValueError("controlled_team must be blue or yellow")
+        if self.roster not in ("1v0", "1v1", "2v1", "2v2", "3v2", "3v3"):
+            raise ValueError(f"unsupported semantic roster: {self.roster}")
         if self.horizon <= 0:
             raise ValueError("semantic scenario horizon must be positive")
         if self.generator_revision != GENERATOR_REVISION:
@@ -112,6 +116,7 @@ class SkillContext:
     horizon: int
     parameter_hash: str
     state_hash: str
+    roster: Roster = "3v3"
 
 
 @dataclass(frozen=True)
@@ -157,6 +162,7 @@ class SemanticSkillCurriculum:
         self.failures: dict[str, SkillScenarioParameters] = {}
         self.counts: dict[str, int] = defaultdict(int)
         self.family_counts: dict[SkillFamily, int] = defaultdict(int)
+        self.roster_counts: dict[Roster, int] = defaultdict(int)
         self.updates: dict[SkillFamily, int] = defaultdict(int)
 
     def select_training(self, index: int) -> SemanticSelection:
@@ -186,9 +192,11 @@ class SemanticSkillCurriculum:
                 difficulty=SkillDifficulty(
                     **{axis: _jitter(amount, generator) for axis, amount in amounts.items()}
                 ),
+                roster=_roster_for(family, source),
             )
         self.counts[source] += 1
         self.family_counts[parameters.family] += 1
+        self.roster_counts[parameters.roster] += 1
         return SemanticSelection(
             compile_skill_scenario(parameters, self.base_state, self.config),
             source,
@@ -250,6 +258,7 @@ class SemanticSkillCurriculum:
                                     seed=seed + round(band * 10_000),
                                     controlled_team=team,
                                     difficulty=SkillDifficulty(band, band, band, band, band),
+                                    roster=_roster_for(family, "frontier"),
                                     holdout=True,
                                 ),
                                 self.base_state,
@@ -266,6 +275,7 @@ class SemanticSkillCurriculum:
             "levels": dict(self.levels),
             "allocation": dict(self.counts),
             "allocation_by_family": dict(self.family_counts),
+            "allocation_by_roster": dict(self.roster_counts),
             "failure_count": len(self.failures),
             "observed_full_match_fraction": observed_full_match_fraction,
             "allocation_valid": (
@@ -280,6 +290,7 @@ class SemanticSkillCurriculum:
         if reset:
             self.counts.clear()
             self.family_counts.clear()
+            self.roster_counts.clear()
         return result
 
     def state_dict(self) -> dict[str, object]:
@@ -499,6 +510,14 @@ def compile_skill_scenario(
         _park_robot(passer, attack_sign, *passer_position, heading)
         _park_robot(receiver, attack_sign, *receiver_position, heading + math.pi)
 
+    _apply_roster(
+        controlled,
+        opponents,
+        primary=primary,
+        support=support,
+        reserve=reserve,
+        roster=parameters.roster,
+    )
     scenario = Scenario(
         scenario_id=(
             f"m15-{family}-{parameters.controlled_team}-{parameters.seed}-{parameters.digest[:8]}"
@@ -533,6 +552,7 @@ def compile_skill_scenario(
         horizon=parameters.horizon,
         parameter_hash=parameters.digest,
         state_hash=state_hash,
+        roster=parameters.roster,
     )
     return SemanticScenario(scenario, parameters, context)
 
@@ -617,6 +637,42 @@ def _park_opponents(
     )
     for robot, (x, y) in zip(opponents, positions, strict=True):
         _park_robot(robot, attack_sign, x, y, math.pi)
+
+
+def _roster_for(
+    family: SkillFamily,
+    source: Literal["routine", "frontier", "failure"],
+) -> Roster:
+    """Use the smallest roster expressing a skill, then add realistic pressure."""
+    frontier = source != "routine"
+    if family in ("approach", "shot"):
+        return "1v1" if frontier else "1v0"
+    if family in ("interception", "save_deflection"):
+        return "2v1" if frontier else "1v1"
+    if family == "clearance":
+        return "2v2" if frontier else "1v1"
+    if family == "pass_receive":
+        return "2v2" if frontier else "2v1"
+    return "3v3" if frontier else "3v2"
+
+
+def _apply_roster(
+    controlled: list[dict[str, Any]],
+    opponents: list[dict[str, Any]],
+    *,
+    primary: dict[str, Any],
+    support: dict[str, Any],
+    reserve: dict[str, Any],
+    roster: Roster,
+) -> None:
+    controlled_count, opponent_count = (int(value) for value in roster.split("v", 1))
+    controlled_priority = (primary, support, reserve)
+    active_controlled = {str(robot["id"]) for robot in controlled_priority[:controlled_count]}
+    active_opponents = {str(robot["id"]) for robot in opponents[:opponent_count]}
+    for robot in controlled:
+        robot["enabled"] = str(robot["id"]) in active_controlled
+    for robot in opponents:
+        robot["enabled"] = str(robot["id"]) in active_opponents
 
 
 def _validate_not_terminal(state: dict[str, Any], config: dict[str, Any]) -> None:
