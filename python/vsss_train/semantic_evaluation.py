@@ -96,7 +96,15 @@ def evaluate_semantic_skills(
         environment.set_controlled_team(world, team)
         environment.reset_state(world, scenario.scenario.state)
         evaluator = _evaluator(scenario, config)
-        evaluator.observe(skill_frame_from_native(environment.states[world], step=0, events=0))
+        evaluator.observe(
+            skill_frame_from_native(
+                environment.states[world],
+                step=0,
+                events=0,
+                role_assignment=environment.role_assignments[world],
+                controlled_team=scenario.parameters.controlled_team,
+            )
+        )
         evaluators.append(evaluator)
     random = np.random.default_rng(17)
     blue = DynamicTeamController(0, 1)
@@ -116,7 +124,11 @@ def evaluate_semantic_skills(
             assert actor is not None
             observations = stack_team_batches(
                 [
-                    build_team_observation(state, team=int(environment.controlled_teams[world]))
+                    build_team_observation(
+                        state,
+                        team=int(environment.controlled_teams[world]),
+                        role_assignment=environment.role_assignments[world],
+                    )
                     for world, state in enumerate(environment.states)
                 ]
             ).to(torch.device(device))
@@ -131,6 +143,8 @@ def evaluate_semantic_skills(
                     environment.states[world],
                     step=int(environment.steps[world]),
                     events=int(events[world]),
+                    role_assignment=environment.role_assignments[world],
+                    controlled_team=scenarios[world].parameters.controlled_team,
                 )
             )
             if outcome.terminal:
@@ -148,6 +162,8 @@ def evaluate_semantic_skills(
                     environment.states[index],
                     step=scenario.context.horizon,
                     events=0,
+                    role_assignment=environment.role_assignments[index],
+                    controlled_team=scenario.parameters.controlled_team,
                 )
             ),
         )

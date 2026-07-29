@@ -156,6 +156,42 @@ def test_curriculum_advances_mastered_family_and_deduplicates_failures() -> None
     assert curriculum.telemetry()["failure_count"] == 0
 
 
+def test_curriculum_prioritizes_weak_skills_and_rehearses_mastered_skills() -> None:
+    curriculum = SemanticSkillCurriculum(
+        STATE,
+        CONFIG,
+        seed=31,
+        full_match_fraction=0.0,
+        window=4,
+    )
+    for family in SKILL_FAMILIES:
+        scenario = compile_skill_scenario(parameters(family, 71), STATE, CONFIG)
+        for _ in range(8):
+            curriculum.record(scenario, success=family != "rotation_recovery")
+    for index in range(400):
+        curriculum.select_training(index)
+    allocation = curriculum.telemetry()["allocation_by_family"]
+    assert isinstance(allocation, dict)
+    assert allocation["rotation_recovery"] > max(
+        allocation[family] for family in SKILL_FAMILIES if family != "rotation_recovery"
+    )
+    assert all(allocation[family] > 0 for family in SKILL_FAMILIES)
+
+
+def test_curriculum_never_reduces_a_difficulty_axis_below_training_floor() -> None:
+    curriculum = SemanticSkillCurriculum(
+        STATE,
+        CONFIG,
+        seed=32,
+        full_match_fraction=0.0,
+        window=4,
+    )
+    scenario = compile_skill_scenario(parameters("rotation_recovery", 73), STATE, CONFIG)
+    for _ in range(40):
+        curriculum.record(scenario, success=False)
+    assert min(curriculum.levels["rotation_recovery"].values()) == pytest.approx(0.05)
+
+
 def test_curriculum_can_reserve_full_matches_outside_skill_gradients() -> None:
     curriculum = SemanticSkillCurriculum(STATE, CONFIG, seed=17, full_match_fraction=1.0)
     selection = curriculum.select_training(0)

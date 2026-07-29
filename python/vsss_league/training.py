@@ -296,6 +296,8 @@ def collect_self_play_trajectory(
                     environment.states[world],
                     step=int(environment.steps[world]),
                     events=int(step_events[world]),
+                    role_assignment=environment.role_assignments[world],
+                    controlled_team=evaluator.context.controlled_team,
                 )
             )
             step_skill_outcomes[world] = outcome
@@ -342,6 +344,8 @@ def collect_self_play_trajectory(
                                 environment.states[world],
                                 step=semantic_scenario.context.horizon,
                                 events=int(step_events[world]),
+                                role_assignment=environment.role_assignments[world],
+                                controlled_team=semantic_scenario.parameters.controlled_team,
                             )
                         )
                     if skill_outcome is not None:
@@ -548,6 +552,8 @@ def _reset_world(session: RolloutSession, world: int, index: int) -> TeamBatch:
                 session.environment.states[world],
                 step=0,
                 events=0,
+                role_assignment=session.environment.role_assignments[world],
+                controlled_team=semantic.parameters.controlled_team,
             )
         )
         session.skill_evaluators[world] = evaluator
