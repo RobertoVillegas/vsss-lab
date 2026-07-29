@@ -80,6 +80,32 @@ and resolved drills/s. Promotion also requires paired full matches against
 frozen M14, heuristic, and historical policies. Training return cannot
 authorize a large run.
 
+## Operational training
+
+The default high-budget protocol starts clean rather than inheriting the M14
+policy:
+
+```bash
+just league-live-semantic 50000000 25 60 25 auto 64
+```
+
+It uses `m15-mappo-semantic.toml`, evaluates paired immutable holdouts every 25
+iterations, and writes `semantic-evaluations.jsonl` plus
+`best-semantic.json`. Best selection compares minimum per-family success before
+macro success and unresolved count, so mastered approach or shooting cannot
+hide zero defense or passing.
+
+The tuned defaults use a `1e-4` fine-tuning learning rate, `0.003` entropy
+coefficient, `-1.2` log-standard-deviation floor, `0.5` bounded semantic
+terminal reward, and 20% full-match floor. These are protocol parameters, not
+universal target metrics; holdout skill success and paired match transfer remain
+the actual objectives.
+
+A compatible earlier policy can be tested explicitly with
+`league-semantic-warm-steps-at`. It transfers actor and critic only; optimizer,
+policy version, RNG, and curriculum restart, with source digest and reset
+boundary in `initialization.json`.
+
 ## Resume and rollback
 
 Semantic runs atomically persist `semantic-curriculum.json`. `--resume` requires

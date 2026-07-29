@@ -326,28 +326,36 @@ semantics, and rollback procedure are in
 
 Start a 50-million-environment-step training run with automatic run naming,
 replay capture every 25 learner iterations, 60-second captures, checkpoints every
-25 iterations, automatic CUDA selection, and 64 parallel worlds:
+25 iterations, paired semantic evaluation at every checkpoint, automatic CUDA
+selection, and 64 parallel worlds:
 
 ```bash
-just league-live-steps 50000000 25 60 25 auto 64
+just league-live-semantic 50000000 25 60 25 auto 64
 ```
 
 The command allocates a directory such as
-`~/runs/vsss-training-run-0001`, starts the private viewer at
+`~/runs/vsss-semantic-run-0001`, starts the private viewer at
 `http://127.0.0.1:8765`, and runs training in the foreground. CUDA is selected
 when available; otherwise the command reports that it is using CPU.
+
+The default is a clean, seeded teacher initialization. Each checkpoint is
+measured on immutable paired-color skill holdouts; `best-semantic.json` points
+to the strongest balanced checkpoint, ranking the weakest skill family before
+aggregate success. `semantic-evaluations.jsonl` preserves the full selection
+history. A compatible M14 policy warm-start remains an explicit experimental
+recipe, not the default.
 
 Training persists independently of replay consumption. The viewer only reads
 artifacts and can be started later:
 
 ```bash
-just league-web ~/runs/vsss-training-run-0001
+just league-web ~/runs/vsss-semantic-run-0001
 ```
 
 Optional TensorBoard:
 
 ```bash
-just league-tensorboard ~/runs/vsss-training-run-0001
+just league-tensorboard ~/runs/vsss-semantic-run-0001
 ```
 
 To expose both observability views together:
