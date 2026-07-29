@@ -199,6 +199,22 @@ def test_phased_curriculum_resets_promotion_streak_and_persists_phase() -> None:
     assert restored.phase_gate_streak == 0
 
 
+def test_behavior_gate_resets_phase_promotion_streak() -> None:
+    curriculum = SemanticSkillCurriculum(
+        STATE,
+        CONFIG,
+        seed=42,
+        phased=True,
+        phase_patience=2,
+    )
+    passing = {"approach": 0.8, "shot": 0.75, "interception": 0.4}
+    curriculum.observe_holdout_rates(passing)
+
+    assert not curriculum.observe_holdout_rates(passing, behavior_eligible=False)
+    assert curriculum.phase_gate_streak == 0
+    assert curriculum.phase_name == "foundation"
+
+
 @pytest.mark.parametrize(
     ("family", "roster", "controlled_count", "opponent_count"),
     (

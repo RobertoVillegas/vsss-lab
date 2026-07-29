@@ -176,9 +176,9 @@ league-semantic-steps-at run_dir steps="50000000" capture_every="25" capture_sec
   mise run train-env
   uv run --group train python -m vsss_league.cli run --config "{{config}}" --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --run-dir "{{run_dir}}" --steps {{steps}} --capture-every {{capture_every}} --capture-seconds {{capture_seconds}} --checkpoint-every {{checkpoint_every}} --device "{{device}}" --num-envs {{num_envs}} --semantic-eval-every {{eval_every}} --semantic-eval-seeds {{eval_seeds}}
 
-league-semantic-warm-steps-at run_dir initialize_from steps="50000000" capture_every="25" capture_seconds="60" checkpoint_every="25" device="auto" num_envs="64" eval_every="25" eval_seeds="3":
+league-semantic-warm-steps-at run_dir initialize_from steps="50000000" capture_every="25" capture_seconds="60" checkpoint_every="25" device="auto" num_envs="64" eval_every="25" eval_seeds="3" config="experiments/configs/m17-mappo-coordination.toml":
   mise run train-env
-  uv run --group train python -m vsss_league.cli run --config experiments/configs/m17-mappo-coordination.toml --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --run-dir "{{run_dir}}" --steps {{steps}} --capture-every {{capture_every}} --capture-seconds {{capture_seconds}} --checkpoint-every {{checkpoint_every}} --device "{{device}}" --num-envs {{num_envs}} --initialize-from "{{initialize_from}}" --semantic-eval-every {{eval_every}} --semantic-eval-seeds {{eval_seeds}}
+  uv run --group train python -m vsss_league.cli run --config "{{config}}" --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --run-dir "{{run_dir}}" --steps {{steps}} --capture-every {{capture_every}} --capture-seconds {{capture_seconds}} --checkpoint-every {{checkpoint_every}} --device "{{device}}" --num-envs {{num_envs}} --initialize-from "{{initialize_from}}" --semantic-eval-every {{eval_every}} --semantic-eval-seeds {{eval_seeds}}
 
 league-live-semantic-at run_dir steps="50000000" capture_every="25" capture_seconds="60" checkpoint_every="25" device="auto" num_envs="64" eval_every="25" eval_seeds="3" port="8765" config="experiments/configs/m17-mappo-coordination.toml":
   mkdir -p "{{run_dir}}"
@@ -196,6 +196,9 @@ league-live-m19 steps="10000000" capture_every="25" capture_seconds="60" checkpo
 
 league-live-m20 steps="10000000" capture_every="25" capture_seconds="60" checkpoint_every="25" device="auto" num_envs="64" eval_every="25" eval_seeds="3" port="8765":
   run_dir=$(uv run python tools/next_run_dir.py vsss-m20-run); echo "Allocated M20 geometry run: $run_dir"; just league-live-semantic-at "$run_dir" "{{steps}}" "{{capture_every}}" "{{capture_seconds}}" "{{checkpoint_every}}" "{{device}}" "{{num_envs}}" "{{eval_every}}" "{{eval_seeds}}" "{{port}}" "experiments/configs/m20-mappo-goal-geometry.toml"
+
+league-live-m21 initialize_from steps="50000000" capture_every="25" capture_seconds="60" checkpoint_every="25" device="auto" num_envs="64" eval_every="25" eval_seeds="3" port="8765":
+  run_dir=$(uv run python tools/next_run_dir.py vsss-m21-run); echo "Allocated M21 anti-spin run: $run_dir"; mkdir -p "$run_dir"; just web-build; echo "VSSS replay viewer: http://127.0.0.1:{{port}} (HTTP log: $run_dir/viewer.log)"; PYTHONPATH=python:. uv run python -m tools.replay_web.server --run-dir "$run_dir" --host 127.0.0.1 --port {{port}} > "$run_dir/viewer.log" 2>&1 & viewer_pid=$!; trap 'kill "$viewer_pid" 2>/dev/null || true' EXIT; just league-semantic-warm-steps-at "$run_dir" "{{initialize_from}}" "{{steps}}" "{{capture_every}}" "{{capture_seconds}}" "{{checkpoint_every}}" "{{device}}" "{{num_envs}}" "{{eval_every}}" "{{eval_seeds}}" "experiments/configs/m21-mappo-anti-spin.toml"
 
 league-live-resume run_dir="/home/rob/runs/vsss-lab-live" iterations="1000" capture_every="100" capture_seconds="60" checkpoint_every="100" device="auto" num_envs="64" port="8765":
   just web-build

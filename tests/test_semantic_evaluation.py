@@ -48,6 +48,7 @@ def test_paired_semantic_evaluation_reports_trials_intervals_and_throughput() ->
     assert report.elapsed_seconds > 0.0
     assert report.physical_validity_rate == 1.0
     assert report.mean_controlled_touches >= 0.0
+    assert 0.0 <= report.idle_spin_ratio <= 1.0
     assert report.difficulty_bands["beginner"]["attempts"] == 8
     assert report.difficulty_levels["0.20"]["attempts"] == 8
     assert {trial.controlled_team for trial in report.trials} == {"blue", "yellow"}

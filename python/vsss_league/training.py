@@ -114,6 +114,12 @@ def create_rollout_session(config: MarlConfig, config_json: str, state_json: str
             useful_touch_impulse_coefficient=config.useful_touch_impulse_coefficient,
             goal_geometry_coefficient=config.goal_geometry_coefficient,
             goal_geometry_discount=config.goal_geometry_discount,
+            idle_spin_coefficient=config.idle_spin_coefficient,
+            idle_spin_grace_seconds=config.idle_spin_grace_seconds,
+            idle_spin_turn_threshold=config.idle_spin_turn_threshold,
+            idle_spin_drive_threshold=config.idle_spin_drive_threshold,
+            idle_spin_speed_threshold=config.idle_spin_speed_threshold,
+            idle_spin_ball_distance=config.idle_spin_ball_distance,
             attacker_alignment_coefficient=config.attacker_alignment_coefficient,
             time_penalty_coefficient=config.time_penalty_coefficient,
             movement_speed_threshold=config.movement_speed_threshold,
@@ -613,6 +619,13 @@ def _curriculum_telemetry(session: RolloutSession | None) -> dict[str, object] |
             "opponent_deadlocks": int(session.environment.opponent_deadlocks.sum()),
             "escapes": int(session.environment.contact_escapes.sum()),
         }
+        active_agent_decisions = max(1, int(session.environment.active_agent_decisions.sum()))
+        telemetry["motion"] = {
+            "idle_spin_agent_seconds": float(session.environment.idle_spin_steps.sum())
+            * session.environment.decision_period,
+            "idle_spin_ratio": float(session.environment.idle_spin_steps.sum())
+            / active_agent_decisions,
+        }
         session.environment.role_switches.fill(0)
         session.environment.uncovered_steps.fill(0)
         session.environment.role_decisions.fill(0)
@@ -621,6 +634,8 @@ def _curriculum_telemetry(session: RolloutSession | None) -> dict[str, object] |
         session.environment.ally_deadlocks.fill(0)
         session.environment.opponent_deadlocks.fill(0)
         session.environment.contact_escapes.fill(0)
+        session.environment.idle_spin_steps.fill(0)
+        session.environment.active_agent_decisions.fill(0)
         session.skill_outcomes.clear()
         session.skill_trials.clear()
         return telemetry

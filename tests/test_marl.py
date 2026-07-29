@@ -26,6 +26,7 @@ from vsss_train.marl_env import (
     _defensive_threat,
     _goal_geometry_metrics,
     _goal_geometry_potential,
+    _idle_spin_flags,
     _team_touches_ball,
     _teammate_congestion,
     _useful_touch_impulse,
@@ -161,6 +162,27 @@ def test_discounted_goal_geometry_cannot_reward_camping_behind_ball() -> None:
 
     assert stationary_reward < 0.0
     assert advancing_reward > 0.0
+
+
+def test_idle_spin_detection_exempts_orientation_and_ball_control() -> None:
+    state = initial_state()
+    actions = np.asarray(((-0.8, 0.8), (0.4, 0.8), (-0.8, 0.8)), dtype=np.float32)
+    state[12:14] = (-0.50, -0.40)
+    state[23:25] = (-0.25, 0.0)
+    state[34:36] = state[5:7]
+
+    flags, intensity = _idle_spin_flags(
+        state,
+        0,
+        actions,
+        turn_threshold=0.25,
+        drive_threshold=0.15,
+        speed_threshold=0.08,
+        ball_distance=0.12,
+    )
+
+    assert flags.tolist() == [True, False, False]
+    assert intensity.tolist() == pytest.approx([0.8, 0.2, 0.8])
 
 
 def trajectory(learner: MarlLearner, steps: int = 4) -> TeamTrajectory:

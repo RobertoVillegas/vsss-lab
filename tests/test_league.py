@@ -492,3 +492,24 @@ def test_semantic_checkpoint_ranking_prefers_consolidation_over_tiny_minimum_gai
         "minimum_family_success_rate": 0.04,
     }
     assert _semantic_candidate_score(consolidated) > _semantic_candidate_score(traded_off)
+
+
+def test_semantic_checkpoint_ranking_rejects_behavior_collapse() -> None:
+    healthy = {
+        "curriculum_phase_index": 2,
+        "behavior_gate_passed": True,
+        "promotion_eligible": False,
+        "promotion_gates_passed": 2,
+        "success_rate": 0.40,
+        "unresolved": 60,
+        "minimum_family_success_rate": 0.0,
+    }
+    spinning = {
+        **healthy,
+        "behavior_gate_passed": False,
+        "promotion_gates_passed": 4,
+        "success_rate": 0.55,
+        "unresolved": 20,
+    }
+
+    assert _semantic_candidate_score(healthy) > _semantic_candidate_score(spinning)

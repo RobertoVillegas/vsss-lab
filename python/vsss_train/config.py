@@ -93,6 +93,7 @@ class MarlConfig:
     semantic_regression_warmup_evaluations: int = 0
     semantic_phase_patience: int = 2
     semantic_promotion_floors: dict[str, float] = field(default_factory=dict)
+    semantic_max_idle_spin_ratio: float = 1.0
     observation_dropout: float = 0.0
     observation_noise_std: float = 0.0
     seed: int = 7
@@ -125,6 +126,12 @@ class MarlConfig:
     useful_touch_impulse_coefficient: float = 0.0
     goal_geometry_coefficient: float = 0.0
     goal_geometry_discount: float = 0.99
+    idle_spin_coefficient: float = 0.0
+    idle_spin_grace_seconds: float = 0.5
+    idle_spin_turn_threshold: float = 0.13
+    idle_spin_drive_threshold: float = 0.07
+    idle_spin_speed_threshold: float = 0.08
+    idle_spin_ball_distance: float = 0.12
     attacker_alignment_coefficient: float = 0.0
     time_penalty_coefficient: float = 0.0
     movement_speed_threshold: float = 0.03
@@ -188,6 +195,8 @@ class MarlConfig:
             raise ValueError("semantic promotion floor has an unknown skill family")
         if any(not 0.0 <= value <= 1.0 for value in self.semantic_promotion_floors.values()):
             raise ValueError("semantic promotion floors must be in [0, 1]")
+        if not 0.0 <= self.semantic_max_idle_spin_ratio <= 1.0:
+            raise ValueError("semantic_max_idle_spin_ratio must be in [0, 1]")
         if not 0.0 <= self.observation_dropout < 1.0:
             raise ValueError("observation_dropout must be in [0, 1)")
         if self.observation_noise_std < 0.0:
@@ -208,6 +217,7 @@ class MarlConfig:
             self.ball_direction_coefficient,
             self.useful_touch_impulse_coefficient,
             self.goal_geometry_coefficient,
+            self.idle_spin_coefficient,
             self.attacker_alignment_coefficient,
             self.time_penalty_coefficient,
             self.teammate_congestion_coefficient,
@@ -224,6 +234,14 @@ class MarlConfig:
             raise ValueError("MARL reward coefficients must be non-negative")
         if not 0.0 <= self.goal_geometry_discount <= 1.0:
             raise ValueError("goal_geometry_discount must be in [0, 1]")
+        if self.idle_spin_grace_seconds <= 0.0:
+            raise ValueError("idle_spin_grace_seconds must be positive")
+        if not 0.0 <= self.idle_spin_turn_threshold <= 1.0:
+            raise ValueError("idle_spin_turn_threshold must be in [0, 1]")
+        if not 0.0 <= self.idle_spin_drive_threshold <= 1.0:
+            raise ValueError("idle_spin_drive_threshold must be in [0, 1]")
+        if self.idle_spin_speed_threshold <= 0.0 or self.idle_spin_ball_distance <= 0.0:
+            raise ValueError("idle-spin motion thresholds must be positive")
         if self.teammate_spacing <= 0.075:
             raise ValueError("teammate_spacing must exceed the robot body width")
         if self.contact_distance <= 0.075:

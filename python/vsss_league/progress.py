@@ -247,6 +247,16 @@ class TrainingDashboard:
                     ),
                     "",
                 )
+            motion = latest.curriculum.get("motion")
+            if isinstance(motion, dict):
+                table.add_row(
+                    "idle spin",
+                    (
+                        f"{float(motion.get('idle_spin_agent_seconds', 0.0)):.1f} agent-s · "
+                        f"{float(motion.get('idle_spin_ratio', 0.0)):.1%}"
+                    ),
+                    "",
+                )
             rosters = latest.curriculum.get("allocation_by_roster")
             if isinstance(rosters, dict) and rosters:
                 table.add_row(

@@ -62,10 +62,17 @@ LEGACY_NEUTRAL_CONFIG = {
     "semantic_regression_warmup_evaluations": 0,
     "semantic_phase_patience": 2,
     "semantic_promotion_floors": {},
+    "semantic_max_idle_spin_ratio": 1.0,
     "contact_distance": 0.082,
     "contact_grace_seconds": 0.5,
     "ally_deadlock_coefficient": 0.0,
     "opponent_deadlock_coefficient": 0.0,
+    "idle_spin_coefficient": 0.0,
+    "idle_spin_grace_seconds": 0.5,
+    "idle_spin_turn_threshold": 0.13,
+    "idle_spin_drive_threshold": 0.07,
+    "idle_spin_speed_threshold": 0.08,
+    "idle_spin_ball_distance": 0.12,
 }
 ACTION_EPSILON = 1e-6
 

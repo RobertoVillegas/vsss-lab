@@ -37,10 +37,11 @@ FORCE_STOP_WINDOW_SECONDS = 2.0
 
 def _semantic_candidate_score(
     evaluation: dict[str, Any],
-) -> tuple[int, bool, int, float, int, float]:
+) -> tuple[int, bool, bool, int, float, int, float]:
     """Rank consolidation before isolated minimum-family gains."""
     return (
         int(evaluation.get("curriculum_phase_index", 0)),
+        bool(evaluation.get("behavior_gate_passed", True)),
         bool(evaluation.get("promotion_eligible", True)),
         int(evaluation.get("promotion_gates_passed", 0)),
         float(evaluation["success_rate"]),
@@ -364,11 +365,15 @@ def _run(arguments: argparse.Namespace) -> None:
                     }
                     for family, floor in config.semantic_promotion_floors.items()
                 }
-                promotion_eligible = all(bool(gate["passed"]) for gate in promotion_gates.values())
+                behavior_gate_passed = report.idle_spin_ratio <= config.semantic_max_idle_spin_ratio
+                promotion_eligible = behavior_gate_passed and all(
+                    bool(gate["passed"]) for gate in promotion_gates.values()
+                )
                 gates_passed = sum(bool(gate["passed"]) for gate in promotion_gates.values())
                 phase_before = rollout_session.semantic_curriculum.phase_name
                 phase_advanced = rollout_session.semantic_curriculum.observe_holdout_rates(
-                    family_rates
+                    family_rates,
+                    behavior_eligible=behavior_gate_passed,
                 )
                 semantic_evaluation = {
                     "iteration": iteration,
@@ -379,6 +384,9 @@ def _run(arguments: argparse.Namespace) -> None:
                     "minimum_family_success_rate": minimum_family_rate,
                     "unresolved": unresolved,
                     "promotion_eligible": promotion_eligible,
+                    "behavior_gate_passed": behavior_gate_passed,
+                    "idle_spin_ratio": report.idle_spin_ratio,
+                    "maximum_idle_spin_ratio": config.semantic_max_idle_spin_ratio,
                     "promotion_gates_passed": gates_passed,
                     "promotion_gates": promotion_gates,
                     "curriculum_phase": phase_before,

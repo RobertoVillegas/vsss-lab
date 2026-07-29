@@ -282,12 +282,19 @@ class SemanticSkillCurriculum:
         phase_fraction = PHASES[self.phase_index][3]
         return self.full_match_fraction if phase_fraction == 1.0 else phase_fraction
 
-    def observe_holdout_rates(self, rates: dict[str, float]) -> bool:
+    def observe_holdout_rates(
+        self,
+        rates: dict[str, float],
+        *,
+        behavior_eligible: bool = True,
+    ) -> bool:
         """Advance after consecutive paired holdouts clear the current phase."""
         if not self.phased or self.phase_index >= len(PHASES) - 1:
             return False
         gates = PHASES[self.phase_index][2]
-        passed = all(rates.get(family, 0.0) >= floor for family, floor in gates.items())
+        passed = behavior_eligible and all(
+            rates.get(family, 0.0) >= floor for family, floor in gates.items()
+        )
         self.phase_gate_streak = self.phase_gate_streak + 1 if passed else 0
         if self.phase_gate_streak < self.phase_patience:
             return False

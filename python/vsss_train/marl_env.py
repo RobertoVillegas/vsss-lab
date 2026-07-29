@@ -334,6 +334,12 @@ class VectorMarlMatchEnv:
         useful_touch_impulse_coefficient: float,
         goal_geometry_coefficient: float,
         goal_geometry_discount: float,
+        idle_spin_coefficient: float,
+        idle_spin_grace_seconds: float,
+        idle_spin_turn_threshold: float,
+        idle_spin_drive_threshold: float,
+        idle_spin_speed_threshold: float,
+        idle_spin_ball_distance: float,
         attacker_alignment_coefficient: float,
         time_penalty_coefficient: float,
         movement_speed_threshold: float,
@@ -370,12 +376,18 @@ class VectorMarlMatchEnv:
         self.useful_touch_impulse_coefficient = useful_touch_impulse_coefficient
         self.goal_geometry_coefficient = goal_geometry_coefficient
         self.goal_geometry_discount = goal_geometry_discount
+        self._decision_period = float(self._config["timestep"]) * action_repeat
+        self.idle_spin_coefficient = idle_spin_coefficient
+        self.idle_spin_grace_steps = max(1, round(idle_spin_grace_seconds / self._decision_period))
+        self.idle_spin_turn_threshold = idle_spin_turn_threshold
+        self.idle_spin_drive_threshold = idle_spin_drive_threshold
+        self.idle_spin_speed_threshold = idle_spin_speed_threshold
+        self.idle_spin_ball_distance = idle_spin_ball_distance
         self.attacker_alignment_coefficient = attacker_alignment_coefficient
         self.time_penalty_coefficient = time_penalty_coefficient
         self.movement_speed_threshold = movement_speed_threshold
         self.teammate_spacing = teammate_spacing
         self.teammate_congestion_coefficient = teammate_congestion_coefficient
-        self._decision_period = float(self._config["timestep"]) * action_repeat
         self.contact_distance = contact_distance
         self.contact_grace_steps = max(1, round(contact_grace_seconds / self._decision_period))
         self.ally_deadlock_coefficient = ally_deadlock_coefficient
@@ -405,6 +417,7 @@ class VectorMarlMatchEnv:
         self._previous_ball_velocities = np.zeros((num_envs, 2), dtype=np.float32)
         self._controlled_ball_contact = np.zeros(num_envs, dtype=np.bool_)
         self._goal_geometry_potential = np.zeros(num_envs, dtype=np.float32)
+        self._idle_spin_streaks = np.zeros((num_envs, 3), dtype=np.int64)
         self._ally_contact_streaks = np.zeros((num_envs, 3), dtype=np.int64)
         self._opponent_contact_streaks = np.zeros((num_envs, 9), dtype=np.int64)
         self.ally_contact_steps = np.zeros(num_envs, dtype=np.int64)
@@ -412,6 +425,8 @@ class VectorMarlMatchEnv:
         self.ally_deadlocks = np.zeros(num_envs, dtype=np.int64)
         self.opponent_deadlocks = np.zeros(num_envs, dtype=np.int64)
         self.contact_escapes = np.zeros(num_envs, dtype=np.int64)
+        self.idle_spin_steps = np.zeros(num_envs, dtype=np.int64)
+        self.active_agent_decisions = np.zeros(num_envs, dtype=np.int64)
         self.last_terminal_reasons = np.full(num_envs, "", dtype="<U24")
         self.controlled_teams = np.zeros(num_envs, dtype=np.int64)
         self._role_assigners = [DynamicRoleAssigner() for _ in range(num_envs)]
@@ -456,6 +471,7 @@ class VectorMarlMatchEnv:
         self._goal_geometry_potential[world] = _goal_geometry_potential(
             self.states[world], self._config, team
         )
+        self._idle_spin_streaks[world].fill(0)
         self._stagnation_steps[world] = 0
         self._ally_contact_streaks[world].fill(0)
         self._opponent_contact_streaks[world].fill(0)
@@ -634,6 +650,26 @@ class VectorMarlMatchEnv:
             ],
             dtype=np.float32,
         )
+        idle_spin_penalty = np.zeros(self.num_envs, dtype=np.float32)
+        for world, (state, team) in enumerate(zip(self.states, self.controlled_teams, strict=True)):
+            flags, turn_intensity = _idle_spin_flags(
+                state,
+                int(team),
+                normalized_blue[world],
+                turn_threshold=self.idle_spin_turn_threshold,
+                drive_threshold=self.idle_spin_drive_threshold,
+                speed_threshold=self.idle_spin_speed_threshold,
+                ball_distance=self.idle_spin_ball_distance,
+            )
+            self._idle_spin_streaks[world] = np.where(flags, self._idle_spin_streaks[world] + 1, 0)
+            penalized = flags & (self._idle_spin_streaks[world] > self.idle_spin_grace_steps)
+            idle_spin_penalty[world] = float(np.where(penalized, turn_intensity, 0.0).mean())
+            self.idle_spin_steps[world] += int(flags.sum())
+            team_offset = 0 if int(team) == 0 else 3
+            self.active_agent_decisions[world] += sum(
+                bool(float(state[ROBOT_BASE + (team_offset + slot) * ROBOT_WIDTH + 10]))
+                for slot in range(3)
+            )
         scored = np.where(self.controlled_teams == 0, (events & 1) != 0, (events & 2) != 0)
         conceded = np.where(
             self.controlled_teams == 0,
@@ -663,6 +699,7 @@ class VectorMarlMatchEnv:
                 self.goal_geometry_discount * goal_geometry_potential
                 - self._goal_geometry_potential
             )
+            - self.idle_spin_coefficient * idle_spin_penalty
             + self.attacker_alignment_coefficient
             * np.asarray(
                 [
@@ -1043,6 +1080,39 @@ def _goal_geometry_potential(
 ) -> float:
     """Bounded state potential; reward its discounted change, never the static pose."""
     return _goal_geometry_metrics(state, config, team)["potential"]
+
+
+def _idle_spin_flags(
+    state: FloatArray,
+    team: int,
+    normalized_actions: FloatArray,
+    *,
+    turn_threshold: float,
+    drive_threshold: float,
+    speed_threshold: float,
+    ball_distance: float,
+) -> tuple[NDArray[np.bool_], FloatArray]:
+    """Find turn-in-place actions that are slow, remote from the ball, and non-progressive."""
+    left = normalized_actions[:, 0]
+    right = normalized_actions[:, 1]
+    turn_intensity = np.abs(right - left) / 2.0
+    drive_intensity = np.abs(right + left) / 2.0
+    flags = np.zeros(3, dtype=np.bool_)
+    offset = 0 if team == 0 else 3
+    ball_x, ball_y = float(state[5]), float(state[6])
+    for local_slot in range(3):
+        base = ROBOT_BASE + (offset + local_slot) * ROBOT_WIDTH
+        if not bool(float(state[base + 10])):
+            continue
+        speed = math.hypot(float(state[base + 5]), float(state[base + 6]))
+        distance = math.hypot(ball_x - float(state[base + 2]), ball_y - float(state[base + 3]))
+        flags[local_slot] = (
+            turn_intensity[local_slot] > turn_threshold
+            and drive_intensity[local_slot] < drive_threshold
+            and speed < speed_threshold
+            and distance > ball_distance
+        )
+    return flags, np.asarray(turn_intensity, dtype=np.float32)
 
 
 def _attacker_alignment_reward(

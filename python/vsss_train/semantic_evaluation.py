@@ -63,6 +63,7 @@ class SemanticEvaluationReport:
     resolved_drills_per_second: float
     physical_validity_rate: float
     mean_controlled_touches: float
+    idle_spin_ratio: float
     difficulty_bands: dict[str, dict[str, float | int]]
     difficulty_levels: dict[str, dict[str, float | int]]
     families: tuple[FamilyEvaluation, ...]
@@ -112,6 +113,8 @@ def evaluate_semantic_skills(
     started = time.perf_counter()
     maximum_horizon = max(scenario.context.horizon for scenario in scenarios)
     for _ in range(maximum_horizon):
+        idle_spin_before = environment.idle_spin_steps.copy()
+        decisions_before = environment.active_agent_decisions.copy()
         actions = np.zeros((len(scenarios), 3, 2), dtype=np.float32)
         if control == "random":
             actions[active] = random.uniform(-1.0, 1.0, size=(int(active.sum()), 3, 2))
@@ -135,6 +138,8 @@ def evaluate_semantic_skills(
             with torch.no_grad():
                 actions[:] = actor.deterministic_action(observations).detach().cpu().numpy()
         _, _, _, events, _ = environment.step(actions, None)
+        environment.idle_spin_steps[~active] = idle_spin_before[~active]
+        environment.active_agent_decisions[~active] = decisions_before[~active]
         for world, evaluator in enumerate(evaluators):
             if not active[world]:
                 continue
@@ -181,6 +186,8 @@ def evaluate_semantic_skills(
         resolved_drills_per_second=resolved / elapsed if elapsed else 0.0,
         physical_validity_rate=1.0,
         mean_controlled_touches=sum(trial.controlled_touches for trial in trials) / len(trials),
+        idle_spin_ratio=float(environment.idle_spin_steps.sum())
+        / max(1, int(environment.active_agent_decisions.sum())),
         difficulty_bands=_difficulty_bands(trials),
         difficulty_levels=_difficulty_levels(trials),
         families=families,
@@ -204,6 +211,12 @@ def _environment(config_json: str, state_json: str, worlds: int) -> VectorMarlMa
         useful_touch_impulse_coefficient=0.0,
         goal_geometry_coefficient=0.0,
         goal_geometry_discount=0.99,
+        idle_spin_coefficient=0.0,
+        idle_spin_grace_seconds=0.5,
+        idle_spin_turn_threshold=0.13,
+        idle_spin_drive_threshold=0.07,
+        idle_spin_speed_threshold=0.08,
+        idle_spin_ball_distance=0.12,
         attacker_alignment_coefficient=0.0,
         time_penalty_coefficient=0.0,
         movement_speed_threshold=0.03,
