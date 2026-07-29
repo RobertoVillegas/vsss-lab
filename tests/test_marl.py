@@ -24,6 +24,8 @@ from vsss_train.marl_env import (
     _attacker_alignment_reward,
     _ball_direction_reward,
     _defensive_threat,
+    _goal_geometry_metrics,
+    _goal_geometry_potential,
     _team_touches_ball,
     _teammate_congestion,
     _useful_touch_impulse,
@@ -127,6 +129,38 @@ def test_useful_touch_impulse_is_directional_and_cannot_farm_overlap() -> None:
     assert _useful_touch_impulse(0.8, 0.1, 0, True, True) == 0.0
     assert _useful_touch_impulse(-0.8, 0.1, 0, True, False) == 0.0
     assert _useful_touch_impulse(-0.8, -0.1, 1, True, False) == pytest.approx(0.7)
+
+
+def test_goal_geometry_favors_a_controllable_line_through_goal_aperture() -> None:
+    config = json.loads(CONFIG)
+    state = initial_state()
+    state[5:7] = (0.10, 0.0)
+    state[12:14] = (-0.05, 0.0)
+    aligned = _goal_geometry_metrics(state, config)
+    state[13] = 0.25
+    corner_line = _goal_geometry_metrics(state, config)
+
+    assert aligned["attacker_alignment"] > corner_line["attacker_alignment"]
+    assert aligned["goal_aperture"] == pytest.approx(1.0)
+    assert corner_line["goal_aperture"] == 0.0
+    assert aligned["potential"] > corner_line["potential"]
+
+
+def test_discounted_goal_geometry_cannot_reward_camping_behind_ball() -> None:
+    config = json.loads(CONFIG)
+    state = initial_state()
+    state[5:7] = (0.10, 0.0)
+    state[12:14] = (-0.05, 0.0)
+    potential = _goal_geometry_potential(state, config)
+    stationary_reward = 0.10 * (0.99 * potential - potential)
+
+    advanced = state.copy()
+    advanced[5] += 0.10
+    advanced[12] += 0.10
+    advancing_reward = 0.10 * (0.99 * _goal_geometry_potential(advanced, config) - potential)
+
+    assert stationary_reward < 0.0
+    assert advancing_reward > 0.0
 
 
 def trajectory(learner: MarlLearner, steps: int = 4) -> TeamTrajectory:

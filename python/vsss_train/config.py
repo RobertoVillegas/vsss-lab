@@ -123,6 +123,8 @@ class MarlConfig:
     wheel_effort_coefficient: float = 0.0
     ball_direction_coefficient: float = 0.0
     useful_touch_impulse_coefficient: float = 0.0
+    goal_geometry_coefficient: float = 0.0
+    goal_geometry_discount: float = 0.99
     attacker_alignment_coefficient: float = 0.0
     time_penalty_coefficient: float = 0.0
     movement_speed_threshold: float = 0.03
@@ -205,6 +207,7 @@ class MarlConfig:
             self.wheel_effort_coefficient,
             self.ball_direction_coefficient,
             self.useful_touch_impulse_coefficient,
+            self.goal_geometry_coefficient,
             self.attacker_alignment_coefficient,
             self.time_penalty_coefficient,
             self.teammate_congestion_coefficient,
@@ -219,6 +222,8 @@ class MarlConfig:
         )
         if any(value < 0.0 for value in non_negative):
             raise ValueError("MARL reward coefficients must be non-negative")
+        if not 0.0 <= self.goal_geometry_discount <= 1.0:
+            raise ValueError("goal_geometry_discount must be in [0, 1]")
         if self.teammate_spacing <= 0.075:
             raise ValueError("teammate_spacing must exceed the robot body width")
         if self.contact_distance <= 0.075:

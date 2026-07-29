@@ -18,7 +18,7 @@ from vsss_train.ablations import (
     RecurrentState,
 )
 from vsss_train.marl import RoleSharedActor, SharedActor, build_team_observation
-from vsss_train.marl_env import MarlMatchEnv
+from vsss_train.marl_env import MarlMatchEnv, _goal_geometry_metrics
 from vsss_train.roles import assign_roles
 from vsss_vision import (
     BallEstimate,
@@ -237,6 +237,10 @@ def run_policy_replay(
                     "coverage_uncovered": {
                         "blue": bool(info["coverage_uncovered"]),
                         "yellow": yellow_roles.uncovered,
+                    },
+                    "goal_geometry": {
+                        "blue": info["goal_geometry"],
+                        "yellow": _goal_geometry_metrics(environment.state, config, 1),
                     },
                     "events": int(info["events"]),
                     "checksum": final_checksum,

@@ -112,6 +112,8 @@ def create_rollout_session(config: MarlConfig, config_json: str, state_json: str
             wheel_effort_coefficient=config.wheel_effort_coefficient,
             ball_direction_coefficient=config.ball_direction_coefficient,
             useful_touch_impulse_coefficient=config.useful_touch_impulse_coefficient,
+            goal_geometry_coefficient=config.goal_geometry_coefficient,
+            goal_geometry_discount=config.goal_geometry_discount,
             attacker_alignment_coefficient=config.attacker_alignment_coefficient,
             time_penalty_coefficient=config.time_penalty_coefficient,
             movement_speed_threshold=config.movement_speed_threshold,

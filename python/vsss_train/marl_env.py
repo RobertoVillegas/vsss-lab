@@ -28,7 +28,7 @@ from vsss_train.marl import (
     stack_team_batches,
 )
 from vsss_train.ppo import seed_everything
-from vsss_train.roles import DynamicRoleAssigner, RoleAssignment
+from vsss_train.roles import DynamicRoleAssigner, RoleAssignment, assign_roles
 
 FloatArray = NDArray[np.float32]
 ROBOT_BASE = 10
@@ -42,6 +42,7 @@ class TeamReward:
     attacker_alignment: float
     time: float
     goal: float
+    goal_geometry: float = 0.0
     action_delta: float = 0.0
     wheel_effort: float = 0.0
     teammate_congestion: float = 0.0
@@ -55,6 +56,7 @@ class TeamReward:
             + self.attacker_alignment
             + self.time
             + self.goal
+            + self.goal_geometry
             + self.action_delta
             + self.wheel_effort
             + self.teammate_congestion
@@ -100,6 +102,8 @@ class MarlMatchEnv:
         progress_coefficient: float = 0.0,
         wheel_effort_coefficient: float = 0.0,
         ball_direction_coefficient: float = 0.0,
+        goal_geometry_coefficient: float = 0.0,
+        goal_geometry_discount: float = 0.99,
         attacker_alignment_coefficient: float = 0.0,
         time_penalty_coefficient: float = 0.0,
         movement_speed_threshold: float = 0.03,
@@ -127,6 +131,8 @@ class MarlMatchEnv:
         self.progress_coefficient = progress_coefficient
         self.wheel_effort_coefficient = wheel_effort_coefficient
         self.ball_direction_coefficient = ball_direction_coefficient
+        self.goal_geometry_coefficient = goal_geometry_coefficient
+        self.goal_geometry_discount = goal_geometry_discount
         self.attacker_alignment_coefficient = attacker_alignment_coefficient
         self.time_penalty_coefficient = time_penalty_coefficient
         self.movement_speed_threshold = movement_speed_threshold
@@ -152,6 +158,7 @@ class MarlMatchEnv:
         self._stagnation_steps = 0
         self._role_assigner = DynamicRoleAssigner()
         self._role_assignment: RoleAssignment | None = None
+        self._goal_geometry_potential = 0.0
 
     def reset(self, seed: int) -> TeamBatch:
         snapshot = _seeded_snapshot(self._template, seed)
@@ -171,6 +178,7 @@ class MarlMatchEnv:
         self._stagnation_steps = 0
         self._role_assigner.reset()
         self._role_assignment = self._role_assigner.assign(self.state, 0)
+        self._goal_geometry_potential = _goal_geometry_potential(self.state, self._config, 0)
         return build_team_observation(self.state, team=0, role_assignment=self._role_assignment)
 
     def step(
@@ -219,6 +227,7 @@ class MarlMatchEnv:
             self._goal_grace_remaining is None and self._stagnation_steps >= self.stagnation_limit
         )
         draw = self.steps >= self.horizon and not goal_complete and not stagnated
+        goal_geometry_potential = _goal_geometry_potential(self.state, self._config, 0)
         reward = TeamReward(
             ball_progress=self.progress_coefficient
             * (2.0 * (self._closest - closest) + (ball_x - self._ball_x)),
@@ -235,6 +244,11 @@ class MarlMatchEnv:
                 - self.draw_penalty * float(draw)
                 - self.stagnation_penalty * float(stagnated)
             ),
+            goal_geometry=self.goal_geometry_coefficient
+            * (
+                self.goal_geometry_discount * goal_geometry_potential
+                - self._goal_geometry_potential
+            ),
             action_delta=-self.action_delta_coefficient * float(np.square(action_delta).mean()),
             wheel_effort=-self.wheel_effort_coefficient * float(np.square(normalized_blue).mean()),
             teammate_congestion=-self.teammate_congestion_coefficient
@@ -247,6 +261,7 @@ class MarlMatchEnv:
         self._ball_x = ball_x
         self._closest = closest
         self._defensive_distance = defensive_distance
+        self._goal_geometry_potential = goal_geometry_potential
         done = draw or goal_complete or stagnated
         terminal_reason = (
             "goal" if goal_complete else "stagnation" if stagnated else "draw" if draw else None
@@ -273,6 +288,7 @@ class MarlMatchEnv:
                 "roles": list(self._role_assignment.roles),
                 "role_changes": list(self._role_assignment.changed),
                 "coverage_uncovered": self._role_assignment.uncovered,
+                "goal_geometry": _goal_geometry_metrics(self.state, self._config, 0),
             },
         )
 
@@ -316,6 +332,8 @@ class VectorMarlMatchEnv:
         wheel_effort_coefficient: float,
         ball_direction_coefficient: float,
         useful_touch_impulse_coefficient: float,
+        goal_geometry_coefficient: float,
+        goal_geometry_discount: float,
         attacker_alignment_coefficient: float,
         time_penalty_coefficient: float,
         movement_speed_threshold: float,
@@ -350,6 +368,8 @@ class VectorMarlMatchEnv:
         self.wheel_effort_coefficient = wheel_effort_coefficient
         self.ball_direction_coefficient = ball_direction_coefficient
         self.useful_touch_impulse_coefficient = useful_touch_impulse_coefficient
+        self.goal_geometry_coefficient = goal_geometry_coefficient
+        self.goal_geometry_discount = goal_geometry_discount
         self.attacker_alignment_coefficient = attacker_alignment_coefficient
         self.time_penalty_coefficient = time_penalty_coefficient
         self.movement_speed_threshold = movement_speed_threshold
@@ -384,6 +404,7 @@ class VectorMarlMatchEnv:
         self._previous_ball_positions = np.zeros((num_envs, 2), dtype=np.float32)
         self._previous_ball_velocities = np.zeros((num_envs, 2), dtype=np.float32)
         self._controlled_ball_contact = np.zeros(num_envs, dtype=np.bool_)
+        self._goal_geometry_potential = np.zeros(num_envs, dtype=np.float32)
         self._ally_contact_streaks = np.zeros((num_envs, 3), dtype=np.int64)
         self._opponent_contact_streaks = np.zeros((num_envs, 9), dtype=np.int64)
         self.ally_contact_steps = np.zeros(num_envs, dtype=np.int64)
@@ -431,6 +452,9 @@ class VectorMarlMatchEnv:
             self.states[world],
             int(self.controlled_teams[world]),
             self._config,
+        )
+        self._goal_geometry_potential[world] = _goal_geometry_potential(
+            self.states[world], self._config, team
         )
         self._stagnation_steps[world] = 0
         self._ally_contact_streaks[world].fill(0)
@@ -603,6 +627,13 @@ class VectorMarlMatchEnv:
             ],
             dtype=np.float32,
         )
+        goal_geometry_potential = np.asarray(
+            [
+                _goal_geometry_potential(state, self._config, int(team))
+                for state, team in zip(self.states, self.controlled_teams, strict=True)
+            ],
+            dtype=np.float32,
+        )
         scored = np.where(self.controlled_teams == 0, (events & 1) != 0, (events & 2) != 0)
         conceded = np.where(
             self.controlled_teams == 0,
@@ -627,6 +658,11 @@ class VectorMarlMatchEnv:
             )
             / self.horizon
             + self.useful_touch_impulse_coefficient * np.tanh(useful_touch_impulse)
+            + self.goal_geometry_coefficient
+            * (
+                self.goal_geometry_discount * goal_geometry_potential
+                - self._goal_geometry_potential
+            )
             + self.attacker_alignment_coefficient
             * np.asarray(
                 [
@@ -659,6 +695,7 @@ class VectorMarlMatchEnv:
         np.copyto(self._previous_ball_positions, ball_positions)
         np.copyto(self._previous_ball_velocities, self.states[:, 7:9])
         np.copyto(self._controlled_ball_contact, current_ball_contact)
+        np.copyto(self._goal_geometry_potential, goal_geometry_potential)
         self._closest = closest
         self._defensive_distance = defensive_distance
         done = draw | goal_complete | stagnated
@@ -941,6 +978,71 @@ def _ball_direction_reward(
     enemy_similarity = _cosine_similarity(enemy, velocity)
     ally_similarity = _cosine_similarity(ally, velocity)
     return math.tanh(enemy_similarity) - math.tanh(ally_similarity)
+
+
+def _goal_geometry_metrics(
+    state: FloatArray,
+    config: dict[str, Any],
+    team: int = 0,
+) -> dict[str, float]:
+    """Describe a controllable attacking line without declaring field zones good or bad."""
+    assignment = assign_roles(state, team)
+    local_slot = assignment.roles.index("attacker")
+    slot = local_slot + (0 if team == 0 else 3)
+    base = ROBOT_BASE + slot * ROBOT_WIDTH
+    robot = (float(state[base + 2]), float(state[base + 3]))
+    ball = (float(state[5]), float(state[6]))
+    attack_sign = 1.0 if team == 0 else -1.0
+    goal_x = attack_sign * float(config["field"]["length"]) / 2.0
+    to_ball = (ball[0] - robot[0], ball[1] - robot[1])
+    ball_to_goal = (goal_x - ball[0], -ball[1])
+    alignment = 0.5 * (_cosine_similarity(to_ball, ball_to_goal) + 1.0)
+
+    forward_separation = attack_sign * to_ball[0]
+    usable_half_goal = max(
+        1e-6,
+        float(config["field"]["goal_width"]) / 2.0 - float(config["ball"]["radius"]),
+    )
+    if forward_separation <= 1e-6:
+        aperture = 0.0
+    else:
+        goal_intersection_y = ball[1] + (ball[1] - robot[1]) * (
+            abs(goal_x - ball[0]) / forward_separation
+        )
+        aperture = float(np.clip(1.0 - abs(goal_intersection_y) / usable_half_goal, 0.0, 1.0))
+
+    distance = math.hypot(*to_ball)
+    controllable_proximity = math.exp(-distance / 0.25)
+    field_length = float(config["field"]["length"])
+    attacking_progress = float(
+        np.clip((attack_sign * ball[0] + field_length / 2.0) / field_length, 0.0, 1.0)
+    )
+    potential = float(
+        np.clip(
+            0.45 * alignment
+            + 0.25 * aperture
+            + 0.15 * controllable_proximity
+            + 0.15 * attacking_progress,
+            0.0,
+            1.0,
+        )
+    )
+    return {
+        "potential": potential,
+        "attacker_alignment": alignment,
+        "goal_aperture": aperture,
+        "controllable_proximity": controllable_proximity,
+        "attacking_progress": attacking_progress,
+    }
+
+
+def _goal_geometry_potential(
+    state: FloatArray,
+    config: dict[str, Any],
+    team: int = 0,
+) -> float:
+    """Bounded state potential; reward its discounted change, never the static pose."""
+    return _goal_geometry_metrics(state, config, team)["potential"]
 
 
 def _attacker_alignment_reward(

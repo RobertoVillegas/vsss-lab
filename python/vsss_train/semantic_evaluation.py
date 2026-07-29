@@ -202,6 +202,8 @@ def _environment(config_json: str, state_json: str, worlds: int) -> VectorMarlMa
         wheel_effort_coefficient=0.0,
         ball_direction_coefficient=0.0,
         useful_touch_impulse_coefficient=0.0,
+        goal_geometry_coefficient=0.0,
+        goal_geometry_discount=0.99,
         attacker_alignment_coefficient=0.0,
         time_penalty_coefficient=0.0,
         movement_speed_threshold=0.03,
