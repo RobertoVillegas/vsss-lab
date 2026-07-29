@@ -33,6 +33,7 @@ LEGACY_NEUTRAL_CONFIG = {
     "maximum_log_std": 0.0,
     "wheel_effort_coefficient": 0.0,
     "ball_direction_coefficient": 0.0,
+    "useful_touch_impulse_coefficient": 0.0,
     "attacker_alignment_coefficient": 0.0,
     "time_penalty_coefficient": 0.0,
     "movement_speed_threshold": 0.03,
@@ -42,6 +43,8 @@ LEGACY_NEUTRAL_CONFIG = {
     "league_heuristic_weight": 0.0,
     "league_history_window": 16,
     "policy_architecture": "mlp",
+    "network_activation": "tanh",
+    "layer_norm": False,
     "action_parser": "continuous",
     "adaptive_curriculum": False,
     "scenario_suite": "",
@@ -165,9 +168,17 @@ class MarlLearner:
         self.actor = _build_actor(config).to(self.device)
         self.critic: LocalCritic | CentralizedCritic
         self.critic = (
-            LocalCritic(config.hidden_size)
+            LocalCritic(
+                config.hidden_size,
+                activation=config.network_activation,
+                layer_norm=config.layer_norm,
+            )
             if config.algorithm == "ippo"
-            else CentralizedCritic(config.hidden_size)
+            else CentralizedCritic(
+                config.hidden_size,
+                activation=config.network_activation,
+                layer_norm=config.layer_norm,
+            )
         ).to(self.device)
         self.optimizer = torch.optim.Adam(
             (*self.actor.parameters(), *self.critic.parameters()),
@@ -344,7 +355,13 @@ class MarlLearner:
         if not isinstance(stored, dict):
             raise ValueError("MARL warm-start checkpoint lacks configuration")
         current = asdict(self.config)
-        architectural = ("hidden_size", "policy_architecture", "action_parser")
+        architectural = (
+            "hidden_size",
+            "policy_architecture",
+            "action_parser",
+            "network_activation",
+            "layer_norm",
+        )
         mismatch = [
             key
             for key in architectural
@@ -441,5 +458,13 @@ def _build_actor(config: MarlConfig) -> PolicyActor:
     if config.policy_architecture == "attention":
         return EntityAttentionActor(config.hidden_size)
     if config.policy_architecture == "role_mlp":
-        return RoleSharedActor(config.hidden_size)
-    return SharedActor(config.hidden_size)
+        return RoleSharedActor(
+            config.hidden_size,
+            activation=config.network_activation,
+            layer_norm=config.layer_norm,
+        )
+    return SharedActor(
+        config.hidden_size,
+        activation=config.network_activation,
+        layer_norm=config.layer_norm,
+    )

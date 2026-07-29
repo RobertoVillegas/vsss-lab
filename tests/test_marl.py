@@ -13,16 +13,20 @@ from vsss_train.config import MarlConfig, load_marl_config
 from vsss_train.marl import (
     CentralizedCritic,
     LocalCritic,
+    RoleSharedActor,
     SharedActor,
     TeamBatch,
     build_team_observation,
 )
 from vsss_train.marl_env import (
+    ROBOT_BASE,
     MarlMatchEnv,
     _attacker_alignment_reward,
     _ball_direction_reward,
     _defensive_threat,
+    _team_touches_ball,
     _teammate_congestion,
+    _useful_touch_impulse,
     distill_dynamic_teacher,
     evaluate_against_random,
 )
@@ -95,6 +99,34 @@ def test_actor_has_no_per_agent_parameters() -> None:
     assert not any("agent" in name or "robot" in name for name in parameter_names)
     observation = build_team_observation(initial_state(), team=0)
     assert actor.deterministic_action(observation).shape == (3, 2)
+
+
+def test_m18_role_actor_supports_relu_layer_norm_and_larger_width() -> None:
+    baseline = RoleSharedActor(hidden_size=128)
+    candidate = RoleSharedActor(hidden_size=256, activation="relu", layer_norm=True)
+    assert any(isinstance(module, torch.nn.LayerNorm) for module in candidate.modules())
+    assert any(isinstance(module, torch.nn.ReLU) for module in candidate.modules())
+    assert sum(parameter.numel() for parameter in candidate.parameters()) > sum(
+        parameter.numel() for parameter in baseline.parameters()
+    )
+    observation = build_team_observation(initial_state(), team=0)
+    assert candidate.deterministic_action(observation).shape == (3, 2)
+
+
+def test_team_ball_contact_requires_enabled_robot_inside_envelope() -> None:
+    state = initial_state()
+    state[5:7] = state[ROBOT_BASE + 2 : ROBOT_BASE + 4]
+    assert _team_touches_ball(state, 0, json.loads(CONFIG))
+    assert not _team_touches_ball(state, 1, json.loads(CONFIG))
+    state[ROBOT_BASE + 10] = 0.0
+    assert not _team_touches_ball(state, 0, json.loads(CONFIG))
+
+
+def test_useful_touch_impulse_is_directional_and_cannot_farm_overlap() -> None:
+    assert _useful_touch_impulse(0.8, 0.1, 0, True, False) == pytest.approx(0.7)
+    assert _useful_touch_impulse(0.8, 0.1, 0, True, True) == 0.0
+    assert _useful_touch_impulse(-0.8, 0.1, 0, True, False) == 0.0
+    assert _useful_touch_impulse(-0.8, -0.1, 1, True, False) == pytest.approx(0.7)
 
 
 def trajectory(learner: MarlLearner, steps: int = 4) -> TeamTrajectory:

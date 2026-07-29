@@ -97,6 +97,8 @@ class MarlConfig:
     device: Literal["auto", "cpu", "cuda"] = "auto"
     num_envs: int = 64
     hidden_size: int = 64
+    network_activation: Literal["tanh", "relu"] = "tanh"
+    layer_norm: bool = False
     learning_rate: float = 3e-4
     gamma: float = 0.99
     gae_lambda: float = 0.95
@@ -118,6 +120,7 @@ class MarlConfig:
     progress_coefficient: float = 0.0
     wheel_effort_coefficient: float = 0.0
     ball_direction_coefficient: float = 0.0
+    useful_touch_impulse_coefficient: float = 0.0
     attacker_alignment_coefficient: float = 0.0
     time_penalty_coefficient: float = 0.0
     movement_speed_threshold: float = 0.03
@@ -148,6 +151,8 @@ class MarlConfig:
             raise ValueError("policy_architecture must be mlp, gru, attention, or role_mlp")
         if self.action_parser not in ("continuous", "lattice"):
             raise ValueError("action_parser must be continuous or lattice")
+        if self.network_activation not in ("tanh", "relu"):
+            raise ValueError("network_activation must be tanh or relu")
         if self.action_parser == "lattice" and self.policy_architecture != "mlp":
             raise ValueError("lattice ablation currently requires the MLP architecture")
         if self.adaptive_curriculum and not self.scenario_suite:
@@ -193,6 +198,7 @@ class MarlConfig:
             self.progress_coefficient,
             self.wheel_effort_coefficient,
             self.ball_direction_coefficient,
+            self.useful_touch_impulse_coefficient,
             self.attacker_alignment_coefficient,
             self.time_penalty_coefficient,
             self.teammate_congestion_coefficient,
