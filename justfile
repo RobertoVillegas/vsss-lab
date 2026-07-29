@@ -150,12 +150,12 @@ league-resume run_dir="/home/rob/runs/vsss-lab-demo" iterations="1000" capture_e
 league-live run_dir="/home/rob/runs/vsss-lab-live" iterations="1000" capture_every="100" capture_seconds="60" checkpoint_every="100" device="auto" num_envs="64" port="8765":
   mkdir -p "{{run_dir}}"
   just web-build
-  echo "VSSS replay viewer: http://127.0.0.1:{{port}} (HTTP log: {{run_dir}}/viewer.log)"; uv run python -m tools.replay_web.server --run-dir "{{run_dir}}" --host 127.0.0.1 --port {{port}} > "{{run_dir}}/viewer.log" 2>&1 & viewer_pid=$!; trap 'kill "$viewer_pid" 2>/dev/null || true' EXIT; just league-run "{{run_dir}}" "{{iterations}}" "{{capture_every}}" "{{capture_seconds}}" "{{checkpoint_every}}" "{{device}}" "{{num_envs}}"
+  echo "VSSS replay viewer: http://127.0.0.1:{{port}} (HTTP log: {{run_dir}}/viewer.log)"; PYTHONPATH=python:. uv run python -m tools.replay_web.server --run-dir "{{run_dir}}" --host 127.0.0.1 --port {{port}} > "{{run_dir}}/viewer.log" 2>&1 & viewer_pid=$!; trap 'kill "$viewer_pid" 2>/dev/null || true' EXIT; just league-run "{{run_dir}}" "{{iterations}}" "{{capture_every}}" "{{capture_seconds}}" "{{checkpoint_every}}" "{{device}}" "{{num_envs}}"
 
 league-live-matches-at run_dir matches="100000" capture_every="25" capture_seconds="60" checkpoint_every="25" device="auto" num_envs="64" port="8765":
   mkdir -p "{{run_dir}}"
   just web-build
-  echo "VSSS replay viewer: http://127.0.0.1:{{port}} (HTTP log: {{run_dir}}/viewer.log)"; uv run python -m tools.replay_web.server --run-dir "{{run_dir}}" --host 127.0.0.1 --port {{port}} > "{{run_dir}}/viewer.log" 2>&1 & viewer_pid=$!; trap 'kill "$viewer_pid" 2>/dev/null || true' EXIT; just league-matches-at "{{run_dir}}" "{{matches}}" "{{capture_every}}" "{{capture_seconds}}" "{{checkpoint_every}}" "{{device}}" "{{num_envs}}"
+  echo "VSSS replay viewer: http://127.0.0.1:{{port}} (HTTP log: {{run_dir}}/viewer.log)"; PYTHONPATH=python:. uv run python -m tools.replay_web.server --run-dir "{{run_dir}}" --host 127.0.0.1 --port {{port}} > "{{run_dir}}/viewer.log" 2>&1 & viewer_pid=$!; trap 'kill "$viewer_pid" 2>/dev/null || true' EXIT; just league-matches-at "{{run_dir}}" "{{matches}}" "{{capture_every}}" "{{capture_seconds}}" "{{checkpoint_every}}" "{{device}}" "{{num_envs}}"
 
 league-live-matches matches="100000" capture_every="25" capture_seconds="60" checkpoint_every="25" device="auto" num_envs="64" port="8765":
   run_dir=$(uv run python tools/next_run_dir.py vsss-training-run); echo "Allocated training run: $run_dir"; just league-live-matches-at "$run_dir" "{{matches}}" "{{capture_every}}" "{{capture_seconds}}" "{{checkpoint_every}}" "{{device}}" "{{num_envs}}" "{{port}}"
@@ -163,7 +163,7 @@ league-live-matches matches="100000" capture_every="25" capture_seconds="60" che
 league-live-steps-at run_dir steps="20000000" capture_every="25" capture_seconds="60" checkpoint_every="25" device="auto" num_envs="64" port="8765":
   mkdir -p "{{run_dir}}"
   just web-build
-  echo "VSSS replay viewer: http://127.0.0.1:{{port}} (HTTP log: {{run_dir}}/viewer.log)"; uv run python -m tools.replay_web.server --run-dir "{{run_dir}}" --host 127.0.0.1 --port {{port}} > "{{run_dir}}/viewer.log" 2>&1 & viewer_pid=$!; trap 'kill "$viewer_pid" 2>/dev/null || true' EXIT; just league-steps-at "{{run_dir}}" "{{steps}}" "{{capture_every}}" "{{capture_seconds}}" "{{checkpoint_every}}" "{{device}}" "{{num_envs}}"
+  echo "VSSS replay viewer: http://127.0.0.1:{{port}} (HTTP log: {{run_dir}}/viewer.log)"; PYTHONPATH=python:. uv run python -m tools.replay_web.server --run-dir "{{run_dir}}" --host 127.0.0.1 --port {{port}} > "{{run_dir}}/viewer.log" 2>&1 & viewer_pid=$!; trap 'kill "$viewer_pid" 2>/dev/null || true' EXIT; just league-steps-at "{{run_dir}}" "{{steps}}" "{{capture_every}}" "{{capture_seconds}}" "{{checkpoint_every}}" "{{device}}" "{{num_envs}}"
 
 league-live-steps steps="20000000" capture_every="25" capture_seconds="60" checkpoint_every="25" device="auto" num_envs="64" port="8765":
   run_dir=$(uv run python tools/next_run_dir.py vsss-training-run); echo "Allocated training run: $run_dir"; just league-live-steps-at "$run_dir" "{{steps}}" "{{capture_every}}" "{{capture_seconds}}" "{{checkpoint_every}}" "{{device}}" "{{num_envs}}" "{{port}}"
@@ -179,14 +179,14 @@ league-semantic-warm-steps-at run_dir initialize_from steps="50000000" capture_e
 league-live-semantic-at run_dir steps="50000000" capture_every="25" capture_seconds="60" checkpoint_every="25" device="auto" num_envs="64" eval_every="25" eval_seeds="3" port="8765":
   mkdir -p "{{run_dir}}"
   just web-build
-  echo "VSSS replay viewer: http://127.0.0.1:{{port}} (HTTP log: {{run_dir}}/viewer.log)"; uv run python -m tools.replay_web.server --run-dir "{{run_dir}}" --host 127.0.0.1 --port {{port}} > "{{run_dir}}/viewer.log" 2>&1 & viewer_pid=$!; trap 'kill "$viewer_pid" 2>/dev/null || true' EXIT; just league-semantic-steps-at "{{run_dir}}" "{{steps}}" "{{capture_every}}" "{{capture_seconds}}" "{{checkpoint_every}}" "{{device}}" "{{num_envs}}" "{{eval_every}}" "{{eval_seeds}}"
+  echo "VSSS replay viewer: http://127.0.0.1:{{port}} (HTTP log: {{run_dir}}/viewer.log)"; PYTHONPATH=python:. uv run python -m tools.replay_web.server --run-dir "{{run_dir}}" --host 127.0.0.1 --port {{port}} > "{{run_dir}}/viewer.log" 2>&1 & viewer_pid=$!; trap 'kill "$viewer_pid" 2>/dev/null || true' EXIT; just league-semantic-steps-at "{{run_dir}}" "{{steps}}" "{{capture_every}}" "{{capture_seconds}}" "{{checkpoint_every}}" "{{device}}" "{{num_envs}}" "{{eval_every}}" "{{eval_seeds}}"
 
 league-live-semantic steps="50000000" capture_every="25" capture_seconds="60" checkpoint_every="25" device="auto" num_envs="64" eval_every="25" eval_seeds="3" port="8765":
   run_dir=$(uv run python tools/next_run_dir.py vsss-semantic-run); echo "Allocated semantic run: $run_dir"; just league-live-semantic-at "$run_dir" "{{steps}}" "{{capture_every}}" "{{capture_seconds}}" "{{checkpoint_every}}" "{{device}}" "{{num_envs}}" "{{eval_every}}" "{{eval_seeds}}" "{{port}}"
 
 league-live-resume run_dir="/home/rob/runs/vsss-lab-live" iterations="1000" capture_every="100" capture_seconds="60" checkpoint_every="100" device="auto" num_envs="64" port="8765":
   just web-build
-  echo "VSSS replay viewer: http://127.0.0.1:{{port}} (HTTP log: {{run_dir}}/viewer.log)"; uv run python -m tools.replay_web.server --run-dir "{{run_dir}}" --host 127.0.0.1 --port {{port}} > "{{run_dir}}/viewer.log" 2>&1 & viewer_pid=$!; trap 'kill "$viewer_pid" 2>/dev/null || true' EXIT; just league-resume "{{run_dir}}" "{{iterations}}" "{{capture_every}}" "{{capture_seconds}}" "{{checkpoint_every}}" "{{device}}" "{{num_envs}}"
+  echo "VSSS replay viewer: http://127.0.0.1:{{port}} (HTTP log: {{run_dir}}/viewer.log)"; PYTHONPATH=python:. uv run python -m tools.replay_web.server --run-dir "{{run_dir}}" --host 127.0.0.1 --port {{port}} > "{{run_dir}}/viewer.log" 2>&1 & viewer_pid=$!; trap 'kill "$viewer_pid" 2>/dev/null || true' EXIT; just league-resume "{{run_dir}}" "{{iterations}}" "{{capture_every}}" "{{capture_seconds}}" "{{checkpoint_every}}" "{{device}}" "{{num_envs}}"
 
 league-inspect run_dir="/home/rob/runs/vsss-lab-demo":
   uv run --group train python -m vsss_league.cli inspect --run-dir "{{run_dir}}"
@@ -196,7 +196,7 @@ league-tensorboard run_dir port="6006":
 
 league-observe run_dir viewer_port="8765" tensorboard_port="6006":
   just web-build
-  echo "Replay viewer: http://127.0.0.1:{{viewer_port}}"; uv run python -m tools.replay_web.server --run-dir "{{run_dir}}" --host 127.0.0.1 --port {{viewer_port}} > "{{run_dir}}/viewer.log" 2>&1 & viewer_pid=$!; echo "TensorBoard: http://127.0.0.1:{{tensorboard_port}}"; uv run --group train tensorboard --logdir "{{run_dir}}/tensorboard" --host 127.0.0.1 --port {{tensorboard_port}} > "{{run_dir}}/tensorboard.log" 2>&1 & tensorboard_pid=$!; trap 'kill "$viewer_pid" "$tensorboard_pid" 2>/dev/null || true' EXIT; wait
+  echo "Replay viewer: http://127.0.0.1:{{viewer_port}}"; PYTHONPATH=python:. uv run python -m tools.replay_web.server --run-dir "{{run_dir}}" --host 127.0.0.1 --port {{viewer_port}} > "{{run_dir}}/viewer.log" 2>&1 & viewer_pid=$!; echo "TensorBoard: http://127.0.0.1:{{tensorboard_port}}"; uv run --group train tensorboard --logdir "{{run_dir}}/tensorboard" --host 127.0.0.1 --port {{tensorboard_port}} > "{{run_dir}}/tensorboard.log" 2>&1 & tensorboard_pid=$!; trap 'kill "$viewer_pid" "$tensorboard_pid" 2>/dev/null || true' EXIT; wait
 
 vision-metrics replay:
   uv run python -m tools.vision_metrics "{{replay}}"
@@ -222,7 +222,7 @@ web-build:
 
 league-web run_dir="/home/rob/runs/vsss-lab-demo" port="8765":
   just web-build
-  uv run python -m tools.replay_web.server --run-dir "{{run_dir}}" --host 127.0.0.1 --port {{port}}
+  PYTHONPATH=python:. uv run python -m tools.replay_web.server --run-dir "{{run_dir}}" --host 127.0.0.1 --port {{port}}
 
 protocol-generate:
   bash tools/protocol/generate.sh
