@@ -35,3 +35,23 @@ uv run --group train python -m vsss_league.cli run \
 - `just lint`: rustfmt, Clippy, Ruff, mypy and TypeScript passed.
 - `just build`: protocol, Rust, Python compileall and Vite production build passed.
 - Focused role/league/replay suite: 87 tests passed.
+
+## Timeout-reset correction
+
+The first long M16 run exposed that the vector environment returned one NumPy
+array as both `done` and `terminated`. Marking a semantic timeout as truncated
+therefore also cancelled its reset, and the cached timeout was counted on every
+remaining rollout step. The environment now returns independent arrays.
+
+A regression test runs two semantic worlds for 256 decisions with the skill
+horizon at 250 and proves that each world can emit at most one unresolved result
+before reset. A two-iteration CLI smoke completed 1,024 steps without repeated
+cached outcomes. Semantic evaluation artifacts now retain both the compatible
+coarse bands and exact difficulty levels such as `0.10`, `0.25`, `0.40`, and
+`0.65`.
+
+Post-correction gates:
+
+- `just test`: 188 Python tests plus Rust and web suites passed.
+- `just lint`: rustfmt, Clippy, Ruff, mypy, and TypeScript passed.
+- `just build`: protocol, Rust, Python, and Vite production build passed.
