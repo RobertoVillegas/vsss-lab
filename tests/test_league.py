@@ -392,6 +392,43 @@ def test_semantic_curriculum_runs_mirrored_worlds_and_reports_outcomes() -> None
     }
 
 
+def test_semantic_timeout_resets_once_instead_of_repeating_cached_outcome() -> None:
+    config = MarlConfig(
+        device="cpu",
+        num_envs=2,
+        hidden_size=8,
+        epochs=1,
+        minibatch_size=128,
+        horizon=1_500,
+        rollout_steps=256,
+        action_repeat=1,
+        semantic_curriculum=True,
+        semantic_full_match_fraction=0.0,
+    )
+    learner = MarlLearner(config)
+    session = create_rollout_session(config, CONFIG, STATE)
+
+    result = train_iteration(
+        learner,
+        None,
+        CONFIG,
+        STATE,
+        iteration=1,
+        seed=301,
+        opponent_id="heuristic",
+        checkpoint=None,
+        session=session,
+    )
+
+    assert result.curriculum is not None
+    outcomes = result.curriculum["outcomes"]
+    trials = result.curriculum["trials"]
+    assert isinstance(outcomes, dict)
+    assert isinstance(trials, tuple)
+    assert outcomes.get("unresolved", 0) <= config.num_envs
+    assert len(trials) <= config.num_envs
+
+
 def test_learned_policy_replay_is_viewer_compatible(tmp_path: Path) -> None:
     replay = tmp_path / "learned.jsonl"
     result = run_policy_replay(

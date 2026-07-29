@@ -339,6 +339,8 @@ def _run(arguments: argparse.Namespace) -> None:
                     "success_rate": successes / report.attempts,
                     "minimum_family_success_rate": minimum_family_rate,
                     "unresolved": unresolved,
+                    "difficulty_bands": report.difficulty_bands,
+                    "difficulty_levels": report.difficulty_levels,
                     "families": {
                         family.family: {
                             "success_rate": family.success_rate,
