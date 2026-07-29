@@ -17,8 +17,9 @@ from vsss_train.ablations import (
     RecurrentSharedActor,
     RecurrentState,
 )
-from vsss_train.marl import SharedActor, build_team_observation
+from vsss_train.marl import RoleSharedActor, SharedActor, build_team_observation
 from vsss_train.marl_env import MarlMatchEnv
+from vsss_train.roles import assign_roles
 from vsss_vision import (
     BallEstimate,
     BallKalmanFilter,
@@ -33,8 +34,17 @@ from vsss_vision import (
 
 
 def run_policy_replay(
-    blue: SharedActor | RecurrentSharedActor | EntityAttentionActor | LatticeSharedActor,
-    yellow: SharedActor | RecurrentSharedActor | EntityAttentionActor | LatticeSharedActor | None,
+    blue: SharedActor
+    | RoleSharedActor
+    | RecurrentSharedActor
+    | EntityAttentionActor
+    | LatticeSharedActor,
+    yellow: SharedActor
+    | RoleSharedActor
+    | RecurrentSharedActor
+    | EntityAttentionActor
+    | LatticeSharedActor
+    | None,
     config_json: str,
     state_json: str,
     *,
@@ -215,12 +225,19 @@ def run_policy_replay(
             final_checksum = hashlib.sha256(canonical.encode()).hexdigest()
             index += 1
             actions = np.asarray(info["actions"], dtype=np.float32)
+            yellow_roles = assign_roles(environment.state, 1)
             _write(
                 replay,
                 {
                     "type": "tick",
                     "index": index,
                     "actions": actions.tolist(),
+                    "roles": list(info["roles"]) + list(yellow_roles.roles),
+                    "role_changes": list(info["role_changes"]) + list(yellow_roles.changed),
+                    "coverage_uncovered": {
+                        "blue": bool(info["coverage_uncovered"]),
+                        "yellow": yellow_roles.uncovered,
+                    },
                     "events": int(info["events"]),
                     "checksum": final_checksum,
                     "snapshot": snapshot,
@@ -274,7 +291,11 @@ def _write(stream: TextIO, record: dict[str, Any]) -> None:
 
 
 def _initial_recurrent(
-    actor: SharedActor | RecurrentSharedActor | EntityAttentionActor | LatticeSharedActor,
+    actor: SharedActor
+    | RoleSharedActor
+    | RecurrentSharedActor
+    | EntityAttentionActor
+    | LatticeSharedActor,
     device: torch.device,
 ) -> RecurrentState | None:
     if not isinstance(actor, RecurrentSharedActor):
@@ -283,7 +304,11 @@ def _initial_recurrent(
 
 
 def _policy_action(
-    actor: SharedActor | RecurrentSharedActor | EntityAttentionActor | LatticeSharedActor,
+    actor: SharedActor
+    | RoleSharedActor
+    | RecurrentSharedActor
+    | EntityAttentionActor
+    | LatticeSharedActor,
     observation: Any,
     recurrent: RecurrentState | None,
 ) -> tuple[np.ndarray[Any, np.dtype[np.float32]], RecurrentState | None]:

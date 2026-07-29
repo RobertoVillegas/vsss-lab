@@ -223,6 +223,16 @@ class TrainingDashboard:
                     ),
                     "",
                 )
+            rotation = latest.curriculum.get("rotation")
+            if isinstance(rotation, dict):
+                table.add_row(
+                    "rotations / uncovered",
+                    (
+                        f"{int(rotation.get('role_switches', 0)):,} / "
+                        f"{float(rotation.get('uncovered_ratio', 0.0)):.1%}"
+                    ),
+                    "",
+                )
         table.add_row("latest checkpoint", self._checkpoint, "")
         return table
 

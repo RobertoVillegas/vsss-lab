@@ -148,6 +148,12 @@ def collect_self_play_trajectory(
     if session.initialized:
         observations_by_world = [
             build_team_observation(state, team=int(environment.controlled_teams[world]))
+            if environment.role_assignments[world] is None
+            else build_team_observation(
+                state,
+                team=int(environment.controlled_teams[world]),
+                role_assignment=environment.role_assignments[world],
+            )
             for world, state in enumerate(environment.states)
         ]
     else:
@@ -374,6 +380,7 @@ def collect_self_play_trajectory(
                     build_team_observation(
                         state,
                         team=int(environment.controlled_teams[world]),
+                        role_assignment=environment.role_assignments[world],
                     )
                     for world, state in enumerate(environment.states)
                 ]
@@ -563,6 +570,15 @@ def _curriculum_telemetry(session: RolloutSession | None) -> dict[str, object] |
         telemetry = session.semantic_curriculum.telemetry(reset=True)
         telemetry["outcomes"] = dict(session.skill_outcomes)
         telemetry["trials"] = tuple(session.skill_trials)
+        total_steps = max(1, int(session.environment.role_decisions.sum()))
+        telemetry["rotation"] = {
+            "role_switches": int(session.environment.role_switches.sum()),
+            "uncovered_world_steps": int(session.environment.uncovered_steps.sum()),
+            "uncovered_ratio": float(session.environment.uncovered_steps.sum()) / total_steps,
+        }
+        session.environment.role_switches.fill(0)
+        session.environment.uncovered_steps.fill(0)
+        session.environment.role_decisions.fill(0)
         session.skill_outcomes.clear()
         session.skill_trials.clear()
         return telemetry

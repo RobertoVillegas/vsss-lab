@@ -21,12 +21,14 @@ from vsss_train.ablations import (
     SymmetricWheelLattice,
 )
 from vsss_train.marl import (
+    RoleSharedActor,
     SharedActor,
     TeamBatch,
     build_team_observation,
     stack_team_batches,
 )
 from vsss_train.ppo import seed_everything
+from vsss_train.roles import DynamicRoleAssigner, RoleAssignment
 
 FloatArray = NDArray[np.float32]
 ROBOT_BASE = 10
@@ -135,6 +137,8 @@ class MarlMatchEnv:
         self._defensive_distance = 0.0
         self._stagnation_anchor = np.zeros(2, dtype=np.float32)
         self._stagnation_steps = 0
+        self._role_assigner = DynamicRoleAssigner()
+        self._role_assignment: RoleAssignment | None = None
 
     def reset(self, seed: int) -> TeamBatch:
         snapshot = _seeded_snapshot(self._template, seed)
@@ -152,7 +156,9 @@ class MarlMatchEnv:
         self._defensive_distance = _defensive_distance(self.state, self._config)
         self._stagnation_anchor = self.state[5:7].copy()
         self._stagnation_steps = 0
-        return build_team_observation(self.state, team=0)
+        self._role_assigner.reset()
+        self._role_assignment = self._role_assigner.assign(self.state, 0)
+        return build_team_observation(self.state, team=0, role_assignment=self._role_assignment)
 
     def step(
         self,
@@ -229,8 +235,9 @@ class MarlMatchEnv:
         terminal_reason = (
             "goal" if goal_complete else "stagnation" if stagnated else "draw" if draw else None
         )
+        self._role_assignment = self._role_assigner.assign(self.state, 0)
         return (
-            build_team_observation(self.state, team=0),
+            build_team_observation(self.state, team=0, role_assignment=self._role_assignment),
             reward,
             done,
             {
@@ -247,6 +254,9 @@ class MarlMatchEnv:
                     else "inactive"
                 ),
                 "actions": actions[0].copy(),
+                "roles": list(self._role_assignment.roles),
+                "role_changes": list(self._role_assignment.changed),
+                "coverage_uncovered": self._role_assignment.uncovered,
             },
         )
 
@@ -346,6 +356,11 @@ class VectorMarlMatchEnv:
         self._stagnation_steps = np.zeros(num_envs, dtype=np.int64)
         self.last_terminal_reasons = np.full(num_envs, "", dtype="<U24")
         self.controlled_teams = np.zeros(num_envs, dtype=np.int64)
+        self._role_assigners = [DynamicRoleAssigner() for _ in range(num_envs)]
+        self.role_assignments: list[RoleAssignment | None] = [None] * num_envs
+        self.role_switches = np.zeros(num_envs, dtype=np.int64)
+        self.uncovered_steps = np.zeros(num_envs, dtype=np.int64)
+        self.role_decisions = np.zeros(num_envs, dtype=np.int64)
 
     def set_controlled_team(self, world: int, team: int) -> None:
         if team not in (0, 1):
@@ -375,7 +390,10 @@ class VectorMarlMatchEnv:
         self._stagnation_anchor[world] = self.states[world, 5:7]
         self._stagnation_steps[world] = 0
         self.last_terminal_reasons[world] = ""
-        return build_team_observation(self.states[world], team=team)
+        self._role_assigners[world].reset()
+        assignment = self._role_assigners[world].assign(self.states[world], team)
+        self.role_assignments[world] = assignment
+        return build_team_observation(self.states[world], team=team, role_assignment=assignment)
 
     def step(
         self,
@@ -530,10 +548,28 @@ class VectorMarlMatchEnv:
         self.last_terminal_reasons[draw] = "draw"
         self.last_terminal_reasons[stagnated] = "stagnation"
         self.last_terminal_reasons[goal_complete] = "goal"
+        assignments: list[RoleAssignment | None] = [
+            assigner.assign(state, int(team))
+            for assigner, state, team in zip(
+                self._role_assigners, self.states, self.controlled_teams, strict=True
+            )
+        ]
+        self.role_assignments = assignments
+        self.role_switches += np.asarray(
+            [sum(assignment.changed) for assignment in assignments if assignment is not None],
+            dtype=np.int64,
+        )
+        self.uncovered_steps += np.asarray(
+            [assignment.uncovered for assignment in assignments if assignment is not None],
+            dtype=np.int64,
+        )
+        self.role_decisions += 1
         observations = stack_team_batches(
             [
-                build_team_observation(state, team=int(team))
-                for state, team in zip(self.states, self.controlled_teams, strict=True)
+                build_team_observation(state, team=int(team), role_assignment=assignment)
+                for state, team, assignment in zip(
+                    self.states, self.controlled_teams, assignments, strict=True
+                )
             ]
         )
         return observations, rewards, done, events, done
@@ -689,7 +725,11 @@ def _defensive_threat(ball_x: float, activation_x: float, team: int = 0) -> floa
 
 
 def distill_dynamic_teacher(
-    actor: SharedActor | RecurrentSharedActor | EntityAttentionActor | LatticeSharedActor,
+    actor: SharedActor
+    | RoleSharedActor
+    | RecurrentSharedActor
+    | EntityAttentionActor
+    | LatticeSharedActor,
     config_json: str,
     state_json: str,
     *,
@@ -745,7 +785,11 @@ def distill_dynamic_teacher(
 
 
 def evaluate_against_random(
-    actor: SharedActor | RecurrentSharedActor | EntityAttentionActor | LatticeSharedActor,
+    actor: SharedActor
+    | RoleSharedActor
+    | RecurrentSharedActor
+    | EntityAttentionActor
+    | LatticeSharedActor,
     config_json: str,
     state_json: str,
     *,

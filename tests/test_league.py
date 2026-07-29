@@ -388,6 +388,7 @@ def test_semantic_curriculum_runs_mirrored_worlds_and_reports_outcomes() -> None
         "clearance",
         "shot",
         "pass_receive",
+        "rotation_recovery",
     }
 
 

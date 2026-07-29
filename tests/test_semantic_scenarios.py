@@ -23,6 +23,7 @@ FAMILIES = (
     "clearance",
     "shot",
     "pass_receive",
+    "rotation_recovery",
 )
 
 
@@ -67,7 +68,14 @@ def test_all_families_cover_moving_and_static_ball_semantics() -> None:
         family: compile_skill_scenario(parameters(family, 21), STATE, CONFIG) for family in FAMILIES
     }
     assert compiled["approach"].context.initial_ball_speed == 0.0
-    for family in ("interception", "save_deflection", "clearance", "shot", "pass_receive"):
+    for family in (
+        "interception",
+        "save_deflection",
+        "clearance",
+        "shot",
+        "pass_receive",
+        "rotation_recovery",
+    ):
         assert compiled[family].context.initial_ball_speed > 0.0
     assert compiled["interception"].context.initial_threat
     assert compiled["save_deflection"].context.initial_threat
@@ -174,10 +182,16 @@ def test_curriculum_enforces_observed_full_match_floor() -> None:
 def test_holdouts_are_paired_immutable_and_excluded_from_training_feedback() -> None:
     curriculum = SemanticSkillCurriculum(STATE, CONFIG, seed=19)
     holdouts = curriculum.holdouts(seeds=(101,))
-    assert len(holdouts) == len(SKILL_FAMILIES) * 2
+    assert len(holdouts) == len(SKILL_FAMILIES) * 2 * 4
     assert {scenario.parameters.controlled_team for scenario in holdouts} == {
         "blue",
         "yellow",
+    }
+    assert {scenario.parameters.difficulty.ball_speed for scenario in holdouts} == {
+        0.10,
+        0.25,
+        0.40,
+        0.65,
     }
     assert all(
         scenario.parameters.holdout

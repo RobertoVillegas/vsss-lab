@@ -15,7 +15,7 @@ from vsss_train.ablations import (
     RecurrentSharedActor,
     RecurrentState,
 )
-from vsss_train.marl import SharedActor, build_team_observation
+from vsss_train.marl import RoleSharedActor, SharedActor, build_team_observation
 from vsss_train.marl_env import MarlMatchEnv
 
 from vsss_league.ratings import elo_update
@@ -80,7 +80,11 @@ class PolicyPairScorecard:
 
 
 def evaluate_checkpoint_scorecard(
-    actor: SharedActor | RecurrentSharedActor | EntityAttentionActor | LatticeSharedActor,
+    actor: SharedActor
+    | RoleSharedActor
+    | RecurrentSharedActor
+    | EntityAttentionActor
+    | LatticeSharedActor,
     config_json: str,
     state_json: str,
     *,
@@ -155,7 +159,11 @@ def evaluate_checkpoint_scorecard(
 
 
 def evaluate_candidate_vs_heuristic(
-    actor: SharedActor | RecurrentSharedActor | EntityAttentionActor | LatticeSharedActor,
+    actor: SharedActor
+    | RoleSharedActor
+    | RecurrentSharedActor
+    | EntityAttentionActor
+    | LatticeSharedActor,
     config_json: str,
     state_json: str,
     *,

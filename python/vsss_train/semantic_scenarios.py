@@ -20,10 +20,11 @@ SkillFamily = Literal[
     "clearance",
     "shot",
     "pass_receive",
+    "rotation_recovery",
 ]
 ControlledTeam = Literal["blue", "yellow"]
 
-GENERATOR_REVISION = "m15.1"
+GENERATOR_REVISION = "m16.0"
 DIFFICULTY_AXES = (
     "ball_speed",
     "ball_angle",
@@ -38,6 +39,7 @@ SKILL_FAMILIES: tuple[SkillFamily, ...] = (
     "clearance",
     "shot",
     "pass_receive",
+    "rotation_recovery",
 )
 
 
@@ -78,6 +80,7 @@ class SkillScenarioParameters:
             "clearance",
             "shot",
             "pass_receive",
+            "rotation_recovery",
         ):
             raise ValueError(f"unsupported skill family: {self.family}")
         if self.controlled_team not in ("blue", "yellow"):
@@ -152,6 +155,7 @@ class SemanticSkillCurriculum:
         )
         self.failures: dict[str, SkillScenarioParameters] = {}
         self.counts: dict[str, int] = defaultdict(int)
+        self.updates: dict[SkillFamily, int] = defaultdict(int)
 
     def select_training(self, index: int) -> SemanticSelection:
         generator = random.Random(self.seed + index * 104_729)
@@ -203,36 +207,39 @@ class SemanticSkillCurriculum:
         previous = sum(values[: self.window]) / self.window
         current = sum(values[self.window :]) / self.window
         learning_progress = current - previous
-        axis = DIFFICULTY_AXES[(len(history) // self.window - 2) % len(DIFFICULTY_AXES)]
+        axis = DIFFICULTY_AXES[self.updates[family] % len(DIFFICULTY_AXES)]
         if current >= 0.70 and learning_progress >= -0.05:
             self.levels[family][axis] = min(1.0, self.levels[family][axis] + 0.05)
         elif current < 0.35 and learning_progress <= 0.0:
             self.levels[family][axis] = max(0.0, self.levels[family][axis] - 0.025)
+        self.updates[family] += 1
 
     def holdouts(
         self,
         *,
         seeds: tuple[int, ...] = (10_007, 10_009, 10_037, 10_039, 10_061),
+        bands: tuple[float, ...] = (0.10, 0.25, 0.40, 0.65),
     ) -> tuple[SemanticScenario, ...]:
-        """Build an immutable, paired-color suite outside the training allocator."""
+        """Build immutable paired-color ladders outside the training allocator."""
         scenarios = []
         for family in SKILL_FAMILIES:
             for team in ("blue", "yellow"):
-                for seed in seeds:
-                    scenarios.append(
-                        compile_skill_scenario(
-                            SkillScenarioParameters(
-                                schema_version=1,
-                                family=family,
-                                seed=seed,
-                                controlled_team=team,
-                                difficulty=SkillDifficulty(0.65, 0.65, 0.65, 0.65, 0.65),
-                                holdout=True,
-                            ),
-                            self.base_state,
-                            self.config,
+                for band in bands:
+                    for seed in seeds:
+                        scenarios.append(
+                            compile_skill_scenario(
+                                SkillScenarioParameters(
+                                    schema_version=1,
+                                    family=family,
+                                    seed=seed + round(band * 10_000),
+                                    controlled_team=team,
+                                    difficulty=SkillDifficulty(band, band, band, band, band),
+                                    holdout=True,
+                                ),
+                                self.base_state,
+                                self.config,
+                            )
                         )
-                    )
         return tuple(scenarios)
 
     def telemetry(self, *, reset: bool = False) -> dict[str, object]:
@@ -266,6 +273,7 @@ class SemanticSkillCurriculum:
             "failures": {
                 digest: asdict(parameters) for digest, parameters in self.failures.items()
             },
+            "updates": {family: self.updates[family] for family in SKILL_FAMILIES},
         }
 
     def load_state_dict(self, state: dict[str, object]) -> None:
@@ -277,6 +285,7 @@ class SemanticSkillCurriculum:
         levels = state.get("levels")
         outcomes = state.get("outcomes")
         failures = state.get("failures")
+        updates = state.get("updates", {})
         if not isinstance(levels, dict) or not isinstance(outcomes, dict):
             raise ValueError("semantic curriculum state is incomplete")
         for family in SKILL_FAMILIES:
@@ -292,6 +301,9 @@ class SemanticSkillCurriculum:
             self.outcomes[family].clear()
             self.outcomes[family].extend(float(value) for value in raw_outcomes)
         self.failures.clear()
+        self.updates.clear()
+        if isinstance(updates, dict):
+            self.updates.update({family: int(updates.get(family, 0)) for family in SKILL_FAMILIES})
         if isinstance(failures, dict):
             for digest, raw in failures.items():
                 if not isinstance(raw, dict):
@@ -397,6 +409,21 @@ def compile_skill_scenario(
         )
         _park_robot(support, attack_sign, -0.24, -lane_sign * 0.38, 0.0)
         initial_threat = True
+    elif family == "rotation_recovery":
+        ball = (-0.08, lane * 0.45)
+        _set_ball(state, attack_sign, *ball, speed=speed * 0.35, heading=math.pi)
+        _park_robot(
+            primary,
+            attack_sign,
+            ball[0] - spawn_distance * 0.65,
+            ball[1] + lane_sign * 0.10,
+            -lane_sign * 0.25,
+        )
+        # The previous attacker begins beyond the play and must rotate goal-side
+        # while the incoming player assumes the challenge.
+        _park_robot(support, attack_sign, 0.34, -lane_sign * 0.24, math.pi)
+        support_id = str(support["id"])
+        initial_threat = True
     elif family == "shot":
         ball = (0.28, lane * 0.45)
         _set_ball(state, attack_sign, *ball, speed=speed * 0.18, heading=0.0)
@@ -488,7 +515,7 @@ def compile_skill_scenario(
 
 
 def _legacy_kind(family: SkillFamily) -> Any:
-    return "defense" if family == "save_deflection" else family
+    return "defense" if family in ("save_deflection", "rotation_recovery") else family
 
 
 def _reset_motion(state: dict[str, Any]) -> None:

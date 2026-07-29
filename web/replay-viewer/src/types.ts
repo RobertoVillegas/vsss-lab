@@ -160,6 +160,9 @@ export interface ReplayFrame {
   events: number;
   rewards: number[];
   actions: number[][];
+  roles?: ("attacker" | "support" | "coverage")[];
+  role_changes?: boolean[];
+  coverage_uncovered?: { blue: boolean; yellow: boolean };
   snapshot: Snapshot;
   perception?: {
     policy_visible: boolean;

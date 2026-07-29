@@ -20,12 +20,14 @@ from vsss_train.ablations import (
     RecurrentState,
 )
 from vsss_train.config import MarlConfig
-from vsss_train.marl import CentralizedCritic, LocalCritic, SharedActor, TeamBatch
+from vsss_train.marl import CentralizedCritic, LocalCritic, RoleSharedActor, SharedActor, TeamBatch
 from vsss_train.ppo import seed_everything
 
 MARL_CHECKPOINT_SCHEMA = 1
 TRAJECTORY_SCHEMA = 1
-PolicyActor = SharedActor | RecurrentSharedActor | EntityAttentionActor | LatticeSharedActor
+PolicyActor = (
+    SharedActor | RoleSharedActor | RecurrentSharedActor | EntityAttentionActor | LatticeSharedActor
+)
 LEGACY_NEUTRAL_CONFIG = {
     "minimum_log_std": -5.0,
     "maximum_log_std": 0.0,
@@ -50,6 +52,8 @@ LEGACY_NEUTRAL_CONFIG = {
     "semantic_curriculum": False,
     "semantic_full_match_fraction": 0.25,
     "semantic_terminal_reward": 2.0,
+    "semantic_regression_patience": 0,
+    "semantic_regression_warmup_evaluations": 0,
 }
 ACTION_EPSILON = 1e-6
 
@@ -403,4 +407,6 @@ def _build_actor(config: MarlConfig) -> PolicyActor:
         return RecurrentSharedActor(config.hidden_size)
     if config.policy_architecture == "attention":
         return EntityAttentionActor(config.hidden_size)
+    if config.policy_architecture == "role_mlp":
+        return RoleSharedActor(config.hidden_size)
     return SharedActor(config.hidden_size)

@@ -10,6 +10,8 @@ import torch
 from numpy.typing import NDArray
 from torch import Tensor, nn
 
+from vsss_train.roles import RoleAssignment, assign_roles, role_features
+
 FloatArray = NDArray[np.float32]
 ROBOT_BASE = 10
 ROBOT_WIDTH = 11
@@ -87,6 +89,7 @@ def build_team_observation(
     field_length: float = 1.5,
     field_width: float = 1.3,
     match_duration: float = 600.0,
+    role_assignment: RoleAssignment | None = None,
 ) -> TeamBatch:
     """Build three agent observations without IDs or identity-ordered entity slots."""
     if team not in (0, 1):
@@ -109,6 +112,7 @@ def build_team_observation(
         float(bool(int(state[-1]) & 1)),
         float(bool(int(state[-1]) & 2)),
     )
+    tactical = role_features(role_assignment or assign_roles(state, team))
 
     self_rows: list[tuple[float, ...]] = []
     ball_rows: list[tuple[float, ...]] = []
@@ -158,7 +162,13 @@ def build_team_observation(
         torch.tensor(self_rows, dtype=torch.float32),
         torch.tensor(ball_rows, dtype=torch.float32),
         torch.tensor(goal_rows, dtype=torch.float32),
-        torch.tensor([common_context] * TEAM_SIZE, dtype=torch.float32),
+        torch.cat(
+            (
+                torch.tensor([common_context] * TEAM_SIZE, dtype=torch.float32),
+                torch.from_numpy(tactical),
+            ),
+            dim=-1,
+        ),
         torch.tensor(teammate_rows, dtype=torch.float32),
         torch.tensor(opponent_rows, dtype=torch.float32),
     )
@@ -204,7 +214,7 @@ class AgentEncoder(nn.Module):
                 observation.self_features,
                 observation.ball,
                 observation.goals,
-                observation.context,
+                observation.context[..., :4],
                 teammates,
                 opponents,
             ),
@@ -224,6 +234,45 @@ class SharedActor(nn.Module):
 
     def forward(self, observation: TeamBatch) -> tuple[Tensor, Tensor]:
         mean = self.action_head(self.encoder(observation))
+        return mean, self.log_std.expand_as(mean)
+
+    def deterministic_action(self, observation: TeamBatch) -> Tensor:
+        mean, _ = self(observation)
+        return torch.tanh(mean)
+
+
+class RoleSharedActor(nn.Module):
+    """Shared actor conditioned on transient responsibility, never robot identity."""
+
+    def __init__(self, hidden_size: int = 64) -> None:
+        super().__init__()
+        self.entity = nn.Sequential(nn.Linear(6, hidden_size), nn.Tanh())
+        self.fusion = nn.Sequential(
+            nn.Linear(8 + 7 + 4 + 9 + 2 * hidden_size, hidden_size),
+            nn.Tanh(),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Tanh(),
+        )
+        self.action_head = nn.Linear(hidden_size, 2)
+        self.log_std = nn.Parameter(torch.full((2,), -0.5))
+
+    def forward(self, observation: TeamBatch) -> tuple[Tensor, Tensor]:
+        teammates = self.entity(observation.teammates).mean(dim=-2)
+        opponents = self.entity(observation.opponents).mean(dim=-2)
+        encoded = self.fusion(
+            torch.cat(
+                (
+                    observation.self_features,
+                    observation.ball,
+                    observation.goals,
+                    observation.context,
+                    teammates,
+                    opponents,
+                ),
+                dim=-1,
+            )
+        )
+        mean = self.action_head(encoded)
         return mean, self.log_std.expand_as(mean)
 
     def deterministic_action(self, observation: TeamBatch) -> Tensor:

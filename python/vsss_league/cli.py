@@ -262,6 +262,9 @@ def _run(arguments: argparse.Namespace) -> None:
 
     previous_sigint = signal.signal(signal.SIGINT, request_stop)
     previous_sigterm = signal.signal(signal.SIGTERM, request_stop)
+    semantic_regressions = 0
+    semantic_evaluation_count = 0
+    semantic_early_stop = False
     try:
         for iteration in range(start_iteration, final_iteration + 1):
             opponent, opponent_id = _select_training_opponent(
@@ -324,6 +327,7 @@ def _run(arguments: argparse.Namespace) -> None:
                     state_json,
                     device=learner.device,
                 )
+                semantic_evaluation_count += 1
                 successes = sum(family.successes for family in report.families)
                 unresolved = sum(family.unresolved for family in report.families)
                 minimum_family_rate = min(family.success_rate for family in report.families)
@@ -370,6 +374,22 @@ def _run(arguments: argparse.Namespace) -> None:
                 )
                 if previous_score is None or candidate_score > previous_score:
                     _write_json_atomic(best_semantic_path, semantic_evaluation)
+                    semantic_regressions = 0
+                elif (
+                    candidate_score < previous_score
+                    and semantic_evaluation_count > config.semantic_regression_warmup_evaluations
+                ):
+                    semantic_regressions += 1
+                    if (
+                        config.semantic_regression_patience
+                        and semantic_regressions >= config.semantic_regression_patience
+                    ):
+                        semantic_early_stop = True
+                        dashboard.log(
+                            "Semantic holdouts regressed for "
+                            f"{semantic_regressions} evaluations; stopping at the "
+                            "last completed checkpoint. best-semantic.json remains selected."
+                        )
             if interrupt.stop_requested and checkpoint is None:
                 checkpoint = checkpoint_dir / f"iteration-{iteration:06d}.pt"
                 learner.save(checkpoint)
@@ -441,6 +461,8 @@ def _run(arguments: argparse.Namespace) -> None:
                             digest=descriptor.digest,
                         )
             if interrupt.stop_requested:
+                break
+            if semantic_early_stop:
                 break
             if reached_match_target:
                 break

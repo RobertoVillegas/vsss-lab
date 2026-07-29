@@ -94,4 +94,9 @@ def _curriculum_scalars(curriculum: dict[str, object] | None) -> dict[str, float
         for status, value in outcomes.items():
             if isinstance(value, (int, float)):
                 scalars[f"skill_outcome/{status}"] = float(value)
+    rotation = curriculum.get("rotation")
+    if isinstance(rotation, dict):
+        for name, value in rotation.items():
+            if isinstance(value, (int, float)):
+                scalars[f"rotation/{name}"] = float(value)
     return scalars

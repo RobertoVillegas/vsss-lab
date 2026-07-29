@@ -468,6 +468,8 @@ export default function App() {
         <ActorTelemetry
           actions={frame?.actions}
           robots={frame?.snapshot.robots}
+          roles={frame?.roles}
+          roleChanges={frame?.role_changes}
           maxWheelSpeed={replay?.header.config.max_wheel_speed ?? 1}
           wheelRadius={replay?.header.config.wheel?.radius ?? 0.025}
           axleTrack={replay?.header.config.wheel?.axle_track ?? 0.06}
@@ -605,12 +607,16 @@ async function nextPaint(): Promise<void> {
 function ActorTelemetry({
   actions,
   robots,
+  roles,
+  roleChanges,
   maxWheelSpeed,
   wheelRadius,
   axleTrack,
 }: {
   actions?: number[][];
   robots?: Replay["frames"][number]["snapshot"]["robots"];
+  roles?: Replay["frames"][number]["roles"];
+  roleChanges?: Replay["frames"][number]["role_changes"];
   maxWheelSpeed: number;
   wheelRadius: number;
   axleTrack: number;
@@ -637,7 +643,7 @@ function ActorTelemetry({
               <div className="actor-title">
                 <span className={index >= 3 ? "dot yellow" : "dot"} />
                 <strong>{index >= 3 ? "Y" : "B"}{index % 3}</strong>
-                <em>{direction}</em>
+                <em>{roles?.[index]?.toUpperCase() ?? direction}{roleChanges?.[index] ? " ↻" : ""}</em>
               </div>
               <div className="throttle"><i style={{ width: `${intensity * 100}%` }} /></div>
               <dl>

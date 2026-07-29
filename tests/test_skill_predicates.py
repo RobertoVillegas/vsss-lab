@@ -14,13 +14,19 @@ def context(family: str, *, horizon: int = 20) -> SkillContext:
         family=family,  # type: ignore[arg-type]
         controlled_team="blue",
         controlled_robot_id="R0",
-        support_robot_id="R1" if family == "pass_receive" else None,
+        support_robot_id="R1" if family in ("pass_receive", "rotation_recovery") else None,
         target_goal_x=0.75,
         own_goal_x=-0.75,
         target_y=0.0,
         target_half_width=0.1,
         initial_ball_speed=0.4,
-        initial_threat=family in ("interception", "save_deflection", "clearance"),
+        initial_threat=family
+        in (
+            "interception",
+            "save_deflection",
+            "clearance",
+            "rotation_recovery",
+        ),
         horizon=horizon,
         parameter_hash="parameters",
         state_hash="state",
@@ -134,6 +140,19 @@ def test_rebound_resets_confirmation_window_until_trajectory_is_safe() -> None:
     subject.observe(frame(3, velocity=(0.2, 0.2)))
     result = subject.observe(frame(4, velocity=(0.2, 0.2)))
     assert result.status is SkillStatus.SUCCESS
+
+
+def test_rotation_requires_replacement_touch_and_failed_attacker_recovery() -> None:
+    subject = evaluator("rotation_recovery")
+    subject.observe(frame(1, velocity=(-0.3, 0.0), r0=(0.03, 0.0), r1=(0.2, 0.2)))
+    not_recovered = subject.observe(frame(2, velocity=(0.2, 0.1), r1=(0.1, 0.2)))
+    assert not_recovered.status is SkillStatus.RUNNING
+    subject.observe(frame(3, velocity=(0.2, 0.1), r1=(-0.3, 0.0)))
+    result = subject.observe(frame(4, velocity=(0.2, 0.1), r1=(-0.3, 0.0)))
+    assert (result.status, result.reason) == (
+        SkillStatus.SUCCESS,
+        SkillReason.ROTATION_RECOVERED,
+    )
 
 
 def test_persistent_overlap_is_one_touch_not_a_farmable_contact_chain() -> None:

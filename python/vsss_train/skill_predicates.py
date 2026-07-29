@@ -24,6 +24,7 @@ class SkillReason(StrEnum):
     BALL_CLEARED = "ball_cleared"
     GOAL_SCORED = "goal_scored"
     PASS_RECEIVED = "pass_received"
+    ROTATION_RECOVERED = "rotation_recovered"
     OPPONENT_GOAL = "opponent_goal"
     OPPONENT_TOUCH = "opponent_touch"
     WRONG_TOUCH_ORDER = "wrong_touch_order"
@@ -144,6 +145,27 @@ class SkillEvaluator:
                 <= max(0.25, self.context.initial_ball_speed * 1.5)
             ):
                 return self._make(SkillStatus.SUCCESS, SkillReason.PASS_RECEIVED, frame.step)
+        elif family == "rotation_recovery":
+            attack_sign = 1.0 if self.context.target_goal_x > 0 else -1.0
+            recovery = (
+                frame.robot_positions.get(self.context.support_robot_id)
+                if self.context.support_robot_id is not None
+                else None
+            )
+            recovered_goal_side = (
+                recovery is not None and attack_sign * (frame.ball_x - recovery[0]) >= 0.12
+            )
+            safe = (
+                self._primary_touched
+                and recovered_goal_side
+                and not self._threatens_own_goal(frame)
+            )
+            if self._confirmed(safe):
+                return self._make(
+                    SkillStatus.SUCCESS,
+                    SkillReason.ROTATION_RECOVERED,
+                    frame.step,
+                )
         return self._make(SkillStatus.RUNNING, SkillReason.IN_PROGRESS, frame.step)
 
     def _new_contacts(self, frame: SkillFrame) -> set[str]:

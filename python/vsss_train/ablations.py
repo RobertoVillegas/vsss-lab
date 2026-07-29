@@ -99,7 +99,7 @@ class EntityAttentionActor(nn.Module):
                 observation.self_features,
                 observation.ball,
                 observation.goals,
-                observation.context,
+                observation.context[..., :4],
             ),
             dim=-1,
         )
