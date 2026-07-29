@@ -149,8 +149,8 @@ the same timestamp as the match.
 The reward is intentionally decomposed instead of relying only on goals:
 
 - goals and concessions provide the strongest terminal signal;
-- directional ball progress rewards movement toward the opponent goal and
-  penalizes danger toward the own goal;
+- a goal-aware geometry potential rewards improving a controllable
+  attacker-ball line through the usable goal opening;
 - defense rewards useful coverage and intervention;
 - spacing and congestion terms discourage persistent clustering;
 - contextual contact terms permit brief and productive challenges while
@@ -160,17 +160,19 @@ The reward is intentionally decomposed instead of relying only on goals:
   regularized;
 - episode duration is bounded so deadlocks cannot dominate data collection.
 
-Directional progress uses the ball velocity relative to each goal:
+Attacking geometry uses discounted potential change:
 
 ```text
-tanh(cos(ball_velocity, opponent_goal - ball))
-  - tanh(cos(ball_velocity, own_goal - ball))
+reward = coefficient × (discount × Φ(next_state) − Φ(state))
+
+Φ = alignment + goal-aperture margin + controllable proximity + field progress
 ```
 
 Goals remain substantially more valuable than shaping terms. Passing and
 defensive rewards are evidence that useful play occurred, not substitutes for
-winning. This prevents policies from farming safe intermediate behavior while
-avoiding decisive play.
+winning. Because an unchanged potential is non-positive, an attacker cannot
+farm reward by merely staying behind the ball; it must improve control,
+aperture, or forward progress.
 
 ## Observability and evaluation
 
@@ -342,11 +344,11 @@ replay capture every 25 learner iterations, 60-second captures, checkpoints ever
 selection, and 64 parallel worlds:
 
 ```bash
-just league-live-semantic 50000000 25 60 25 auto 64
+just league-live-m20 50000000 25 60 25 auto 64
 ```
 
 The command allocates a directory such as
-`~/runs/vsss-semantic-run-0001`, starts the private viewer at
+`~/runs/vsss-m20-run-0001`, starts the private viewer at
 `http://127.0.0.1:8765`, and runs training in the foreground. CUDA is selected
 when available; otherwise the command reports that it is using CPU.
 
