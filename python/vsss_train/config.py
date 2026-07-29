@@ -85,11 +85,13 @@ class MarlConfig:
     action_parser: Literal["continuous", "lattice"] = "continuous"
     adaptive_curriculum: bool = False
     semantic_curriculum: bool = False
+    semantic_phased_curriculum: bool = False
     scenario_suite: str = ""
     semantic_full_match_fraction: float = 0.25
     semantic_terminal_reward: float = 2.0
     semantic_regression_patience: int = 0
     semantic_regression_warmup_evaluations: int = 0
+    semantic_phase_patience: int = 2
     semantic_promotion_floors: dict[str, float] = field(default_factory=dict)
     observation_dropout: float = 0.0
     observation_noise_std: float = 0.0
@@ -159,6 +161,8 @@ class MarlConfig:
             raise ValueError("adaptive_curriculum requires scenario_suite")
         if self.adaptive_curriculum and self.semantic_curriculum:
             raise ValueError("static and semantic curricula are mutually exclusive")
+        if self.semantic_phased_curriculum and not self.semantic_curriculum:
+            raise ValueError("phased curriculum requires semantic_curriculum=true")
         if not 0.0 <= self.semantic_full_match_fraction <= 1.0:
             raise ValueError("semantic_full_match_fraction must be in [0, 1]")
         if self.semantic_terminal_reward < 0.0:
@@ -167,6 +171,8 @@ class MarlConfig:
             raise ValueError("semantic_regression_patience must be non-negative")
         if self.semantic_regression_warmup_evaluations < 0:
             raise ValueError("semantic_regression_warmup_evaluations must be non-negative")
+        if self.semantic_phase_patience <= 0:
+            raise ValueError("semantic_phase_patience must be positive")
         known_families = {
             "approach",
             "clearance",

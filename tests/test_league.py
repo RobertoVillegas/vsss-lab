@@ -7,7 +7,7 @@ import pytest
 import torch
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from vsss_eval import inspect_replay
-from vsss_league.cli import _select_training_opponent
+from vsss_league.cli import _select_training_opponent, _semantic_candidate_score
 from vsss_league.promotion import FixtureResult, decide_promotion
 from vsss_league.ratings import elo_update
 from vsss_league.registry import LeagueRegistry, PolicyCategory, PolicyEntry
@@ -474,3 +474,21 @@ def test_tournament_report_is_byte_reproducible_with_side_switch(tmp_path: Path)
     assert first.canonical_json() == second.canonical_json()
     assert {match.side for match in first.matches} == {"blue", "yellow"}
     assert first.wins + first.draws + first.losses == 2
+
+
+def test_semantic_checkpoint_ranking_prefers_consolidation_over_tiny_minimum_gain() -> None:
+    consolidated = {
+        "curriculum_phase_index": 2,
+        "promotion_eligible": False,
+        "promotion_gates_passed": 3,
+        "success_rate": 0.52,
+        "unresolved": 18,
+        "minimum_family_success_rate": 0.0,
+    }
+    traded_off = {
+        **consolidated,
+        "success_rate": 0.48,
+        "unresolved": 32,
+        "minimum_family_success_rate": 0.04,
+    }
+    assert _semantic_candidate_score(consolidated) > _semantic_candidate_score(traded_off)

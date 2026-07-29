@@ -43,6 +43,34 @@ SKILL_FAMILIES: tuple[SkillFamily, ...] = (
     "rotation_recovery",
 )
 
+PHASES: tuple[tuple[str, tuple[SkillFamily, ...], dict[SkillFamily, float], float], ...] = (
+    (
+        "foundation",
+        ("approach", "shot", "interception"),
+        {"approach": 0.75, "shot": 0.70, "interception": 0.35},
+        0.05,
+    ),
+    (
+        "defense",
+        ("interception", "save_deflection", "clearance"),
+        {"interception": 0.35, "save_deflection": 0.35, "clearance": 0.35},
+        0.10,
+    ),
+    (
+        "cooperation",
+        ("pass_receive",),
+        {"pass_receive": 0.20, "clearance": 0.30},
+        0.10,
+    ),
+    (
+        "rotation",
+        ("rotation_recovery",),
+        {"rotation_recovery": 0.15, "pass_receive": 0.15, "save_deflection": 0.30},
+        0.15,
+    ),
+    ("integration", SKILL_FAMILIES, {}, 1.0),
+)
+
 
 @dataclass(frozen=True)
 class SkillDifficulty:
@@ -143,16 +171,24 @@ class SemanticSkillCurriculum:
         seed: int,
         full_match_fraction: float = 0.25,
         window: int = 24,
+        phased: bool = False,
+        phase_patience: int = 2,
     ) -> None:
         if not 0.0 <= full_match_fraction <= 1.0:
             raise ValueError("full_match_fraction must be in [0, 1]")
         if window < 4:
             raise ValueError("curriculum window must be at least four")
+        if phase_patience <= 0:
+            raise ValueError("phase patience must be positive")
         self.base_state = copy.deepcopy(base_state)
         self.config = config
         self.seed = seed
         self.full_match_fraction = full_match_fraction
         self.window = window
+        self.phased = phased
+        self.phase_patience = phase_patience
+        self.phase_index = 0
+        self.phase_gate_streak = 0
         self.levels = {
             family: {axis: 0.05 for axis in DIFFICULTY_AXES} for family in SKILL_FAMILIES
         }
@@ -168,12 +204,17 @@ class SemanticSkillCurriculum:
     def select_training(self, index: int) -> SemanticSelection:
         generator = random.Random(self.seed + index * 104_729)
         total_allocated = sum(self.counts.values())
-        required_full_matches = math.ceil((total_allocated + 1) * self.full_match_fraction)
+        required_full_matches = math.ceil((total_allocated + 1) * self.current_full_match_fraction)
         if self.counts["full_match"] < required_full_matches:
             self.counts["full_match"] += 1
             return SemanticSelection(None, "full_match")
-        if self.failures and generator.random() < 0.15:
-            key = sorted(self.failures)[generator.randrange(len(self.failures))]
+        eligible_failures = tuple(
+            key
+            for key, parameters in sorted(self.failures.items())
+            if parameters.family in self.training_families
+        )
+        if eligible_failures and generator.random() < 0.15:
+            key = eligible_failures[generator.randrange(len(eligible_failures))]
             parameters = self.failures[key]
             source: Literal["failure", "routine", "frontier"] = "failure"
         else:
@@ -204,16 +245,55 @@ class SemanticSkillCurriculum:
 
     def _select_family(self, generator: random.Random) -> SkillFamily:
         """Bias practice toward weak skills while retaining a rehearsal floor."""
+        families = self.training_families
+        if self.phased and self.phase_index > 0 and self.phase_index < len(PHASES) - 1:
+            previous = tuple(
+                dict.fromkeys(
+                    family
+                    for _, phase_families, _, _ in PHASES[: self.phase_index]
+                    for family in phase_families
+                )
+            )
+            if previous and generator.random() < 0.20:
+                return previous[generator.randrange(len(previous))]
         if generator.random() < 0.20:
-            return SKILL_FAMILIES[generator.randrange(len(SKILL_FAMILIES))]
+            return families[generator.randrange(len(families))]
         weights = []
-        for family in SKILL_FAMILIES:
+        for family in families:
             history = self.outcomes[family]
             success_rate = sum(history) / len(history) if history else 0.5
             # Every family remains sampleable; weak skills receive up to 26x
             # the weight of a mastered one.
             weights.append(0.04 + (1.0 - success_rate) ** 2)
-        return generator.choices(SKILL_FAMILIES, weights=weights, k=1)[0]
+        return generator.choices(families, weights=weights, k=1)[0]
+
+    @property
+    def phase_name(self) -> str:
+        return PHASES[self.phase_index][0] if self.phased else "adaptive_all"
+
+    @property
+    def training_families(self) -> tuple[SkillFamily, ...]:
+        return PHASES[self.phase_index][1] if self.phased else SKILL_FAMILIES
+
+    @property
+    def current_full_match_fraction(self) -> float:
+        if not self.phased:
+            return self.full_match_fraction
+        phase_fraction = PHASES[self.phase_index][3]
+        return self.full_match_fraction if phase_fraction == 1.0 else phase_fraction
+
+    def observe_holdout_rates(self, rates: dict[str, float]) -> bool:
+        """Advance after consecutive paired holdouts clear the current phase."""
+        if not self.phased or self.phase_index >= len(PHASES) - 1:
+            return False
+        gates = PHASES[self.phase_index][2]
+        passed = all(rates.get(family, 0.0) >= floor for family, floor in gates.items())
+        self.phase_gate_streak = self.phase_gate_streak + 1 if passed else 0
+        if self.phase_gate_streak < self.phase_patience:
+            return False
+        self.phase_index += 1
+        self.phase_gate_streak = 0
+        return True
 
     def record(self, scenario: SemanticScenario, *, success: bool) -> None:
         if scenario.parameters.holdout:
@@ -279,8 +359,13 @@ class SemanticSkillCurriculum:
             "failure_count": len(self.failures),
             "observed_full_match_fraction": observed_full_match_fraction,
             "allocation_valid": (
-                not total or observed_full_match_fraction + 1e-12 >= self.full_match_fraction
+                not total
+                or observed_full_match_fraction + 1e-12 >= self.current_full_match_fraction
             ),
+            "phase": self.phase_name,
+            "phase_index": self.phase_index,
+            "phase_gate_streak": self.phase_gate_streak,
+            "training_families": self.training_families,
             "success_rate": {
                 family: sum(values) / len(values) if values else None
                 for family in SKILL_FAMILIES
@@ -303,6 +388,8 @@ class SemanticSkillCurriculum:
                 digest: asdict(parameters) for digest, parameters in self.failures.items()
             },
             "updates": {family: self.updates[family] for family in SKILL_FAMILIES},
+            "phase_index": self.phase_index,
+            "phase_gate_streak": self.phase_gate_streak,
         }
 
     def load_state_dict(self, state: dict[str, object]) -> None:
@@ -331,6 +418,14 @@ class SemanticSkillCurriculum:
             self.outcomes[family].extend(float(value) for value in raw_outcomes)
         self.failures.clear()
         self.updates.clear()
+        raw_phase_index = state.get("phase_index", 0)
+        raw_phase_streak = state.get("phase_gate_streak", 0)
+        if not isinstance(raw_phase_index, int) or not isinstance(raw_phase_streak, int):
+            raise ValueError("invalid semantic curriculum phase state")
+        self.phase_index = raw_phase_index
+        self.phase_gate_streak = raw_phase_streak
+        if not 0 <= self.phase_index < len(PHASES):
+            raise ValueError("invalid semantic curriculum phase")
         if isinstance(updates, dict):
             self.updates.update({family: int(updates.get(family, 0)) for family in SKILL_FAMILIES})
         if isinstance(failures, dict):

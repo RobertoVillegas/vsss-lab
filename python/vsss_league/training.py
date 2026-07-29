@@ -92,6 +92,8 @@ def create_rollout_session(config: MarlConfig, config_json: str, state_json: str
             match_config,
             seed=config.seed,
             full_match_fraction=config.semantic_full_match_fraction,
+            phased=config.semantic_phased_curriculum,
+            phase_patience=config.semantic_phase_patience,
         )
         if config.semantic_curriculum
         else None

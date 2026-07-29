@@ -12,6 +12,7 @@ import time
 from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from vsss_eval import analyze_replay
 from vsss_train.config import MarlConfig, load_marl_config
@@ -32,6 +33,20 @@ from vsss_league.training import (
 )
 
 FORCE_STOP_WINDOW_SECONDS = 2.0
+
+
+def _semantic_candidate_score(
+    evaluation: dict[str, Any],
+) -> tuple[int, bool, int, float, int, float]:
+    """Rank consolidation before isolated minimum-family gains."""
+    return (
+        int(evaluation.get("curriculum_phase_index", 0)),
+        bool(evaluation.get("promotion_eligible", True)),
+        int(evaluation.get("promotion_gates_passed", 0)),
+        float(evaluation["success_rate"]),
+        -int(evaluation["unresolved"]),
+        float(evaluation["minimum_family_success_rate"]),
+    )
 
 
 class TrainingInterrupt:
@@ -350,6 +365,11 @@ def _run(arguments: argparse.Namespace) -> None:
                     for family, floor in config.semantic_promotion_floors.items()
                 }
                 promotion_eligible = all(bool(gate["passed"]) for gate in promotion_gates.values())
+                gates_passed = sum(bool(gate["passed"]) for gate in promotion_gates.values())
+                phase_before = rollout_session.semantic_curriculum.phase_name
+                phase_advanced = rollout_session.semantic_curriculum.observe_holdout_rates(
+                    family_rates
+                )
                 semantic_evaluation = {
                     "iteration": iteration,
                     "checkpoint": str(checkpoint.resolve()),
@@ -359,7 +379,13 @@ def _run(arguments: argparse.Namespace) -> None:
                     "minimum_family_success_rate": minimum_family_rate,
                     "unresolved": unresolved,
                     "promotion_eligible": promotion_eligible,
+                    "promotion_gates_passed": gates_passed,
                     "promotion_gates": promotion_gates,
+                    "curriculum_phase": phase_before,
+                    "curriculum_phase_index": rollout_session.semantic_curriculum.phase_index
+                    - int(phase_advanced),
+                    "curriculum_phase_advanced": phase_advanced,
+                    "curriculum_phase_after": rollout_session.semantic_curriculum.phase_name,
                     "difficulty_bands": report.difficulty_bands,
                     "difficulty_levels": report.difficulty_levels,
                     "families": {
@@ -381,24 +407,16 @@ def _run(arguments: argparse.Namespace) -> None:
                     if best_semantic_path.is_file()
                     else None
                 )
-                candidate_score = (
-                    promotion_eligible,
-                    minimum_family_rate,
-                    successes / report.attempts,
-                    -unresolved,
-                )
+                candidate_score = _semantic_candidate_score(semantic_evaluation)
                 previous_score = (
-                    (
-                        bool(previous_best.get("promotion_eligible", True)),
-                        float(previous_best["minimum_family_success_rate"]),
-                        float(previous_best["success_rate"]),
-                        -int(previous_best["unresolved"]),
-                    )
+                    _semantic_candidate_score(previous_best)
                     if isinstance(previous_best, dict)
                     else None
                 )
                 if previous_score is None or candidate_score > previous_score:
                     _write_json_atomic(best_semantic_path, semantic_evaluation)
+                    semantic_regressions = 0
+                elif phase_advanced:
                     semantic_regressions = 0
                 elif (
                     candidate_score < previous_score

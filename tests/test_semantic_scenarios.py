@@ -144,6 +144,61 @@ def test_curriculum_mirrors_colors_and_allocates_every_family() -> None:
     }
 
 
+def test_phased_curriculum_focuses_then_advances_after_consecutive_holdouts() -> None:
+    curriculum = SemanticSkillCurriculum(
+        STATE,
+        CONFIG,
+        seed=41,
+        full_match_fraction=0.20,
+        phased=True,
+        phase_patience=2,
+    )
+    selections = [curriculum.select_training(index) for index in range(80)]
+    families = {
+        selection.scenario.parameters.family
+        for selection in selections
+        if selection.scenario is not None
+    }
+    assert curriculum.phase_name == "foundation"
+    assert families == {"approach", "shot", "interception"}
+    passing = {"approach": 0.8, "shot": 0.75, "interception": 0.4}
+    assert not curriculum.observe_holdout_rates(passing)
+    assert curriculum.phase_name == "foundation"
+    assert curriculum.observe_holdout_rates(passing)
+    assert curriculum.phase_name == "defense"
+    assert curriculum.training_families == (
+        "interception",
+        "save_deflection",
+        "clearance",
+    )
+
+
+def test_phased_curriculum_resets_promotion_streak_and_persists_phase() -> None:
+    curriculum = SemanticSkillCurriculum(
+        STATE,
+        CONFIG,
+        seed=42,
+        phased=True,
+        phase_patience=2,
+    )
+    passing = {"approach": 0.8, "shot": 0.75, "interception": 0.4}
+    curriculum.observe_holdout_rates(passing)
+    curriculum.observe_holdout_rates({"approach": 0.7, "shot": 0.75, "interception": 0.4})
+    assert curriculum.phase_gate_streak == 0
+    curriculum.observe_holdout_rates(passing)
+    assert curriculum.observe_holdout_rates(passing)
+    restored = SemanticSkillCurriculum(
+        STATE,
+        CONFIG,
+        seed=42,
+        phased=True,
+        phase_patience=2,
+    )
+    restored.load_state_dict(curriculum.state_dict())
+    assert restored.phase_name == "defense"
+    assert restored.phase_gate_streak == 0
+
+
 @pytest.mark.parametrize(
     ("family", "roster", "controlled_count", "opponent_count"),
     (
