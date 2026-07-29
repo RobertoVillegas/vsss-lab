@@ -127,8 +127,23 @@ export const FieldCanvas = forwardRef<HTMLCanvasElement, Props>(function FieldCa
 
     // Goal-area arcs and restart crosses mirror the calibrated 1.70 x 1.30 m
     // reference layout while staying in canonical, field-centered coordinates.
+    // Only the cap outside the penalty area is a field marking; clip the part
+    // of each semicircle that would otherwise show through inside the box.
     for (const xSign of [-1, 1]) {
       const [arcX, arcY] = point(xSign * (field.length / 2 - 0.07), 0);
+      context.save();
+      context.beginPath();
+      if (xSign < 0) {
+        context.rect(
+          left + penaltyDepth,
+          top,
+          pitchWidth - penaltyDepth,
+          pitchHeight,
+        );
+      } else {
+        context.rect(left, top, pitchWidth - penaltyDepth, pitchHeight);
+      }
+      context.clip();
       context.beginPath();
       if (xSign < 0) {
         context.arc(arcX, arcY, 0.13 * scale, -Math.PI / 2, Math.PI / 2);
@@ -136,6 +151,7 @@ export const FieldCanvas = forwardRef<HTMLCanvasElement, Props>(function FieldCa
         context.arc(arcX, arcY, 0.13 * scale, Math.PI / 2, Math.PI * 1.5);
       }
       context.stroke();
+      context.restore();
     }
 
     const drawCross = (x: number, y: number) => {
