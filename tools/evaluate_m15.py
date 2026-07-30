@@ -52,6 +52,7 @@ def main() -> None:
         match_state_text,
         control=arguments.control,
         device=device,
+        action_parser=config.action_parser,
     )
     arguments.output.parent.mkdir(parents=True, exist_ok=True)
     arguments.output.write_text(

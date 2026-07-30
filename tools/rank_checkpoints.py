@@ -43,6 +43,7 @@ def main() -> None:
                 policy_version=learner.policy_version,
                 seeds=seeds,
                 ticks=config.horizon,
+                action_parser=config.action_parser,
             )
         )
     ranked = sorted(

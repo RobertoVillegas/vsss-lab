@@ -117,6 +117,7 @@ def _run(
             policy_version=learner.policy_version,
             seeds=(seed + 1_100_000,),
             ticks=60,
+            action_parser=learner.config.action_parser,
         )
         wins += scorecard.wins
         draws += scorecard.draws

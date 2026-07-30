@@ -87,6 +87,7 @@ def main() -> None:
         config_json,
         state_json,
         device=learner.device,
+        action_parser=config.action_parser,
     )
     paired_seeds = tuple(config.seed + 950_000 + index for index in range(5))
     heuristic = evaluate_checkpoint_scorecard(
@@ -97,6 +98,7 @@ def main() -> None:
         policy_version=learner.policy_version,
         seeds=paired_seeds,
         ticks=300,
+        action_parser=config.action_parser,
     )
     frozen_m14 = _legacy_actor(
         Path("/home/rob/runs/vsss-training-run-0004/checkpoints/iteration-000425.pt"),

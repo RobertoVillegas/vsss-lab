@@ -13,7 +13,7 @@ import torch
 from vsss_baselines import DynamicTeamController
 
 from vsss_train.marl import build_team_observation, stack_team_batches
-from vsss_train.marl_env import VectorMarlMatchEnv
+from vsss_train.marl_env import ACTION_PARSERS, VectorMarlMatchEnv, team_action_width
 from vsss_train.marl_ppo import PolicyActor
 from vsss_train.semantic_scenarios import SemanticScenario
 from vsss_train.skill_predicates import (
@@ -89,11 +89,16 @@ def evaluate_semantic_skills(
     if control == "policy" and actor is None:
         raise ValueError("policy evaluation requires an actor")
     config = json.loads(config_json)
+    if action_parser not in ACTION_PARSERS:
+        raise ValueError("unsupported action parser")
+    # Scripted baselines emit wheel commands, so they bypass the learned action parser.
+    evaluation_parser = "continuous" if control == "heuristic" else action_parser
+    action_width = team_action_width(evaluation_parser)
     environment = _environment(
         config_json,
         state_json,
         len(scenarios),
-        action_parser=action_parser,
+        action_parser=evaluation_parser,
     )
     evaluators: list[SkillEvaluator] = []
     active = np.ones(len(scenarios), dtype=np.bool_)
@@ -118,12 +123,20 @@ def evaluate_semantic_skills(
     yellow = DynamicTeamController(3, -1)
     started = time.perf_counter()
     maximum_horizon = max(scenario.context.horizon for scenario in scenarios)
+    idle_action = np.zeros((len(scenarios), 3, action_width), dtype=np.float32)
+    if evaluation_parser == "parametric_primitive":
+        # A -1 skill token decodes to STOP, matching the idle meaning of continuous zeros.
+        idle_action[..., 0] = -1.0
     for _ in range(maximum_horizon):
         idle_spin_before = environment.idle_spin_steps.copy()
         decisions_before = environment.active_agent_decisions.copy()
-        actions = np.zeros((len(scenarios), 3, 2), dtype=np.float32)
+        actions = idle_action.copy()
         if control == "random":
-            actions[active] = random.uniform(-1.0, 1.0, size=(int(active.sum()), 3, 2))
+            actions[active] = random.uniform(
+                -1.0,
+                1.0,
+                size=(int(active.sum()), 3, action_width),
+            )
         elif control == "heuristic":
             for world, state in enumerate(environment.states):
                 if active[world]:

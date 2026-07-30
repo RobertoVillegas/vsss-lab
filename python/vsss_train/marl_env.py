@@ -42,6 +42,14 @@ from vsss_train.roles import DynamicRoleAssigner, RoleAssignment, assign_roles
 FloatArray = NDArray[np.float32]
 ROBOT_BASE = 10
 ROBOT_WIDTH = 11
+ACTION_PARSERS = ("continuous", "lattice", "primitive", "parametric_primitive")
+
+
+def team_action_width(action_parser: str) -> int:
+    """Return the per-agent transport width a parser consumes before wheel conversion."""
+    if action_parser not in ACTION_PARSERS:
+        raise ValueError("unsupported action parser")
+    return 4 if action_parser == "parametric_primitive" else 2
 
 
 @dataclass(frozen=True)
@@ -152,7 +160,7 @@ class MarlMatchEnv:
         self.defensive_activation_x = defensive_activation_x
         self.draw_penalty = draw_penalty
         self.stagnation_penalty = stagnation_penalty
-        if action_parser not in ("continuous", "lattice", "primitive", "parametric_primitive"):
+        if action_parser not in ACTION_PARSERS:
             raise ValueError("unsupported action parser")
         self.action_parser = action_parser
         self._decision_period = float(self._config["timestep"]) * action_repeat
@@ -439,7 +447,7 @@ class VectorMarlMatchEnv:
         self.defensive_activation_x = defensive_activation_x
         self.draw_penalty = draw_penalty
         self.stagnation_penalty = stagnation_penalty
-        if action_parser not in ("continuous", "lattice", "primitive", "parametric_primitive"):
+        if action_parser not in ACTION_PARSERS:
             raise ValueError("unsupported action parser")
         self.action_parser = action_parser
         self.stagnation_limit = max(1, round(stagnation_seconds / self._decision_period))

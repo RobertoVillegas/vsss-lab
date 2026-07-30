@@ -141,6 +141,7 @@ def _run_arm(
             config_json,
             state_json,
             device=learner.device,
+            action_parser=learner.config.action_parser,
         )
         successes = sum(trial.status == "success" for trial in semantic.trials)
         unresolved = sum(trial.status == "unresolved" for trial in semantic.trials)
@@ -154,6 +155,7 @@ def _run_arm(
             policy_version=learner.policy_version,
             seeds=(seed + 100_000,),
             ticks=60,
+            action_parser=learner.config.action_parser,
         )
         terminal_scores.append((scorecard.wins + 0.5 * scorecard.draws) / scorecard.matches)
     return AblationResult(

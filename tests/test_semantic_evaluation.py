@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from vsss_train.marl import ParametricPrimitiveRoleActor
 from vsss_train.semantic_evaluation import evaluate_semantic_skills
 from vsss_train.semantic_scenarios import (
+    SemanticScenario,
     SkillDifficulty,
     SkillScenarioParameters,
     compile_skill_scenario,
@@ -17,8 +19,8 @@ CONFIG = json.loads(CONFIG_TEXT)
 STATE = json.loads(STATE_TEXT)
 
 
-def test_paired_semantic_evaluation_reports_trials_intervals_and_throughput() -> None:
-    scenarios = tuple(
+def _scenarios() -> tuple[SemanticScenario, ...]:
+    return tuple(
         compile_skill_scenario(
             SkillScenarioParameters(
                 schema_version=1,
@@ -36,6 +38,10 @@ def test_paired_semantic_evaluation_reports_trials_intervals_and_throughput() ->
         for team in ("blue", "yellow")
         for seed in (101, 103)
     )
+
+
+def test_paired_semantic_evaluation_reports_trials_intervals_and_throughput() -> None:
+    scenarios = _scenarios()
     report = evaluate_semantic_skills(
         None,
         scenarios,
@@ -62,3 +68,28 @@ def test_paired_semantic_evaluation_reports_trials_intervals_and_throughput() ->
         "failure",
         "unresolved",
     }
+
+
+def test_parametric_primitive_evaluation_accepts_wide_policy_and_baseline_actions() -> None:
+    scenarios = _scenarios()
+    actor = ParametricPrimitiveRoleActor(32)
+    for control, evaluated in (
+        ("policy", actor),
+        ("random", None),
+        ("heuristic", None),
+    ):
+        report = evaluate_semantic_skills(
+            evaluated,
+            scenarios,
+            CONFIG_TEXT,
+            STATE_TEXT,
+            control=control,  # type: ignore[arg-type]
+            action_parser="parametric_primitive",
+        )
+        assert report.attempts == 8
+        assert 0.0 <= report.idle_spin_ratio <= 1.0
+        assert {trial.status for trial in report.trials} <= {
+            "success",
+            "failure",
+            "unresolved",
+        }
