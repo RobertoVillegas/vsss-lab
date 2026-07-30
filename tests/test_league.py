@@ -153,7 +153,7 @@ def test_training_population_loads_historical_actor_without_changing_rng(tmp_pat
     )
     before = torch.get_rng_state().clone()
 
-    opponent, opponent_id = _select_training_opponent(
+    opponent, opponent_id, opponent_kind = _select_training_opponent(
         registry,
         learner,
         config,
@@ -164,6 +164,8 @@ def test_training_population_loads_historical_actor_without_changing_rng(tmp_pat
 
     assert opponent is not None
     assert opponent_id == f"{config.policy_id}@0"
+    # A historical entry shares the run's policy id, so only the selector can name the kind.
+    assert opponent_kind == "historical"
     assert torch.equal(before, torch.get_rng_state())
 
 

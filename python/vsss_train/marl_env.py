@@ -12,7 +12,7 @@ import numpy as np
 import torch
 from numpy.typing import NDArray
 from vsss_baselines import DynamicTeamController
-from vsss_baselines.controllers import robot_pose
+from vsss_baselines.controllers import TURN_AUTHORITY, robot_pose
 from vsss_env._native import BatchSimulator
 
 from vsss_train.ablations import (
@@ -50,6 +50,19 @@ def team_action_width(action_parser: str) -> int:
     if action_parser not in ACTION_PARSERS:
         raise ValueError("unsupported action parser")
     return 4 if action_parser == "parametric_primitive" else 2
+
+
+def parser_turn_authority(action_parser: str) -> float:
+    """Return the largest wheel differential a parser can request.
+
+    A policy that emits wheels reaches the full normalized differential, while a
+    policy that emits skills reaches only what `go_to_target` spends on turning.
+    Idle-spin thresholds are expressed as a fraction of this, so one configured
+    value keeps its meaning across action spaces.
+    """
+    if action_parser not in ACTION_PARSERS:
+        raise ValueError("unsupported action parser")
+    return TURN_AUTHORITY if action_parser in ("primitive", "parametric_primitive") else 1.0
 
 
 def check_team_actions(actions: FloatArray, expected: tuple[int, ...], role: str) -> None:
@@ -239,24 +252,27 @@ class MarlMatchEnv:
         for slot in range(3):
             if not bool(float(self.state[ROBOT_BASE + slot * ROBOT_WIDTH + 10])):
                 actions[0, slot] = 0.0
+        # A learned opponent is parsed once per decision, exactly like the learner, so
+        # evaluation and replay execute one token the way training executes it. Only the
+        # scripted controller re-plans per physics substep, as it does in the vector env.
+        if opponent_actions is not None:
+            normalized_opponent = np.clip(opponent_actions, -1.0, 1.0)
+            if self.action_parser == "primitive":
+                normalized_opponent = primitive_wheel_actions(
+                    self.state,
+                    team=1,
+                    tokens=normalized_opponent,
+                )
+            elif self.action_parser == "parametric_primitive":
+                normalized_opponent = parametric_primitive_wheel_actions(
+                    self.state,
+                    team=1,
+                    tokens=normalized_opponent,
+                )
+            actions[0, 3:] = normalized_opponent * self._max_wheel_speed
         events = 0
         for _ in range(self.action_repeat):
-            if opponent_actions is not None:
-                normalized_opponent = np.clip(opponent_actions, -1.0, 1.0)
-                if self.action_parser == "primitive":
-                    normalized_opponent = primitive_wheel_actions(
-                        self.state,
-                        team=1,
-                        tokens=normalized_opponent,
-                    )
-                elif self.action_parser == "parametric_primitive":
-                    normalized_opponent = parametric_primitive_wheel_actions(
-                        self.state,
-                        team=1,
-                        tokens=normalized_opponent,
-                    )
-                actions[0, 3:] = normalized_opponent * self._max_wheel_speed
-            elif self.stage == 8:
+            if opponent_actions is None and self.stage == 8:
                 actions[0, 3:] = self._yellow.actions(self.state) * self._max_wheel_speed
             self.state = self._native.step(actions)[0]
             events |= int(self.state[-1])
@@ -772,6 +788,7 @@ class VectorMarlMatchEnv:
                 drive_threshold=self.idle_spin_drive_threshold,
                 speed_threshold=self.idle_spin_speed_threshold,
                 ball_distance=self.idle_spin_ball_distance,
+                turn_authority=parser_turn_authority(self.action_parser),
             )
             self._idle_spin_streaks[world] = np.where(flags, self._idle_spin_streaks[world] + 1, 0)
             penalized = flags & (self._idle_spin_streaks[world] > self.idle_spin_grace_steps)
@@ -1205,11 +1222,17 @@ def _idle_spin_flags(
     drive_threshold: float,
     speed_threshold: float,
     ball_distance: float,
+    turn_authority: float = 1.0,
 ) -> tuple[NDArray[np.bool_], FloatArray]:
-    """Find turn-in-place actions that are slow, remote from the ball, and non-progressive."""
+    """Find turn-in-place actions that are slow, remote from the ball, and non-progressive.
+
+    Turn intensity is reported as a fraction of the authority the action parser can
+    actually request, so the threshold does not silently become unreachable when a
+    geometric controller produces the wheels.
+    """
     left = normalized_actions[:, 0]
     right = normalized_actions[:, 1]
-    turn_intensity = np.abs(right - left) / 2.0
+    turn_intensity = np.abs(right - left) / (2.0 * turn_authority)
     drive_intensity = np.abs(right + left) / 2.0
     flags = np.zeros(3, dtype=np.bool_)
     offset = 0 if team == 0 else 3

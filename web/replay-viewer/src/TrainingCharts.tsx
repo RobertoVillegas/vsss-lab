@@ -176,11 +176,25 @@ export default function TrainingCharts({ metrics }: { metrics: TrainingMetric[] 
             <Line dataKey="strike_fraction" name="strike" stroke="#ff8a62" dot={false} />
           </TrainingChart>
         ) : hybrid ? (
-          <TrainingChart title="PARAMETRIC CONTROL" data={data}>
-            <Line dataKey="mean_intensity" name="mean intensity" stroke="#71e1ae" dot={false} />
-            <Line dataKey="direction_change_mean_degrees" name="mean Δ heading °" stroke="#49a7ff" dot={false} />
-            <Line dataKey="direction_change_p95_degrees" name="p95 Δ heading °" stroke="#ff8a62" dot={false} />
-          </TrainingChart>
+          <>
+            <TrainingChart title="PARAMETRIC CONTROL · Δ HEADING" data={data}>
+              <Line dataKey="direction_change_mean_degrees" name="mean Δ heading °" stroke="#49a7ff" dot={false} />
+              <Line dataKey="direction_change_p95_degrees" name="p95 Δ heading °" stroke="#ff8a62" dot={false} />
+            </TrainingChart>
+            <TrainingChart title="PARAMETRIC CONTROL · INTENSITY" data={data}>
+              <Line dataKey="mean_intensity" name="mean intensity" stroke="#71e1ae" dot={false} />
+            </TrainingChart>
+            <TrainingChart title="SKILL MIX" data={data}>
+              <Line dataKey="stop_fraction" name="stop" stroke="#82998f" dot={false} />
+              <Line dataKey="navigate_fraction" name="navigate" stroke="#49a7ff" dot={false} />
+              <Line dataKey="strike_fraction" name="strike" stroke="#ff8a62" dot={false} />
+            </TrainingChart>
+            <TrainingChart title="EXPLORATION · LOG STD" data={data}>
+              <Line dataKey="log_std_left" name="direction x" stroke="#71e1ae" dot={false} />
+              <Line dataKey="log_std_right" name="direction y" stroke="#49a7ff" dot={false} />
+              <Line dataKey="log_std_intensity" name="intensity" stroke="#ff8a62" dot={false} />
+            </TrainingChart>
+          </>
         ) : (
           <TrainingChart title="EXPLORATION · LOG STD" data={data}>
             <Line dataKey="log_std_left" name="left wheel" stroke="#71e1ae" dot={false} />

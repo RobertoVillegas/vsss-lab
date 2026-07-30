@@ -8,6 +8,7 @@ import pytest
 import torch
 from tensordict import TensorDict
 from torch.distributions import Normal
+from vsss_baselines.controllers import TURN_AUTHORITY
 from vsss_env._native import BatchSimulator
 from vsss_league.training import create_rollout_session
 from vsss_train.config import MarlConfig, load_marl_config
@@ -33,6 +34,7 @@ from vsss_train.marl_env import (
     _useful_touch_impulse,
     distill_dynamic_teacher,
     evaluate_against_random,
+    parser_turn_authority,
     team_action_width,
 )
 from vsss_train.marl_ppo import (
@@ -44,6 +46,7 @@ from vsss_train.marl_ppo import (
     bounded_action_log_prob,
     sample_bounded_action,
 )
+from vsss_train.primitives import parametric_primitive_wheel_actions
 
 ROOT = Path(__file__).parents[1]
 
@@ -259,6 +262,45 @@ def test_idle_spin_detection_exempts_orientation_and_ball_control() -> None:
 
     assert flags.tolist() == [True, False, False]
     assert intensity.tolist() == pytest.approx([0.8, 0.2, 0.8])
+
+
+def test_idle_spin_detection_reaches_wheels_a_skill_parser_can_produce() -> None:
+    assert parser_turn_authority("continuous") == 1.0
+    assert parser_turn_authority("lattice") == 1.0
+    assert parser_turn_authority("primitive") == TURN_AUTHORITY
+    assert parser_turn_authority("parametric_primitive") == TURN_AUTHORITY
+    state = initial_state()
+    # `go_to_target` spends at most TURN_AUTHORITY on turning, so this is the hardest
+    # turn-in-place a policy can request through a skill parser.
+    spin = float(TURN_AUTHORITY)
+    actions = np.asarray(((-spin, spin), (-spin, spin), (-spin, spin)), dtype=np.float32)
+    state[12:14] = (-0.50, -0.40)
+    state[23:25] = (-0.25, 0.0)
+    state[34:36] = state[5:7]
+
+    unreachable, _ = _idle_spin_flags(
+        state,
+        0,
+        actions,
+        turn_threshold=0.13,
+        drive_threshold=0.07,
+        speed_threshold=0.08,
+        ball_distance=0.12,
+    )
+    flags, intensity = _idle_spin_flags(
+        state,
+        0,
+        actions,
+        turn_threshold=0.13,
+        drive_threshold=0.07,
+        speed_threshold=0.08,
+        ball_distance=0.12,
+        turn_authority=parser_turn_authority("parametric_primitive"),
+    )
+
+    assert not unreachable.any()
+    assert flags.tolist() == [True, True, False]
+    assert intensity.tolist() == pytest.approx([1.0, 1.0, 1.0])
 
 
 def trajectory(learner: MarlLearner, steps: int = 4) -> TeamTrajectory:
@@ -658,6 +700,29 @@ def test_environment_rejects_actions_that_do_not_match_its_action_parser() -> No
     _, _, _, info = environment.step(np.zeros((3, 4), dtype=np.float32))
 
     assert "actions" in info
+
+
+def test_learned_opponent_token_is_parsed_once_per_decision() -> None:
+    environment = MarlMatchEnv(
+        CONFIG,
+        STATE,
+        stage=8,
+        horizon=8,
+        action_repeat=4,
+        action_parser="parametric_primitive",
+    )
+    environment.reset(11)
+    before = environment.state.copy()
+    opponent = np.asarray(
+        ((0.0, 0.9, 0.4, 0.5), (1.0, -0.3, 0.8, 0.2), (0.0, 0.2, -0.7, 1.0)),
+        dtype=np.float32,
+    )
+    expected = parametric_primitive_wheel_actions(before, team=1, tokens=opponent)
+
+    _, _, _, info = environment.step(np.zeros((3, 4), dtype=np.float32), opponent)
+
+    maximum = float(json.loads(CONFIG)["max_wheel_speed"])
+    assert np.allclose(np.asarray(info["actions"])[3:], expected * maximum)
 
 
 def test_normalized_actions_scale_to_physical_wheel_velocity() -> None:

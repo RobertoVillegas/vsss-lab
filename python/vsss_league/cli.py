@@ -18,7 +18,7 @@ from vsss_eval import analyze_replay
 from vsss_train.config import MarlConfig, load_marl_config
 from vsss_train.marl_env import distill_dynamic_teacher
 from vsss_train.marl_ppo import MarlLearner, PolicyActor, load_policy_actor
-from vsss_train.semantic_evaluation import evaluate_semantic_skills
+from vsss_train.semantic_evaluation import IdleSpinThresholds, evaluate_semantic_skills
 
 from vsss_league.progress import TrainingDashboard
 from vsss_league.promotion import FixtureResult, decide_promotion
@@ -296,20 +296,15 @@ def _run(arguments: argparse.Namespace) -> None:
     opponent_counts = {"heuristic": 0, "self": 0, "historical": 0}
     try:
         for iteration in range(start_iteration, final_iteration + 1):
-            opponent, opponent_id = _select_training_opponent(
+            # The selector reports the kind: a historical entry shares the run's policy id,
+            # so its key is indistinguishable from a self-play key by inspection.
+            opponent, opponent_id, opponent_kind = _select_training_opponent(
                 registry,
                 learner,
                 config,
                 iteration=iteration,
                 latest_checkpoint=parent_key,
                 cache=opponent_cache,
-            )
-            opponent_kind = (
-                "heuristic"
-                if opponent_id == "heuristic-dynamic"
-                else "self"
-                if opponent_id.startswith(f"{config.policy_id}@")
-                else "historical"
             )
             opponent_counts[opponent_kind] += 1
             save_checkpoint = (
@@ -364,6 +359,13 @@ def _run(arguments: argparse.Namespace) -> None:
                     state_json,
                     device=learner.device,
                     action_parser=config.action_parser,
+                    idle_spin=IdleSpinThresholds(
+                        turn_threshold=config.idle_spin_turn_threshold,
+                        drive_threshold=config.idle_spin_drive_threshold,
+                        speed_threshold=config.idle_spin_speed_threshold,
+                        ball_distance=config.idle_spin_ball_distance,
+                        grace_seconds=config.idle_spin_grace_seconds,
+                    ),
                 )
                 semantic_evaluation_count += 1
                 successes = sum(family.successes for family in report.families)
@@ -419,6 +421,10 @@ def _run(arguments: argparse.Namespace) -> None:
                     "match_gate_passed": match_gate_passed,
                     "idle_spin_ratio": report.idle_spin_ratio,
                     "maximum_idle_spin_ratio": config.semantic_max_idle_spin_ratio,
+                    "elapsed_seconds": report.elapsed_seconds,
+                    "resolved_drills_per_second": report.resolved_drills_per_second,
+                    "mean_controlled_touches": report.mean_controlled_touches,
+                    "physical_validity_rate": report.physical_validity_rate,
                     "full_match_evaluation": {
                         **asdict(scorecard),
                         "win_rate": win_rate,
@@ -619,9 +625,9 @@ def _select_training_opponent(
     iteration: int,
     latest_checkpoint: str,
     cache: dict[str, PolicyActor],
-) -> tuple[PolicyActor | None, str]:
+) -> tuple[PolicyActor | None, str, str]:
     if iteration <= config.curriculum_heuristic_iterations:
-        return None, "heuristic-dynamic"
+        return None, "heuristic-dynamic", "heuristic"
     selection = registry.select_training_opponent(
         seed=config.seed + 100_000 + iteration,
         self_play_weight=config.league_self_play_weight,
@@ -631,11 +637,12 @@ def _select_training_opponent(
         exclude=frozenset({latest_checkpoint}),
     )
     if selection.kind == "heuristic":
-        return None, selection.key
+        return None, selection.key, "heuristic"
     if selection.kind == "self":
         return (
             copy.deepcopy(learner.actor).eval(),
             f"{config.policy_id}@{learner.policy_version}",
+            "self",
         )
     if selection.entry is None or selection.entry.checkpoint is None:
         raise ValueError("selected historical opponent has no checkpoint")
@@ -651,7 +658,7 @@ def _select_training_opponent(
         if len(cache) >= config.league_history_window:
             cache.pop(next(iter(cache)))
         cache[selection.entry.key] = opponent
-    return opponent, selection.entry.key
+    return opponent, selection.entry.key, "historical"
 
 
 def _register_candidate(

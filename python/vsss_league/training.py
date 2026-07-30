@@ -655,7 +655,10 @@ def _policy_stats(trajectory: TeamTrajectory, action_parser: str) -> dict[str, o
         "action_index" not in trajectory.data.keys()
     ):
         return None
-    indices = trajectory.data["action_index"].detach().cpu().reshape(-1)
+    # Absent roster slots emit tokens the parser discards; averaging them would report
+    # untrained noise from robots that are not on the field.
+    active = trajectory.data["self_features"][..., -1].detach().cpu() > 0.5
+    indices = trajectory.data["action_index"].detach().cpu()[active].reshape(-1)
     action_count = (
         ParametricPrimitiveSet.action_count
         if action_parser == "parametric_primitive"
@@ -663,14 +666,26 @@ def _policy_stats(trajectory: TeamTrajectory, action_parser: str) -> dict[str, o
     )
     counts = torch.bincount(indices, minlength=action_count)
     total = max(1, int(counts.sum()))
+    action = trajectory.data["action"].detach().cpu()
     direction_change_mean_degrees: float | None = None
     direction_change_p95_degrees: float | None = None
     if action_parser == "parametric_primitive" and len(trajectory.data) > 1:
-        vectors = trajectory.data["action"][..., 1:3]
+        vectors = action[..., 1:3]
         normalized = torch.nn.functional.normalize(vectors, dim=-1)
         dots = (normalized[1:] * normalized[:-1]).sum(dim=-1).clamp(-1.0, 1.0)
-        moving = (trajectory.data["action_index"][1:] != 0) & (
-            trajectory.data["action_index"][:-1] != 0
+        decided = trajectory.data["action_index"].detach().cpu() != 0
+        # A near-zero direction vector normalizes to zero, which acos would report as an
+        # exact right angle, and a step that ended its episode has no successor heading.
+        directed = vectors.norm(dim=-1) > 1e-3
+        continued = ~(trajectory.data["terminated"] | trajectory.data["truncated"]).detach().cpu()
+        moving = (
+            decided[1:]
+            & decided[:-1]
+            & directed[1:]
+            & directed[:-1]
+            & active[1:]
+            & active[:-1]
+            & continued[:-1]
         )
         changes = torch.rad2deg(torch.acos(dots[moving]))
         if changes.numel():
@@ -691,7 +706,7 @@ def _policy_stats(trajectory: TeamTrajectory, action_parser: str) -> dict[str, o
             else int(counts[9:17].sum()) / total
         ),
         "mean_intensity": (
-            float(((trajectory.data["action"][..., 3] + 1.0) * 0.5).mean())
+            float(((action[..., 3][active] + 1.0) * 0.5).mean())
             if action_parser == "parametric_primitive"
             else None
         ),

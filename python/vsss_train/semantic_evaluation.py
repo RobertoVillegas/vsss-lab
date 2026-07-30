@@ -27,6 +27,17 @@ EvaluationControl = Literal["policy", "random", "heuristic"]
 
 
 @dataclass(frozen=True)
+class IdleSpinThresholds:
+    """Behavior-gate thresholds, supplied by the run so the gate matches training."""
+
+    turn_threshold: float = 0.13
+    drive_threshold: float = 0.07
+    speed_threshold: float = 0.08
+    ball_distance: float = 0.12
+    grace_seconds: float = 0.5
+
+
+@dataclass(frozen=True)
 class SkillEvaluation:
     family: str
     controlled_team: str
@@ -82,6 +93,7 @@ def evaluate_semantic_skills(
     control: EvaluationControl = "policy",
     device: torch.device | str = "cpu",
     action_parser: str = "continuous",
+    idle_spin: IdleSpinThresholds | None = None,
 ) -> SemanticEvaluationReport:
     """Evaluate paired immutable drills without using their outcomes for gradients."""
     if not scenarios:
@@ -99,6 +111,7 @@ def evaluate_semantic_skills(
         state_json,
         len(scenarios),
         action_parser=evaluation_parser,
+        idle_spin=idle_spin or IdleSpinThresholds(),
     )
     evaluators: list[SkillEvaluator] = []
     active = np.ones(len(scenarios), dtype=np.bool_)
@@ -220,6 +233,7 @@ def _environment(
     worlds: int,
     *,
     action_parser: str = "continuous",
+    idle_spin: IdleSpinThresholds,
 ) -> VectorMarlMatchEnv:
     return VectorMarlMatchEnv(
         config_json,
@@ -237,11 +251,11 @@ def _environment(
         goal_geometry_coefficient=0.0,
         goal_geometry_discount=0.99,
         idle_spin_coefficient=0.0,
-        idle_spin_grace_seconds=0.5,
-        idle_spin_turn_threshold=0.13,
-        idle_spin_drive_threshold=0.07,
-        idle_spin_speed_threshold=0.08,
-        idle_spin_ball_distance=0.12,
+        idle_spin_grace_seconds=idle_spin.grace_seconds,
+        idle_spin_turn_threshold=idle_spin.turn_threshold,
+        idle_spin_drive_threshold=idle_spin.drive_threshold,
+        idle_spin_speed_threshold=idle_spin.speed_threshold,
+        idle_spin_ball_distance=idle_spin.ball_distance,
         attacker_alignment_coefficient=0.0,
         time_penalty_coefficient=0.0,
         movement_speed_threshold=0.03,

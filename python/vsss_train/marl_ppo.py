@@ -370,6 +370,9 @@ class MarlLearner:
             if self.config.action_parser == "parametric_primitive"
             else data["action"]
         )
+        # Absent roster slots still emit tokens the parser discards, so reporting them
+        # would average untrained noise from robots that are not on the field.
+        metric_action = metric_action[observation.self_features[..., -1] > 0.5]
         result["mean_abs_action"] = float(metric_action.abs().mean())
         result["action_saturation"] = float((metric_action.abs() > 0.95).float().mean())
         self.policy_version += 1
