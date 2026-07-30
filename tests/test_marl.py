@@ -38,11 +38,48 @@ from vsss_train.marl_ppo import (
     MarlLearner,
     TeamTrajectory,
     TrajectoryMetadata,
+    _team_gae,
     bounded_action_log_prob,
     sample_bounded_action,
 )
 
 ROOT = Path(__file__).parents[1]
+
+
+def test_team_gae_bootstraps_a_continuing_rollout() -> None:
+    reward = torch.zeros(3, 1)
+    value = torch.zeros(3, 1)
+    done = torch.zeros(3, 1)
+
+    advantage, _ = _team_gae(
+        reward,
+        value,
+        done,
+        bootstrap_value=torch.tensor([2.0]),
+        gamma=0.9,
+        gae_lambda=1.0,
+    )
+
+    assert advantage[:, 0].tolist() == pytest.approx([1.458, 1.62, 1.8])
+
+
+def test_team_gae_never_crosses_an_episode_reset() -> None:
+    reward = torch.zeros(3, 1)
+    value = torch.zeros(3, 1)
+    done = torch.tensor([[False], [True], [False]])
+
+    advantage, _ = _team_gae(
+        reward,
+        value,
+        done,
+        bootstrap_value=torch.tensor([2.0]),
+        gamma=0.9,
+        gae_lambda=1.0,
+    )
+
+    assert advantage[:, 0].tolist() == pytest.approx([0.0, 0.0, 1.8])
+
+
 CONFIG = (ROOT / "tests/golden/m1_match_config.json").read_text()
 STATE = (ROOT / "tests/golden/m1_match_state.json").read_text()
 
@@ -205,6 +242,7 @@ def trajectory(learner: MarlLearner, steps: int = 4) -> TeamTrajectory:
             "terminated": torch.zeros(steps, 3, dtype=torch.bool),
             "truncated": torch.zeros(steps, 3, dtype=torch.bool),
             "state_value": value,
+            "bootstrap_value": value[-1].unsqueeze(0).expand(steps, -1),
         },
         batch_size=[steps, 3],
     )

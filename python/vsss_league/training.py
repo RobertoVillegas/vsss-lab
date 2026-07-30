@@ -54,6 +54,8 @@ class IterationResult:
     losses: dict[str, float]
     terminations: dict[str, int] = field(default_factory=dict)
     curriculum: dict[str, object] | None = None
+    completed_episode_return: float | None = None
+    match_outcomes: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -62,6 +64,7 @@ class RolloutSession:
 
     environment: VectorMarlMatchEnv
     episode_counts: list[int]
+    episode_returns: list[float]
     curriculum: ScenarioCurriculum | None = None
     semantic_curriculum: SemanticSkillCurriculum | None = None
     scenarios: list[Scenario | None] = field(default_factory=list)
@@ -137,6 +140,7 @@ def create_rollout_session(config: MarlConfig, config_json: str, state_json: str
             stagnation_ball_distance=config.stagnation_ball_distance,
         ),
         episode_counts=[0] * config.num_envs,
+        episode_returns=[0.0] * config.num_envs,
         curriculum=curriculum,
         semantic_curriculum=semantic_curriculum,
         scenarios=[None] * config.num_envs,
@@ -154,7 +158,15 @@ def collect_self_play_trajectory(
     seed: int,
     opponent_id: str,
     session: RolloutSession | None = None,
-) -> tuple[TeamTrajectory, float, float, int, dict[str, int]]:
+) -> tuple[
+    TeamTrajectory,
+    float,
+    float,
+    int,
+    dict[str, int],
+    list[float],
+    dict[str, int],
+]:
     """Collect fixed-horizon vector self-play on the learner device."""
     if opponent is not None:
         opponent = opponent.to(learner.device)
@@ -212,6 +224,8 @@ def collect_self_play_trajectory(
     returns = [0.0] * learner.config.num_envs
     completed_progress = [0.0] * learner.config.num_envs
     completed_matches = 0
+    completed_episode_returns: list[float] = []
+    match_outcomes = {"win": 0, "draw": 0, "loss": 0}
     termination_counts = {
         "goal": 0,
         "draw": 0,
@@ -331,6 +345,10 @@ def collect_self_play_trajectory(
         returns = [
             total + float(reward) for total, reward in zip(returns, step_rewards, strict=True)
         ]
+        session.episode_returns = [
+            total + float(reward)
+            for total, reward in zip(session.episode_returns, step_rewards, strict=True)
+        ]
         progress_scores = environment.progress_scores()
         reset_occurred = False
         for world, done in enumerate(step_done):
@@ -341,6 +359,15 @@ def collect_self_play_trajectory(
                 completed_progress[world] += float(progress_scores[world])
                 session.episode_counts[world] += 1
                 completed_matches += 1
+                completed_episode_returns.append(session.episode_returns[world])
+                session.episode_returns[world] = 0.0
+                if session.semantic_curriculum is None or session.semantic_scenarios[world] is None:
+                    events = int(step_events[world])
+                    controlled_team = int(environment.controlled_teams[world])
+                    scored = bool(events & (1 if controlled_team == 0 else 2))
+                    conceded = bool(events & (2 if controlled_team == 0 else 1))
+                    match_outcome = "win" if scored else "loss" if conceded else "draw"
+                    match_outcomes[match_outcome] += 1
                 scenario = session.scenarios[world]
                 if session.curriculum is not None and scenario is not None:
                     session.curriculum.record(
@@ -427,14 +454,18 @@ def collect_self_play_trajectory(
             )
         )
         truncated.append(
-            torch.full(
-                (learner.config.num_envs, 3),
-                step == learner.config.rollout_steps - 1,
+            torch.tensor(
+                [
+                    [bool(done and not terminal)] * 3
+                    for done, terminal in zip(step_done, step_terminated, strict=True)
+                ],
                 dtype=torch.bool,
                 device=learner.device,
             )
         )
         observation = next_observation.to(learner.device)
+    with torch.no_grad():
+        bootstrap_value = learner.critic(observation)
     batch = stack_team_batches(observations)
     trajectory_fields = {
         "tick": torch.stack(ticks),
@@ -445,6 +476,9 @@ def collect_self_play_trajectory(
         "terminated": torch.stack(terminated),
         "truncated": torch.stack(truncated),
         "state_value": torch.stack(values),
+        "bootstrap_value": bootstrap_value.unsqueeze(0).expand(
+            learner.config.rollout_steps, -1, -1
+        ),
     }
     if recurrent_hidden:
         trajectory_fields["recurrent_hidden"] = torch.stack(recurrent_hidden)
@@ -482,6 +516,8 @@ def collect_self_play_trajectory(
         progress,
         completed_matches,
         termination_counts,
+        completed_episode_returns,
+        match_outcomes,
     )
 
 
@@ -514,6 +550,8 @@ def train_iteration(
         progress,
         completed_matches,
         termination_counts,
+        completed_episode_returns,
+        match_outcomes,
     ) = collect_self_play_trajectory(
         learner,
         opponent,
@@ -539,6 +577,12 @@ def train_iteration(
         losses=losses,
         terminations=termination_counts,
         curriculum=_curriculum_telemetry(session),
+        completed_episode_return=(
+            sum(completed_episode_returns) / len(completed_episode_returns)
+            if completed_episode_returns
+            else None
+        ),
+        match_outcomes=match_outcomes,
     )
 
 

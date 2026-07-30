@@ -53,6 +53,11 @@ class TrainingTelemetry:
         step = result.iteration
         scalars = {
             "training/return": result.return_total,
+            **(
+                {"training/completed_episode_return": result.completed_episode_return}
+                if result.completed_episode_return is not None
+                else {}
+            ),
             "training/progress": result.progress,
             "training/environment_steps": environment_steps,
             "training/matches": matches,
@@ -61,6 +66,7 @@ class TrainingTelemetry:
             "performance/iterations_per_second": iterations_per_second,
             **{f"loss/{name}": value for name, value in result.losses.items()},
             **{f"termination/{name}": value for name, value in result.terminations.items()},
+            **{f"match_outcome/{name}": value for name, value in result.match_outcomes.items()},
             **{f"exploration/log_std_{index}": value for index, value in enumerate(actor_log_std)},
             **_curriculum_scalars(result.curriculum),
         }

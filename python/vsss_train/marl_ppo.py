@@ -63,6 +63,8 @@ LEGACY_NEUTRAL_CONFIG = {
     "semantic_phase_patience": 2,
     "semantic_promotion_floors": {},
     "semantic_max_idle_spin_ratio": 1.0,
+    "semantic_min_match_win_rate": 0.0,
+    "semantic_max_match_draw_rate": 1.0,
     "contact_distance": 0.082,
     "contact_grace_seconds": 0.5,
     "ally_deadlock_coefficient": 0.0,
@@ -134,6 +136,7 @@ class TeamTrajectory:
             "terminated",
             "truncated",
             "state_value",
+            "bootstrap_value",
         }
         missing = required - set(self.data.keys())
         if missing:
@@ -155,14 +158,15 @@ def _team_gae(
     reward: Tensor,
     value: Tensor,
     done: Tensor,
+    bootstrap_value: Tensor,
     gamma: float,
     gae_lambda: float,
 ) -> tuple[Tensor, Tensor]:
     advantage = torch.zeros_like(reward)
     estimate = torch.zeros_like(reward[-1])
     for index in range(reward.shape[0] - 1, -1, -1):
-        continuation = 1.0 - done[index]
-        next_value = torch.zeros_like(value[index]) if index == len(value) - 1 else value[index + 1]
+        continuation = 1.0 - done[index].to(dtype=reward.dtype)
+        next_value = bootstrap_value if index == len(value) - 1 else value[index + 1]
         delta = reward[index] + gamma * next_value * continuation - value[index]
         estimate = delta + gamma * gae_lambda * continuation * estimate
         advantage[index] = estimate
@@ -210,6 +214,7 @@ class MarlLearner:
                 data["reward_total"],
                 data["state_value"],
                 (data["terminated"] | data["truncated"]).float(),
+                data["bootstrap_value"][-1],
                 self.config.gamma,
                 self.config.gae_lambda,
             )

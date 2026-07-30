@@ -180,6 +180,22 @@ class TrainingDashboard:
             f"{latest.return_total:+.4f}" if latest is not None else "—",
             f"{_mean(self._returns):+.4f}" if self._returns else "—",
         )
+        if latest is not None:
+            table.add_row(
+                "completed episode return",
+                (
+                    f"{latest.completed_episode_return:+.4f}"
+                    if latest.completed_episode_return is not None
+                    else "—"
+                ),
+                "",
+            )
+            match_counts = latest.match_outcomes
+            table.add_row(
+                "full matches W/D/L",
+                " / ".join(str(match_counts.get(name, 0)) for name in ("win", "draw", "loss")),
+                "",
+            )
         table.add_row(
             "progress",
             f"{latest.progress:+.4f}" if latest is not None else "—",

@@ -25,7 +25,10 @@ from vsss_league.promotion import FixtureResult, decide_promotion
 from vsss_league.registry import LeagueRegistry, PolicyEntry
 from vsss_league.replay import run_policy_replay
 from vsss_league.telemetry import TrainingTelemetry
-from vsss_league.tournament import evaluate_candidate_vs_heuristic
+from vsss_league.tournament import (
+    evaluate_candidate_vs_heuristic,
+    evaluate_checkpoint_scorecard,
+)
 from vsss_league.training import (
     IterationResult,
     create_rollout_session,
@@ -37,13 +40,15 @@ FORCE_STOP_WINDOW_SECONDS = 2.0
 
 def _semantic_candidate_score(
     evaluation: dict[str, Any],
-) -> tuple[int, bool, bool, int, float, int, float]:
+) -> tuple[int, bool, bool, bool, int, float, float, int, float]:
     """Rank consolidation before isolated minimum-family gains."""
     return (
         int(evaluation.get("curriculum_phase_index", 0)),
         bool(evaluation.get("behavior_gate_passed", True)),
+        bool(evaluation.get("match_gate_passed", True)),
         bool(evaluation.get("promotion_eligible", True)),
         int(evaluation.get("promotion_gates_passed", 0)),
+        float(evaluation.get("full_match_evaluation", {}).get("win_rate", 0.0)),
         float(evaluation["success_rate"]),
         -int(evaluation["unresolved"]),
         float(evaluation["minimum_family_success_rate"]),
@@ -366,14 +371,31 @@ def _run(arguments: argparse.Namespace) -> None:
                     for family, floor in config.semantic_promotion_floors.items()
                 }
                 behavior_gate_passed = report.idle_spin_ratio <= config.semantic_max_idle_spin_ratio
-                promotion_eligible = behavior_gate_passed and all(
-                    bool(gate["passed"]) for gate in promotion_gates.values()
+                scorecard = evaluate_checkpoint_scorecard(
+                    learner.actor,
+                    config_json,
+                    state_json,
+                    checkpoint=checkpoint,
+                    policy_version=result.policy_version,
+                    seeds=holdout_seeds,
+                    ticks=config.horizon,
+                )
+                win_rate = scorecard.wins / scorecard.matches
+                draw_rate = scorecard.draws / scorecard.matches
+                match_gate_passed = (
+                    win_rate >= config.semantic_min_match_win_rate
+                    and draw_rate <= config.semantic_max_match_draw_rate
+                )
+                promotion_eligible = (
+                    behavior_gate_passed
+                    and match_gate_passed
+                    and all(bool(gate["passed"]) for gate in promotion_gates.values())
                 )
                 gates_passed = sum(bool(gate["passed"]) for gate in promotion_gates.values())
                 phase_before = rollout_session.semantic_curriculum.phase_name
                 phase_advanced = rollout_session.semantic_curriculum.observe_holdout_rates(
                     family_rates,
-                    behavior_eligible=behavior_gate_passed,
+                    behavior_eligible=behavior_gate_passed and match_gate_passed,
                 )
                 semantic_evaluation = {
                     "iteration": iteration,
@@ -385,8 +407,14 @@ def _run(arguments: argparse.Namespace) -> None:
                     "unresolved": unresolved,
                     "promotion_eligible": promotion_eligible,
                     "behavior_gate_passed": behavior_gate_passed,
+                    "match_gate_passed": match_gate_passed,
                     "idle_spin_ratio": report.idle_spin_ratio,
                     "maximum_idle_spin_ratio": config.semantic_max_idle_spin_ratio,
+                    "full_match_evaluation": {
+                        **asdict(scorecard),
+                        "win_rate": win_rate,
+                        "draw_rate": draw_rate,
+                    },
                     "promotion_gates_passed": gates_passed,
                     "promotion_gates": promotion_gates,
                     "curriculum_phase": phase_before,

@@ -48,25 +48,25 @@ PHASES: tuple[tuple[str, tuple[SkillFamily, ...], dict[SkillFamily, float], floa
         "foundation",
         ("approach", "shot", "interception"),
         {"approach": 0.75, "shot": 0.70, "interception": 0.35},
-        0.05,
+        0.15,
     ),
     (
         "defense",
         ("interception", "save_deflection", "clearance"),
         {"interception": 0.35, "save_deflection": 0.35, "clearance": 0.35},
-        0.10,
+        0.25,
     ),
     (
         "cooperation",
         ("pass_receive",),
         {"pass_receive": 0.20, "clearance": 0.30},
-        0.10,
+        0.20,
     ),
     (
         "rotation",
         ("rotation_recovery",),
         {"rotation_recovery": 0.15, "pass_receive": 0.15, "save_deflection": 0.30},
-        0.15,
+        0.25,
     ),
     ("integration", SKILL_FAMILIES, {}, 1.0),
 )
@@ -523,10 +523,12 @@ def compile_skill_scenario(
         _park_robot(support, attack_sign, -0.58, -lane_sign * 0.34, 0.0)
         initial_threat = True
     elif family == "clearance":
-        ball = (-0.48, lane * 0.55)
+        emergency = generator.random() < 0.55
+        ball = (-0.62 if emergency else -0.48, lane * (0.35 if emergency else 0.55))
         heading = math.pi + lane_sign * _lerp(0.0, 0.22, difficulty.ball_angle)
         _set_ball(state, attack_sign, *ball, speed=speed * 0.45, heading=heading)
         clearance_x = ball[0] - _lerp(0.08, 0.14, difficulty.spawn_distance)
+        clearance_x = max(-0.69, clearance_x)
         clearance_y = ball[1] + lane_sign * _lerp(
             0.10,
             0.18,
@@ -560,7 +562,8 @@ def compile_skill_scenario(
         relay_id = str(reserve["id"])
         initial_threat = True
     elif family == "shot":
-        ball = (0.28, lane * 0.45)
+        loose_finish = generator.random() < 0.50
+        ball = (0.42 if loose_finish else 0.28, lane * (0.30 if loose_finish else 0.45))
         _set_ball(state, attack_sign, *ball, speed=speed * 0.18, heading=0.0)
         _place_behind(
             primary,

@@ -65,6 +65,7 @@ def assign_roles(
     ball_x, ball_y = float(state[5]), float(state[6])
     ball_vx, ball_vy = float(state[7]), float(state[8])
     own_goal_x = -attack_sign * 0.75
+    defensive_threat = max(0.0, min(1.0, (-attack_sign * ball_x - 0.15) / 0.55))
     projected_x = max(-0.75, min(0.75, ball_x + ball_vx * 0.35))
     projected_y = max(-0.55, min(0.55, ball_y + ball_vy * 0.35))
 
@@ -77,13 +78,17 @@ def assign_roles(
         attack_angle = abs(math.atan2(projected_y - y, projected_x - x))
         support_x = ball_x - attack_sign * 0.22
         support_y = max(-0.42, min(0.42, ball_y * 0.55))
-        coverage_y = max(-0.24, min(0.24, ball_y * 0.65))
+        coverage_target_x = (1.0 - defensive_threat) * own_goal_x + defensive_threat * (
+            ball_x + attack_sign * 0.06
+        )
+        coverage_target_x = max(-0.70, min(0.70, coverage_target_x))
+        coverage_y = max(-0.34, min(0.34, ball_y * (0.65 + 0.35 * defensive_threat)))
         costs.append(
             {
                 "attacker": time_to_ball + 0.20 * attack_angle + 0.45 * max(0.0, -goal_side),
                 "support": math.hypot(support_x - x, support_y - y)
                 + 0.35 * max(0.0, attack_sign * (x - ball_x)),
-                "coverage": math.hypot(own_goal_x - x, coverage_y - y)
+                "coverage": math.hypot(coverage_target_x - x, coverage_y - y)
                 + 1.1 * max(0.0, attack_sign * (x - ball_x)),
             }
         )
@@ -126,11 +131,13 @@ def assign_roles(
         if raw_cost(previous) - raw_selected[0] >= emergency_margin:
             selected_cost, selected = raw_selected
 
-    coverage = robots[selected.index("coverage")]
-    uncovered = active_count == 3 and (
-        math.hypot(float(coverage[2]) - own_goal_x, float(coverage[3])) > 0.62
-        and attack_sign * ball_x < 0.0
+    active_robots = [robot for robot, enabled in zip(robots, active, strict=True) if enabled]
+    defended = any(
+        attack_sign * (float(robot[2]) - ball_x) <= -0.02
+        or math.hypot(float(robot[2]) - ball_x, float(robot[3]) - ball_y) <= 0.14
+        for robot in active_robots
     )
+    uncovered = defensive_threat > 0.0 and not defended
     changed = cast(
         tuple[bool, bool, bool],
         tuple(

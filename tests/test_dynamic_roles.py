@@ -64,3 +64,16 @@ def test_hysteresis_blocks_marginal_role_churn_but_allows_emergency_rotation() -
     place(value, candidate, -0.70, 0.0)
     emergency = assigner.assign(value, 0)
     assert emergency.roles.index("coverage") == candidate
+
+
+def test_ball_behind_defensive_line_is_uncovered_until_challenged() -> None:
+    value = state()
+    value[5:9] = (-0.68, 0.05, 0.0, 0.0)
+    place(value, 0, -0.46, -0.10)
+    place(value, 1, -0.20, 0.18)
+    place(value, 2, 0.10, 0.0)
+
+    assert assign_roles(value, 0).uncovered
+
+    place(value, 0, -0.60, 0.05)
+    assert not assign_roles(value, 0).uncovered

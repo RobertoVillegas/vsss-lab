@@ -94,6 +94,8 @@ class MarlConfig:
     semantic_phase_patience: int = 2
     semantic_promotion_floors: dict[str, float] = field(default_factory=dict)
     semantic_max_idle_spin_ratio: float = 1.0
+    semantic_min_match_win_rate: float = 0.0
+    semantic_max_match_draw_rate: float = 1.0
     observation_dropout: float = 0.0
     observation_noise_std: float = 0.0
     seed: int = 7
@@ -197,6 +199,10 @@ class MarlConfig:
             raise ValueError("semantic promotion floors must be in [0, 1]")
         if not 0.0 <= self.semantic_max_idle_spin_ratio <= 1.0:
             raise ValueError("semantic_max_idle_spin_ratio must be in [0, 1]")
+        if not 0.0 <= self.semantic_min_match_win_rate <= 1.0:
+            raise ValueError("semantic_min_match_win_rate must be in [0, 1]")
+        if not 0.0 <= self.semantic_max_match_draw_rate <= 1.0:
+            raise ValueError("semantic_max_match_draw_rate must be in [0, 1]")
         if not 0.0 <= self.observation_dropout < 1.0:
             raise ValueError("observation_dropout must be in [0, 1)")
         if self.observation_noise_std < 0.0:
