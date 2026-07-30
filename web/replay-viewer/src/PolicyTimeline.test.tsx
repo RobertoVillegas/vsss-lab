@@ -21,7 +21,7 @@ const replay = {
   frames: [0, 1].map((index) => ({
     type: "tick",
     index,
-    episode: 0,
+    episode: index,
     events: 0,
     rewards: [],
     actions: [],
@@ -71,7 +71,8 @@ describe("PolicyTimeline", () => {
       />,
     );
     expect(screen.getAllByTitle(/NAV-E/)).toHaveLength(6);
-    fireEvent.click(screen.getByLabelText(/Seek to save/));
+    expect(document.querySelectorAll(".episode-reset-line")).toHaveLength(1);
+    fireEvent.click(screen.getByLabelText(/to save/));
     expect(seek).toHaveBeenCalledWith(0);
     fireEvent.click(screen.getByRole("button", { name: "HIDE CHANNELS" }));
     expect(screen.queryByTitle(/NAV-E/)).toBeNull();

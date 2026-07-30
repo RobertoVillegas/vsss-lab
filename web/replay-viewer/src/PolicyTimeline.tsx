@@ -22,16 +22,17 @@ interface TimelineEvent {
   index: number;
   time: number;
   kind: string;
-  level: number;
+  actor: number | null;
 }
 
-const KEY_EVENT_KINDS = new Set([
-  "goal",
-  "own_goal",
-  "forced_own_goal",
+const GLOBAL_EVENT_KINDS = new Set(["goal", "own_goal", "forced_own_goal"]);
+const ACTOR_EVENT_KINDS = new Set([
   "save",
   "shot",
   "assist",
+  "pass",
+  "interception",
+  "clearance",
 ]);
 
 export function PolicyTimeline({
@@ -52,16 +53,23 @@ export function PolicyTimeline({
     [replay],
   );
   const finalTime = replay.frames.at(-1)?.snapshot.simulation_time ?? 0;
-  const keyEvents = useMemo(
-    () => assignEventLevels(events
-      .filter((event) => KEY_EVENT_KINDS.has(event.kind))
+  const timelineEvents = useMemo(
+    () => events
+      .filter((event) => GLOBAL_EVENT_KINDS.has(event.kind) || ACTOR_EVENT_KINDS.has(event.kind))
       .map((event) => ({
         index: nearestFrame(replay, event.time),
         time: event.time,
         kind: event.kind,
-        level: 0,
-      })), finalTime),
-    [events, finalTime, replay],
+        actor: actorForEvent(event.team, event.robot_id),
+      })),
+    [events, replay],
+  );
+  const globalEvents = timelineEvents.filter((event) => GLOBAL_EVENT_KINDS.has(event.kind));
+  const resetFrames = useMemo(
+    () => replay.frames.flatMap((frame, index) => (
+      index > 0 && frame.episode !== replay.frames[index - 1]?.episode ? [index] : []
+    )),
+    [replay],
   );
   return (
     <section className="policy-timeline" aria-label="Policy intent timeline">
@@ -75,15 +83,21 @@ export function PolicyTimeline({
           {showLanes ? "HIDE CHANNELS" : `SHOW CHANNELS · ${lanes.length}`}
         </button>
       </div>
-      <div className="event-rail">
-        {keyEvents.map((event, eventIndex) => (
+      <div className="timeline-body">
+        {resetFrames.map((index) => (
+          <i
+            className="episode-reset-line"
+            key={`reset-${index}`}
+            title={`Episode ${replay.frames[index]?.episode ?? "?"} reset`}
+            style={{ left: `calc(32px + (100% - 32px) * ${index / replay.frames.length})` }}
+          />
+        ))}
+        <div className="event-rail">
+        {globalEvents.map((event, eventIndex) => (
           <button
             className={`event-mark event-${event.kind.replaceAll("_", "-")}`}
             key={`${event.kind}-${event.time}-${eventIndex}`}
-            style={{
-              left: `${percentage(event.time, finalTime)}%`,
-              bottom: `${event.level * 13 - 6}px`,
-            }}
+            style={{ left: `${percentage(event.time, finalTime)}%` }}
             title={`${event.time.toFixed(2)}s · ${event.kind.replaceAll("_", " ")}`}
             aria-label={`Seek to ${event.kind} at ${event.time.toFixed(2)} seconds`}
             onClick={() => onSeek(event.index)}
@@ -91,8 +105,8 @@ export function PolicyTimeline({
             <i aria-hidden="true">{eventIcon(event.kind)}</i>
           </button>
         ))}
-        {!keyEvents.length ? <span className="no-key-events">NO KEY EVENTS</span> : null}
-      </div>
+        {!globalEvents.length ? <span className="no-key-events">NO GOALS</span> : null}
+        </div>
       {showLanes ? <div className="intent-lanes">
         {lanes.map(({ actor, segments }) => (
           <div
@@ -120,6 +134,23 @@ export function PolicyTimeline({
                   <span>{segment.label}</span>
                 </button>
               ))}
+              {timelineEvents
+                .filter((event) => event.actor === actor && ACTOR_EVENT_KINDS.has(event.kind))
+                .map((event, eventIndex) => (
+                  <button
+                    className={`actor-event actor-event-${event.kind.replaceAll("_", "-")}`}
+                    key={`${event.kind}-${event.time}-${eventIndex}`}
+                    style={{ left: `${percentage(event.time, finalTime)}%` }}
+                    title={`${event.time.toFixed(2)}s · ${event.kind.replaceAll("_", " ")}`}
+                    aria-label={`Seek ${actor >= 3 ? "Y" : "B"}${actor % 3} to ${event.kind} at ${event.time.toFixed(2)} seconds`}
+                    onClick={() => {
+                      onSelectActor(actor);
+                      onSeek(event.index);
+                    }}
+                  >
+                    {eventIcon(event.kind)}
+                  </button>
+                ))}
               <i
                 className="timeline-playhead"
                 style={{ left: `${100 * frameIndex / Math.max(1, replay.frames.length - 1)}%` }}
@@ -133,19 +164,17 @@ export function PolicyTimeline({
           </div>
         ) : null}
       </div> : null}
+      </div>
     </section>
   );
 }
 
-function assignEventLevels(events: TimelineEvent[], finalTime: number): TimelineEvent[] {
-  const lastPosition = [-Infinity, -Infinity, -Infinity];
-  return [...events].sort((first, second) => first.time - second.time).map((event) => {
-    const position = percentage(event.time, finalTime);
-    const available = lastPosition.findIndex((previous) => position - previous >= 1.5);
-    const level = available >= 0 ? available : 2;
-    lastPosition[level] = position;
-    return { ...event, level };
-  });
+function actorForEvent(team: string, robotId: string | null): number | null {
+  const match = robotId?.match(/(\d+)$/);
+  if (!match) return null;
+  const member = Number(match[1]);
+  if (member < 0 || member > 2) return null;
+  return (team === "yellow" ? 3 : 0) + member;
 }
 
 function eventIcon(kind: string): string {
@@ -153,6 +182,9 @@ function eventIcon(kind: string): string {
   if (kind === "shot") return "↗";
   if (kind === "save") return "S";
   if (kind === "assist") return "A";
+  if (kind === "pass") return "→";
+  if (kind === "interception") return "◇";
+  if (kind === "clearance") return "↥";
   return "·";
 }
 

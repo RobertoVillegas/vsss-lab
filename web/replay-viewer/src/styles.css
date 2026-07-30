@@ -148,7 +148,8 @@ kbd { display: inline-block; margin: 0 2px; padding: 2px 4px; border: 1px solid 
 .policy-timeline { display: grid; grid-template-columns: minmax(0, 1fr); margin: 0 82px 8px; }
 .timeline-toolbar { display: flex; align-items: center; justify-content: space-between; min-height: 22px; margin-left: 32px; color: #526b60; font-size: 8px; letter-spacing: .11em; }
 .timeline-toolbar button { padding: 3px 6px; color: #789287; font: inherit; letter-spacing: inherit; }
-.event-rail { position: relative; height: 42px; margin-left: 32px; border-bottom: 1px solid #263f35; }
+.timeline-body { position: relative; }
+.event-rail { position: relative; z-index: 2; height: 20px; margin-left: 32px; border-bottom: 1px solid #263f35; }
 .event-mark { position: absolute; bottom: -6px; width: 16px; height: 18px; padding: 0; border: 0; background: transparent; transform: translateX(-50%); }
 .event-mark i { display: grid; width: 12px; height: 12px; margin: auto; place-items: center; border-radius: 50%; color: #07100d; background: #ff8a62; box-shadow: 0 0 7px rgba(255,138,98,.55); font: 9px/1 "Geist Mono Variable", monospace; font-style: normal; }
 .event-mark.event-save i { background: #71e1ae; }
@@ -156,18 +157,24 @@ kbd { display: inline-block; margin: 0 2px; padding: 2px 4px; border: 1px solid 
 .event-mark.event-assist i { background: #d6b3ff; }
 .event-mark.event-own-goal i, .event-mark.event-forced-own-goal i { background: #ff6262; }
 .no-key-events { position: absolute; right: 0; bottom: 4px; color: #40594e; font-size: 7px; letter-spacing: .1em; }
+.episode-reset-line { position: absolute; z-index: 1; top: 0; bottom: 0; border-left: 1px dashed rgba(189, 140, 255, .55); pointer-events: none; }
 .intent-lanes { display: grid; gap: 2px; margin-top: 5px; }
 .intent-lane { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 4px; height: 16px; opacity: .68; }
 .intent-lane.selected { opacity: 1; }
 .lane-label { padding: 0; border: 0; color: #748f83; background: transparent; font-size: 8px; text-align: left; }
 .intent-lane.selected .lane-label { color: #71e1ae; }
-.lane-track { position: relative; min-width: 0; overflow: hidden; background: #0b1914; }
+.lane-track { position: relative; min-width: 0; overflow: visible; background: #0b1914; }
 .intent-segment { position: absolute; top: 1px; bottom: 1px; min-width: 1px; overflow: hidden; padding: 0 3px; border: 0; border-right: 1px solid #07100d; color: #cde3d9; background: #2b5443; font-size: 7px; line-height: 14px; text-align: left; white-space: nowrap; }
 .intent-segment.skill-stop { background: #26352f; color: #789287; }
 .intent-segment.skill-navigate { background: #174b70; }
 .intent-segment.skill-strike { background: #7c432e; }
 .intent-segment.skill-legacy { background: #32443d; }
 .intent-segment:hover { filter: brightness(1.35); }
+.actor-event { position: absolute; z-index: 4; top: 1px; width: 12px; height: 12px; padding: 0; border: 0; border-radius: 50%; color: #06100c; background: #79bfff; font: 8px/12px "Geist Mono Variable", monospace; text-align: center; transform: translateX(-50%); }
+.actor-event-save { background: #71e1ae; }
+.actor-event-assist { background: #d6b3ff; }
+.actor-event-pass, .actor-event-interception, .actor-event-clearance { background: #a3b9af; }
+.actor-event:hover { z-index: 6; filter: brightness(1.25); }
 .timeline-playhead { position: absolute; z-index: 3; top: 0; bottom: 0; width: 1px; background: #e9fff5; box-shadow: 0 0 5px #e9fff5; pointer-events: none; }
 .timeline-empty { margin-left: 32px; padding: 8px 10px; border: 1px dashed #2b473c; color: #789287; font-size: 9px; letter-spacing: .04em; text-align: center; }
 
