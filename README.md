@@ -114,7 +114,8 @@ The default learner is multi-agent proximal policy optimization (MAPPO):
 - one policy is shared by the three allied robots;
 - each actor receives its local, role-aware observation;
 - a centralized critic uses joint training information;
-- actions are continuous left/right wheel commands;
+- M24 selects categorical navigation and directed-strike primitives, while M23
+  retains direct left/right wheel control as an ablation;
 - rollout collection runs many simulation worlds in parallel;
 - policy inference and optimization use CUDA when available;
 - deterministic physics remains CPU-based and parallelized with Rayon.
@@ -131,9 +132,12 @@ mirror opponent and makes regressions easier to detect.
 ## Observations, actions, and roles
 
 Observations describe the ball, goals, teammates, opponents, robot motion, and
-role context in normalized field coordinates. Policies act through bounded
-differential wheel commands rather than teleportation or direct velocity
-assignment.
+role context in normalized field coordinates. The M24 strategy actor chooses
+from a versioned 17-action set: stop, eight navigation directions, and eight
+directed strikes. A causal controller predicts a reachable ball point, acquires
+behind it, and converts intent into bounded differential wheel commands. Earlier
+configs preserve direct wheel control for controlled comparison; neither path
+uses teleportation or direct velocity assignment.
 
 Roles are reassigned dynamically as attacker, support, and coverage by evaluating
 every responsibility permutation from projected interception and defensive cost.
@@ -340,23 +344,21 @@ semantics, and rollback procedure are in
 
 ## Train and inspect a run
 
-Start a 50-million-environment-step training run with automatic run naming,
+Start the M24 50-million-environment-step primitive MAPPO run with automatic run naming,
 replay capture every 25 learner iterations, 60-second captures, checkpoints every
 25 iterations, paired semantic evaluation at every checkpoint, automatic CUDA
 selection, and 64 parallel worlds:
 
 ```bash
-just league-live-m21 \
-  /path/to/healthy-checkpoint.pt \
-  50000000 25 60 25 auto 64
+just league-live-m24 50000000 25 60 25 auto 64
 ```
 
 The command allocates a directory such as
-`~/runs/vsss-m20-run-0001`, starts the private viewer at
+`~/runs/vsss-m24-run-0001`, starts the private viewer at
 `http://127.0.0.1:8765`, and runs training in the foreground. CUDA is selected
 when available; otherwise the command reports that it is using CPU.
 
-The default is a clean, seeded teacher initialization. Each checkpoint is
+M24 starts clean from a seeded primitive teacher. Each checkpoint is
 measured on immutable paired-color skill holdouts; `best-semantic.json` points
 to the strongest balanced checkpoint, ranking the weakest skill family before
 aggregate success. `semantic-evaluations.jsonl` preserves the full selection
@@ -369,6 +371,19 @@ artifacts and can be started later:
 ```bash
 just league-web ~/runs/vsss-semantic-run-0001
 ```
+
+Validate low-level primitives independently of learning, or diagnose a
+captured low-motion segment:
+
+```bash
+just m24-trajectory-benchmark
+PYTHONPATH=python:. uv run python -m tools.trajectory_diagnostics \
+  ~/runs/vsss-m24-run-0001/replays/iteration-000425.jsonl
+```
+
+For the controlled independent-critic ablation, use
+`just league-live-m24-ippo 5000000 25 60 25 auto 64`. Its environment,
+primitive set, rewards, seed, rollout, and network width match M24 MAPPO.
 
 Optional TensorBoard:
 
