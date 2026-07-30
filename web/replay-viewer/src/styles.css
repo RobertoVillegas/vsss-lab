@@ -14,7 +14,7 @@ button, select { color: inherit; }
 
 .app-shell {
   display: grid;
-  grid-template-rows: 76px minmax(0, 1fr) 242px;
+  grid-template-rows: 76px minmax(0, 1fr) auto;
   height: 100vh;
   min-height: 560px;
   background:
@@ -179,7 +179,7 @@ kbd { display: inline-block; margin: 0 2px; padding: 2px 4px; border: 1px solid 
 .timeline-empty { margin-left: 32px; padding: 8px 10px; border: 1px dashed #2b473c; color: #789287; font-size: 9px; letter-spacing: .04em; text-align: center; }
 
 @media (max-width: 760px) {
-  .app-shell { grid-template-rows: 68px minmax(0, 1fr) 190px; }
+  .app-shell { grid-template-rows: 68px minmax(0, 1fr) auto; }
   .workspace { grid-template-columns: 1fr; grid-template-rows: auto minmax(300px, 1fr); }
   .sidebar { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px 16px; border-right: 0; border-bottom: 1px solid #20332c; }
   .sidebar > label, .sidebar .section-rule, .sidebar .side-heading, .sidebar .policy, .sidebar .details { display: none; }
