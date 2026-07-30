@@ -17,7 +17,12 @@ from vsss_train.ablations import (
     SymmetricWheelLattice,
 )
 from vsss_train.config import MarlConfig
-from vsss_train.marl import TeamBatch, build_team_observation, stack_team_batches
+from vsss_train.marl import (
+    PrimitiveRoleActor,
+    TeamBatch,
+    build_team_observation,
+    stack_team_batches,
+)
 from vsss_train.marl_env import FloatArray, VectorMarlMatchEnv
 from vsss_train.marl_ppo import (
     TRAJECTORY_SCHEMA,
@@ -27,6 +32,7 @@ from vsss_train.marl_ppo import (
     TrajectoryMetadata,
     sample_bounded_action,
 )
+from vsss_train.primitives import SoccerPrimitiveSet
 from vsss_train.scenarios import Scenario, ScenarioCurriculum, load_suite
 from vsss_train.semantic_scenarios import (
     SemanticScenario,
@@ -99,6 +105,8 @@ def create_rollout_session(config: MarlConfig, config_json: str, state_json: str
             full_match_fraction=config.semantic_full_match_fraction,
             phased=config.semantic_phased_curriculum,
             phase_patience=config.semantic_phase_patience,
+            phase_rehearsal_fraction=config.semantic_phase_rehearsal_fraction,
+            phase_full_match_floor=config.semantic_phase_full_match_floor,
         )
         if config.semantic_curriculum
         else None
@@ -140,6 +148,7 @@ def create_rollout_session(config: MarlConfig, config_json: str, state_json: str
             stagnation_penalty=config.stagnation_penalty,
             stagnation_seconds=config.stagnation_seconds,
             stagnation_ball_distance=config.stagnation_ball_distance,
+            action_parser=config.action_parser,
         ),
         episode_counts=[0] * config.num_envs,
         episode_returns=[0.0] * config.num_envs,
@@ -253,11 +262,15 @@ def collect_self_play_trajectory(
             seed=seed + step,
         )
         with torch.no_grad():
-            if isinstance(learner.actor, LatticeSharedActor):
+            if isinstance(learner.actor, (LatticeSharedActor, PrimitiveRoleActor)):
                 logits, _ = learner.actor(policy_observation)
                 categorical = Categorical(logits=logits)
                 action_index = categorical.sample()  # type: ignore[no-untyped-call]
-                action = SymmetricWheelLattice().parse(action_index)
+                action = (
+                    SymmetricWheelLattice().parse(action_index)
+                    if isinstance(learner.actor, LatticeSharedActor)
+                    else SoccerPrimitiveSet.encode(action_index)
+                )
                 log_probability = categorical.log_prob(  # type: ignore[no-untyped-call]
                     action_index
                 )
@@ -272,7 +285,7 @@ def collect_self_play_trajectory(
                 )
             else:
                 mean, log_std = learner.actor(policy_observation)
-            if not isinstance(learner.actor, LatticeSharedActor):
+            if not isinstance(learner.actor, (LatticeSharedActor, PrimitiveRoleActor)):
                 distribution = Normal(mean, log_std.exp())
                 action, log_probability = sample_bounded_action(distribution)
             value = learner.critic(policy_observation)

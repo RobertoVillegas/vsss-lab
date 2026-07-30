@@ -71,7 +71,11 @@ def analyze_replay(replay_path: Path, analysis_path: Path | None = None) -> Visi
         if interception is not None:
             target_index = int(tick["index"]) + round(float(interception["elapsed"]) / period)
             target = by_index.get(target_index)
-            if target is not None:
+            same_episode = target is not None and int(target.get("episode", 0)) == int(
+                tick.get("episode", 0)
+            )
+            if same_episode:
+                assert target is not None
                 truth = target["snapshot"]["ball"]
                 interception_errors.append(
                     math.hypot(

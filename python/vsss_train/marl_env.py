@@ -12,6 +12,7 @@ import numpy as np
 import torch
 from numpy.typing import NDArray
 from vsss_baselines import DynamicTeamController
+from vsss_baselines.controllers import robot_pose
 from vsss_env._native import BatchSimulator
 
 from vsss_train.ablations import (
@@ -21,6 +22,7 @@ from vsss_train.ablations import (
     SymmetricWheelLattice,
 )
 from vsss_train.marl import (
+    PrimitiveRoleActor,
     RoleSharedActor,
     SharedActor,
     TeamBatch,
@@ -28,6 +30,11 @@ from vsss_train.marl import (
     stack_team_batches,
 )
 from vsss_train.ppo import seed_everything
+from vsss_train.primitives import (
+    SoccerPrimitiveSet,
+    nearest_canonical_direction,
+    primitive_wheel_actions,
+)
 from vsss_train.roles import DynamicRoleAssigner, RoleAssignment, assign_roles
 
 FloatArray = NDArray[np.float32]
@@ -115,6 +122,7 @@ class MarlMatchEnv:
         stagnation_penalty: float = 0.0,
         stagnation_seconds: float = 5.0,
         stagnation_ball_distance: float = 0.02,
+        action_parser: str = "continuous",
     ) -> None:
         if stage not in (7, 8):
             raise ValueError("stage must be C7 or C8")
@@ -142,6 +150,9 @@ class MarlMatchEnv:
         self.defensive_activation_x = defensive_activation_x
         self.draw_penalty = draw_penalty
         self.stagnation_penalty = stagnation_penalty
+        if action_parser not in ("continuous", "lattice", "primitive"):
+            raise ValueError("unsupported action parser")
+        self.action_parser = action_parser
         self._decision_period = float(self._config["timestep"]) * action_repeat
         self.stagnation_limit = max(1, round(stagnation_seconds / self._decision_period))
         self.stagnation_ball_distance = stagnation_ball_distance
@@ -187,6 +198,12 @@ class MarlMatchEnv:
         opponent_actions: FloatArray | None = None,
     ) -> tuple[TeamBatch, TeamReward, bool, dict[str, Any]]:
         normalized_blue = np.clip(blue_actions, -1.0, 1.0)
+        if self.action_parser == "primitive":
+            normalized_blue = primitive_wheel_actions(
+                self.state,
+                team=0,
+                tokens=normalized_blue,
+            )
         action_delta = normalized_blue - self._previous_blue_actions
         actions = np.zeros((1, 6, 2), dtype=np.float32)
         actions[0, :3] = normalized_blue * self._max_wheel_speed
@@ -196,7 +213,14 @@ class MarlMatchEnv:
         events = 0
         for _ in range(self.action_repeat):
             if opponent_actions is not None:
-                actions[0, 3:] = np.clip(opponent_actions, -1.0, 1.0) * self._max_wheel_speed
+                normalized_opponent = np.clip(opponent_actions, -1.0, 1.0)
+                if self.action_parser == "primitive":
+                    normalized_opponent = primitive_wheel_actions(
+                        self.state,
+                        team=1,
+                        tokens=normalized_opponent,
+                    )
+                actions[0, 3:] = normalized_opponent * self._max_wheel_speed
             elif self.stage == 8:
                 actions[0, 3:] = self._yellow.actions(self.state) * self._max_wheel_speed
             self.state = self._native.step(actions)[0]
@@ -296,6 +320,10 @@ class MarlMatchEnv:
         """Return the current canonical lifecycle snapshot."""
         return cast(dict[str, Any], json.loads(self._native.snapshots()[0]))
 
+    @property
+    def decision_period(self) -> float:
+        return self._decision_period
+
     def progress_score(self) -> float:
         return 2.0 * (self._initial_closest - self._closest) + (self._ball_x - self._initial_ball_x)
 
@@ -355,6 +383,7 @@ class VectorMarlMatchEnv:
         stagnation_penalty: float,
         stagnation_seconds: float,
         stagnation_ball_distance: float,
+        action_parser: str = "continuous",
     ) -> None:
         if stage not in (7, 8):
             raise ValueError("stage must be C7 or C8")
@@ -396,6 +425,9 @@ class VectorMarlMatchEnv:
         self.defensive_activation_x = defensive_activation_x
         self.draw_penalty = draw_penalty
         self.stagnation_penalty = stagnation_penalty
+        if action_parser not in ("continuous", "lattice", "primitive"):
+            raise ValueError("unsupported action parser")
+        self.action_parser = action_parser
         self.stagnation_limit = max(1, round(stagnation_seconds / self._decision_period))
         self.stagnation_ball_distance = stagnation_ball_distance
         self.states = np.zeros((num_envs, BatchSimulator.state_width()), dtype=np.float32)
@@ -495,6 +527,13 @@ class VectorMarlMatchEnv:
         NDArray[np.bool_],
     ]:
         normalized_blue = np.clip(blue_actions, -1.0, 1.0, out=self._normalized_blue_actions)
+        if self.action_parser == "primitive":
+            for world, team in enumerate(self.controlled_teams):
+                normalized_blue[world] = primitive_wheel_actions(
+                    self.states[world],
+                    team=int(team),
+                    tokens=normalized_blue[world].copy(),
+                )
         action_delta = np.subtract(
             normalized_blue,
             self._previous_blue_actions,
@@ -517,7 +556,17 @@ class VectorMarlMatchEnv:
             normalized_opponents = np.clip(opponent_actions, -1.0, 1.0)
             for world, team in enumerate(self.controlled_teams):
                 opponent_slice = slice(3, 6) if team == 0 else slice(0, 3)
-                actions[world, opponent_slice] = normalized_opponents[world] * self._max_wheel_speed
+                opponent_team = 1 - int(team)
+                parsed_opponent = (
+                    primitive_wheel_actions(
+                        self.states[world],
+                        team=opponent_team,
+                        tokens=normalized_opponents[world],
+                    )
+                    if self.action_parser == "primitive"
+                    else normalized_opponents[world]
+                )
+                actions[world, opponent_slice] = parsed_opponent * self._max_wheel_speed
             self.states = self._native.step_repeated(actions, self.action_repeat)
             events |= self.states[:, -1].astype(np.int64)
         elif self.stage == 8:
@@ -1178,6 +1227,7 @@ def _defensive_threat(ball_x: float, activation_x: float, team: int = 0) -> floa
 def distill_dynamic_teacher(
     actor: SharedActor
     | RoleSharedActor
+    | PrimitiveRoleActor
     | RecurrentSharedActor
     | EntityAttentionActor
     | LatticeSharedActor,
@@ -1201,13 +1251,35 @@ def distill_dynamic_teacher(
     teacher = DynamicTeamController(0, 1)
     observations: list[TeamBatch] = []
     actions: list[torch.Tensor] = []
+    primitive_indices: list[torch.Tensor] = []
     for sample_seed in range(seed, seed + samples):
         observations.append(env.reset(sample_seed))
         actions.append(torch.from_numpy(teacher.actions(env.state).copy()))
+        roles = teacher.assign(env.state)
+        labels: list[int] = []
+        ball = (float(env.state[5]), float(env.state[6]))
+        for local_slot, role in enumerate(roles):
+            pose = robot_pose(env.state, local_slot)
+            if role == "pressor":
+                direction = nearest_canonical_direction((0.75 - ball[0], -ball[1]), 0)
+                labels.append(1 + SoccerPrimitiveSet.directions + direction)
+            else:
+                target = (
+                    (-0.68, float(np.clip(ball[1], -0.18, 0.18)))
+                    if role == "goalie"
+                    else (ball[0] - 0.28, -0.5 * ball[1])
+                )
+                direction = nearest_canonical_direction(
+                    (target[0] - pose[0], target[1] - pose[1]),
+                    0,
+                )
+                labels.append(1 + direction)
+        primitive_indices.append(torch.tensor(labels, dtype=torch.int64))
     batch = stack_team_batches(observations)
     device = next(actor.parameters()).device
     batch = batch.to(device)
     targets = torch.stack(actions).to(device)
+    primitive_targets = torch.stack(primitive_indices).to(device)
     optimizer = torch.optim.Adam(actor.parameters(), lr=1e-3)
     loss = torch.zeros(())
     generator = torch.Generator().manual_seed(seed)
@@ -1215,17 +1287,22 @@ def distill_dynamic_teacher(
         for indices in torch.randperm(samples, generator=generator).split(256):  # type: ignore[no-untyped-call]
             indices = indices.to(device)
             mean, _ = actor(batch.select_batch(indices))
-            if isinstance(actor, LatticeSharedActor):
+            if isinstance(actor, PrimitiveRoleActor):
+                loss = torch.nn.functional.cross_entropy(
+                    mean.reshape(-1, mean.shape[-1]),
+                    primitive_targets[indices].reshape(-1),
+                )
+            elif isinstance(actor, LatticeSharedActor):
                 lattice = torch.tensor(
                     SymmetricWheelLattice.values,
                     dtype=torch.float32,
                     device=device,
                 )
                 distances = (targets[indices].unsqueeze(-2) - lattice).square().sum(dim=-1)
-                labels = distances.argmin(dim=-1)
+                lattice_labels = distances.argmin(dim=-1)
                 loss = torch.nn.functional.cross_entropy(
                     mean.reshape(-1, mean.shape[-1]),
-                    labels.reshape(-1),
+                    lattice_labels.reshape(-1),
                 )
             else:
                 loss = (torch.tanh(mean) - targets[indices]).square().mean()

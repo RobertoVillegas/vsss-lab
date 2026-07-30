@@ -10,6 +10,7 @@ import torch
 from numpy.typing import NDArray
 from torch import Tensor, nn
 
+from vsss_train.primitives import SoccerPrimitiveSet
 from vsss_train.roles import RoleAssignment, assign_roles, role_features
 
 FloatArray = NDArray[np.float32]
@@ -307,28 +308,61 @@ class RoleSharedActor(nn.Module):
         self.action_head = nn.Linear(hidden_size, 2)
         self.log_std = nn.Parameter(torch.full((2,), -0.5))
 
-    def forward(self, observation: TeamBatch) -> tuple[Tensor, Tensor]:
+    def encode(self, observation: TeamBatch) -> Tensor:
         teammates = self.entity(observation.teammates).mean(dim=-2)
         opponents = self.entity(observation.opponents).mean(dim=-2)
-        encoded = self.fusion(
-            torch.cat(
-                (
-                    observation.self_features,
-                    observation.ball,
-                    observation.goals,
-                    observation.context,
-                    teammates,
-                    opponents,
-                ),
-                dim=-1,
-            )
+        return cast(
+            Tensor,
+            self.fusion(
+                torch.cat(
+                    (
+                        observation.self_features,
+                        observation.ball,
+                        observation.goals,
+                        observation.context,
+                        teammates,
+                        opponents,
+                    ),
+                    dim=-1,
+                )
+            ),
         )
+
+    def forward(self, observation: TeamBatch) -> tuple[Tensor, Tensor]:
+        encoded = self.encode(observation)
         mean = self.action_head(encoded)
         return mean, self.log_std.expand_as(mean)
 
     def deterministic_action(self, observation: TeamBatch) -> Tensor:
         mean, _ = self(observation)
         return torch.tanh(mean)
+
+
+class PrimitiveRoleActor(RoleSharedActor):
+    """Role-aware categorical strategy over deterministic motion primitives."""
+
+    def __init__(
+        self,
+        hidden_size: int = 64,
+        *,
+        activation: str = "tanh",
+        layer_norm: bool = False,
+    ) -> None:
+        super().__init__(
+            hidden_size,
+            activation=activation,
+            layer_norm=layer_norm,
+        )
+        self.action_head = nn.Linear(hidden_size, SoccerPrimitiveSet.action_count)
+        del self.log_std
+        self.register_buffer("log_std", torch.full((2,), -0.5))
+
+    def forward(self, observation: TeamBatch) -> tuple[Tensor, Tensor]:
+        return self.action_head(self.encode(observation)), self.log_std
+
+    def deterministic_action(self, observation: TeamBatch) -> Tensor:
+        logits, _ = self(observation)
+        return SoccerPrimitiveSet.encode(logits.argmax(dim=-1))
 
 
 class LocalCritic(nn.Module):

@@ -363,6 +363,7 @@ def _run(arguments: argparse.Namespace) -> None:
                     config_json,
                     state_json,
                     device=learner.device,
+                    action_parser=config.action_parser,
                 )
                 semantic_evaluation_count += 1
                 successes = sum(family.successes for family in report.families)
@@ -386,6 +387,7 @@ def _run(arguments: argparse.Namespace) -> None:
                     policy_version=result.policy_version,
                     seeds=holdout_seeds,
                     ticks=config.horizon,
+                    action_parser=config.action_parser,
                 )
                 win_rate = scorecard.wins / scorecard.matches
                 draw_rate = scorecard.draws / scorecard.matches
@@ -551,6 +553,7 @@ def _run(arguments: argparse.Namespace) -> None:
                     blue_policy=f"{config.policy_id}@{result.policy_version}",
                     yellow_policy=opponent_id,
                     semantic_context=result.curriculum,
+                    action_parser=config.action_parser,
                 )
                 if rollout_session.curriculum is not None:
                     for descriptor in analyze_replay(replay_path).failure_descriptors():
@@ -671,6 +674,7 @@ def _tournament(arguments: argparse.Namespace) -> None:
         seeds=tuple(range(config.seed + 40_000, config.seed + 40_000 + arguments.seeds)),
         ticks=config.horizon,
         replay_dir=arguments.output_dir / "replays",
+        action_parser=config.action_parser,
     )
     arguments.output_dir.mkdir(parents=True, exist_ok=True)
     report_path = arguments.output_dir / "tournament.json"

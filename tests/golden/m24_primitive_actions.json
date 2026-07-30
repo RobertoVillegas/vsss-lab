@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "action_count": 17,
+  "actions": [
+    {"index": 0, "skill": "stop", "direction": null},
+    {"index": 1, "skill": "navigate", "direction": "east"},
+    {"index": 2, "skill": "navigate", "direction": "north_east"},
+    {"index": 3, "skill": "navigate", "direction": "north"},
+    {"index": 4, "skill": "navigate", "direction": "north_west"},
+    {"index": 5, "skill": "navigate", "direction": "west"},
+    {"index": 6, "skill": "navigate", "direction": "south_west"},
+    {"index": 7, "skill": "navigate", "direction": "south"},
+    {"index": 8, "skill": "navigate", "direction": "south_east"},
+    {"index": 9, "skill": "strike", "direction": "east"},
+    {"index": 10, "skill": "strike", "direction": "north_east"},
+    {"index": 11, "skill": "strike", "direction": "north"},
+    {"index": 12, "skill": "strike", "direction": "north_west"},
+    {"index": 13, "skill": "strike", "direction": "west"},
+    {"index": 14, "skill": "strike", "direction": "south_west"},
+    {"index": 15, "skill": "strike", "direction": "south"},
+    {"index": 16, "skill": "strike", "direction": "south_east"}
+  ]
+}

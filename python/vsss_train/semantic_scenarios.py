@@ -173,6 +173,8 @@ class SemanticSkillCurriculum:
         window: int = 24,
         phased: bool = False,
         phase_patience: int = 2,
+        phase_rehearsal_fraction: float = 0.20,
+        phase_full_match_floor: float = 0.0,
     ) -> None:
         if not 0.0 <= full_match_fraction <= 1.0:
             raise ValueError("full_match_fraction must be in [0, 1]")
@@ -180,6 +182,10 @@ class SemanticSkillCurriculum:
             raise ValueError("curriculum window must be at least four")
         if phase_patience <= 0:
             raise ValueError("phase patience must be positive")
+        if not 0.0 <= phase_rehearsal_fraction <= 1.0:
+            raise ValueError("phase rehearsal fraction must be in [0, 1]")
+        if not 0.0 <= phase_full_match_floor <= 1.0:
+            raise ValueError("phase full-match floor must be in [0, 1]")
         self.base_state = copy.deepcopy(base_state)
         self.config = config
         self.seed = seed
@@ -187,6 +193,8 @@ class SemanticSkillCurriculum:
         self.window = window
         self.phased = phased
         self.phase_patience = phase_patience
+        self.phase_rehearsal_fraction = phase_rehearsal_fraction
+        self.phase_full_match_floor = phase_full_match_floor
         self.phase_index = 0
         self.phase_gate_streak = 0
         self.levels = {
@@ -254,7 +262,7 @@ class SemanticSkillCurriculum:
                     for family in phase_families
                 )
             )
-            if previous and generator.random() < 0.20:
+            if previous and generator.random() < self.phase_rehearsal_fraction:
                 return previous[generator.randrange(len(previous))]
         if generator.random() < 0.20:
             return families[generator.randrange(len(families))]
@@ -280,7 +288,8 @@ class SemanticSkillCurriculum:
         if not self.phased:
             return self.full_match_fraction
         phase_fraction = PHASES[self.phase_index][3]
-        return self.full_match_fraction if phase_fraction == 1.0 else phase_fraction
+        selected = self.full_match_fraction if phase_fraction == 1.0 else phase_fraction
+        return max(selected, self.phase_full_match_floor)
 
     def observe_holdout_rates(
         self,

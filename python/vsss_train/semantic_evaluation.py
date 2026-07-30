@@ -81,6 +81,7 @@ def evaluate_semantic_skills(
     *,
     control: EvaluationControl = "policy",
     device: torch.device | str = "cpu",
+    action_parser: str = "continuous",
 ) -> SemanticEvaluationReport:
     """Evaluate paired immutable drills without using their outcomes for gradients."""
     if not scenarios:
@@ -88,7 +89,12 @@ def evaluate_semantic_skills(
     if control == "policy" and actor is None:
         raise ValueError("policy evaluation requires an actor")
     config = json.loads(config_json)
-    environment = _environment(config_json, state_json, len(scenarios))
+    environment = _environment(
+        config_json,
+        state_json,
+        len(scenarios),
+        action_parser=action_parser,
+    )
     evaluators: list[SkillEvaluator] = []
     active = np.ones(len(scenarios), dtype=np.bool_)
     outcomes: list[SkillOutcome | None] = [None] * len(scenarios)
@@ -195,7 +201,13 @@ def evaluate_semantic_skills(
     )
 
 
-def _environment(config_json: str, state_json: str, worlds: int) -> VectorMarlMatchEnv:
+def _environment(
+    config_json: str,
+    state_json: str,
+    worlds: int,
+    *,
+    action_parser: str = "continuous",
+) -> VectorMarlMatchEnv:
     return VectorMarlMatchEnv(
         config_json,
         state_json,
@@ -232,6 +244,7 @@ def _environment(config_json: str, state_json: str, worlds: int) -> VectorMarlMa
         stagnation_penalty=0.0,
         stagnation_seconds=1_000.0,
         stagnation_ball_distance=0.02,
+        action_parser=action_parser,
     )
 
 

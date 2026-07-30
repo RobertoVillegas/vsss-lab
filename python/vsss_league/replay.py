@@ -17,7 +17,7 @@ from vsss_train.ablations import (
     RecurrentSharedActor,
     RecurrentState,
 )
-from vsss_train.marl import RoleSharedActor, SharedActor, build_team_observation
+from vsss_train.marl import PrimitiveRoleActor, RoleSharedActor, SharedActor, build_team_observation
 from vsss_train.marl_env import MarlMatchEnv, _goal_geometry_metrics
 from vsss_train.roles import assign_roles
 from vsss_vision import (
@@ -36,11 +36,13 @@ from vsss_vision import (
 def run_policy_replay(
     blue: SharedActor
     | RoleSharedActor
+    | PrimitiveRoleActor
     | RecurrentSharedActor
     | EntityAttentionActor
     | LatticeSharedActor,
     yellow: SharedActor
     | RoleSharedActor
+    | PrimitiveRoleActor
     | RecurrentSharedActor
     | EntityAttentionActor
     | LatticeSharedActor
@@ -54,11 +56,18 @@ def run_policy_replay(
     blue_policy: str,
     yellow_policy: str,
     semantic_context: dict[str, object] | None = None,
+    action_parser: str = "continuous",
 ) -> dict[str, Any]:
     """Evaluate learned blue versus learned or heuristic yellow and write JSONL."""
     if ticks <= 0:
         raise ValueError("ticks must be positive")
-    environment = MarlMatchEnv(config_json, state_json, stage=8, horizon=ticks)
+    environment = MarlMatchEnv(
+        config_json,
+        state_json,
+        stage=8,
+        horizon=ticks,
+        action_parser=action_parser,
+    )
     blue_device = next(blue.parameters()).device
     observation = environment.reset(seed)
     blue_recurrent = _initial_recurrent(blue, blue_device)
@@ -231,6 +240,7 @@ def run_policy_replay(
                 {
                     "type": "tick",
                     "index": index,
+                    "episode": episode,
                     "actions": actions.tolist(),
                     "roles": list(info["roles"]) + list(yellow_roles.roles),
                     "role_changes": list(info["role_changes"]) + list(yellow_roles.changed),
@@ -297,6 +307,7 @@ def _write(stream: TextIO, record: dict[str, Any]) -> None:
 def _initial_recurrent(
     actor: SharedActor
     | RoleSharedActor
+    | PrimitiveRoleActor
     | RecurrentSharedActor
     | EntityAttentionActor
     | LatticeSharedActor,
@@ -310,6 +321,7 @@ def _initial_recurrent(
 def _policy_action(
     actor: SharedActor
     | RoleSharedActor
+    | PrimitiveRoleActor
     | RecurrentSharedActor
     | EntityAttentionActor
     | LatticeSharedActor,

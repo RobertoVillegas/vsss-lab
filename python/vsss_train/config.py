@@ -82,7 +82,7 @@ class MarlConfig:
     schema_version: int = 1
     algorithm: Literal["ippo", "mappo"] = "mappo"
     policy_architecture: Literal["mlp", "gru", "attention", "role_mlp"] = "mlp"
-    action_parser: Literal["continuous", "lattice"] = "continuous"
+    action_parser: Literal["continuous", "lattice", "primitive"] = "continuous"
     adaptive_curriculum: bool = False
     semantic_curriculum: bool = False
     semantic_phased_curriculum: bool = False
@@ -92,6 +92,8 @@ class MarlConfig:
     semantic_regression_patience: int = 0
     semantic_regression_warmup_evaluations: int = 0
     semantic_phase_patience: int = 2
+    semantic_phase_rehearsal_fraction: float = 0.20
+    semantic_phase_full_match_floor: float = 0.0
     semantic_promotion_floors: dict[str, float] = field(default_factory=dict)
     semantic_max_idle_spin_ratio: float = 1.0
     semantic_min_match_win_rate: float = 0.0
@@ -162,12 +164,14 @@ class MarlConfig:
             raise ValueError("algorithm must be ippo or mappo")
         if self.policy_architecture not in ("mlp", "gru", "attention", "role_mlp"):
             raise ValueError("policy_architecture must be mlp, gru, attention, or role_mlp")
-        if self.action_parser not in ("continuous", "lattice"):
-            raise ValueError("action_parser must be continuous or lattice")
+        if self.action_parser not in ("continuous", "lattice", "primitive"):
+            raise ValueError("action_parser must be continuous, lattice, or primitive")
         if self.network_activation not in ("tanh", "relu"):
             raise ValueError("network_activation must be tanh or relu")
         if self.action_parser == "lattice" and self.policy_architecture != "mlp":
             raise ValueError("lattice ablation currently requires the MLP architecture")
+        if self.action_parser == "primitive" and self.policy_architecture != "role_mlp":
+            raise ValueError("primitive actions require the role_mlp architecture")
         if self.adaptive_curriculum and not self.scenario_suite:
             raise ValueError("adaptive_curriculum requires scenario_suite")
         if self.adaptive_curriculum and self.semantic_curriculum:
@@ -184,6 +188,10 @@ class MarlConfig:
             raise ValueError("semantic_regression_warmup_evaluations must be non-negative")
         if self.semantic_phase_patience <= 0:
             raise ValueError("semantic_phase_patience must be positive")
+        if not 0.0 <= self.semantic_phase_rehearsal_fraction <= 1.0:
+            raise ValueError("semantic_phase_rehearsal_fraction must be in [0, 1]")
+        if not 0.0 <= self.semantic_phase_full_match_floor <= 1.0:
+            raise ValueError("semantic_phase_full_match_floor must be in [0, 1]")
         known_families = {
             "approach",
             "clearance",

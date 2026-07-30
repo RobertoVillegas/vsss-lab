@@ -129,6 +129,10 @@ m18-ppo-ablation output="experiments/reports/m18/ppo-ablation.json" device="auto
   mise run train-env
   uv run --group train python -m tools.m18_ppo_ablation --output "{{output}}" --device "{{device}}" --seeds {{seeds}} --iterations {{iterations}} --worlds {{worlds}} --rollout-steps {{rollout_steps}}
 
+m24-trajectory-benchmark output="experiments/reports/m24/trajectory-primitives.json":
+  mise run train-env
+  PYTHONPATH=python:. uv run --group train python -m tools.benchmark_m24_trajectories --output "{{output}}"
+
 league-run run_dir="/home/rob/runs/vsss-lab-demo" iterations="3" capture_every="1" capture_seconds="60" checkpoint_every="100" device="auto" num_envs="64" config="experiments/configs/m14-mappo-adaptive.toml":
   mise run train-env
   uv run --group train python -m vsss_league.cli run --config "{{config}}" --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --run-dir "{{run_dir}}" --iterations {{iterations}} --capture-every {{capture_every}} --capture-seconds {{capture_seconds}} --checkpoint-every {{checkpoint_every}} --device "{{device}}" --num-envs {{num_envs}}
@@ -205,6 +209,12 @@ league-live-m22 initialize_from steps="50000000" capture_every="25" capture_seco
 
 league-live-m23 steps="50000000" capture_every="25" capture_seconds="60" checkpoint_every="25" device="auto" num_envs="64" eval_every="25" eval_seeds="5" port="8765":
   run_dir=$(uv run python tools/next_run_dir.py vsss-m23-run); echo "Allocated M23 clean-curriculum run: $run_dir"; just league-live-semantic-at "$run_dir" "{{steps}}" "{{capture_every}}" "{{capture_seconds}}" "{{checkpoint_every}}" "{{device}}" "{{num_envs}}" "{{eval_every}}" "{{eval_seeds}}" "{{port}}" "experiments/configs/m23-mappo-clean-curriculum.toml"
+
+league-live-m24 steps="50000000" capture_every="25" capture_seconds="60" checkpoint_every="25" device="auto" num_envs="64" eval_every="25" eval_seeds="5" port="8765":
+  run_dir=$(uv run python tools/next_run_dir.py vsss-m24-run); echo "Allocated M24 primitive MAPPO run: $run_dir"; just league-live-semantic-at "$run_dir" "{{steps}}" "{{capture_every}}" "{{capture_seconds}}" "{{checkpoint_every}}" "{{device}}" "{{num_envs}}" "{{eval_every}}" "{{eval_seeds}}" "{{port}}" "experiments/configs/m24-mappo-primitives.toml"
+
+league-live-m24-ippo steps="5000000" capture_every="25" capture_seconds="60" checkpoint_every="25" device="auto" num_envs="64" eval_every="25" eval_seeds="5" port="8765":
+  run_dir=$(uv run python tools/next_run_dir.py vsss-m24-ippo-run); echo "Allocated M24 primitive IPPO run: $run_dir"; just league-live-semantic-at "$run_dir" "{{steps}}" "{{capture_every}}" "{{capture_seconds}}" "{{checkpoint_every}}" "{{device}}" "{{num_envs}}" "{{eval_every}}" "{{eval_seeds}}" "{{port}}" "experiments/configs/m24-ippo-primitives.toml"
 
 league-live-resume run_dir="/home/rob/runs/vsss-lab-live" iterations="1000" capture_every="100" capture_seconds="60" checkpoint_every="100" device="auto" num_envs="64" port="8765":
   just web-build

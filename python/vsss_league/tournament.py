@@ -15,7 +15,12 @@ from vsss_train.ablations import (
     RecurrentSharedActor,
     RecurrentState,
 )
-from vsss_train.marl import RoleSharedActor, SharedActor, build_team_observation
+from vsss_train.marl import (
+    PrimitiveRoleActor,
+    RoleSharedActor,
+    SharedActor,
+    build_team_observation,
+)
 from vsss_train.marl_env import MarlMatchEnv
 
 from vsss_league.ratings import elo_update
@@ -82,6 +87,7 @@ class PolicyPairScorecard:
 def evaluate_checkpoint_scorecard(
     actor: SharedActor
     | RoleSharedActor
+    | PrimitiveRoleActor
     | RecurrentSharedActor
     | EntityAttentionActor
     | LatticeSharedActor,
@@ -92,6 +98,7 @@ def evaluate_checkpoint_scorecard(
     policy_version: int,
     seeds: tuple[int, ...],
     ticks: int,
+    action_parser: str = "continuous",
 ) -> CheckpointScorecard:
     """Evaluate terminal matches without producing heavyweight replay files."""
     device = next(actor.parameters()).device
@@ -107,6 +114,7 @@ def evaluate_checkpoint_scorecard(
                 selected_state,
                 stage=8,
                 horizon=ticks,
+                action_parser=action_parser,
             )
             observation = environment.reset(seed)
             recurrent_state = (
@@ -161,6 +169,7 @@ def evaluate_checkpoint_scorecard(
 def evaluate_candidate_vs_heuristic(
     actor: SharedActor
     | RoleSharedActor
+    | PrimitiveRoleActor
     | RecurrentSharedActor
     | EntityAttentionActor
     | LatticeSharedActor,
@@ -171,6 +180,7 @@ def evaluate_candidate_vs_heuristic(
     seeds: tuple[int, ...],
     ticks: int,
     replay_dir: Path,
+    action_parser: str = "continuous",
 ) -> TournamentReport:
     import hashlib
 
@@ -193,6 +203,7 @@ def evaluate_candidate_vs_heuristic(
                 replay_path=replay,
                 blue_policy=candidate,
                 yellow_policy="heuristic",
+                action_parser=action_parser,
             )
             progress = float(result["progress"])
             score_blue = int(result["score_blue"])

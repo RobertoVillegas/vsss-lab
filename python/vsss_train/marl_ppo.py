@@ -20,13 +20,25 @@ from vsss_train.ablations import (
     RecurrentState,
 )
 from vsss_train.config import MarlConfig
-from vsss_train.marl import CentralizedCritic, LocalCritic, RoleSharedActor, SharedActor, TeamBatch
+from vsss_train.marl import (
+    CentralizedCritic,
+    LocalCritic,
+    PrimitiveRoleActor,
+    RoleSharedActor,
+    SharedActor,
+    TeamBatch,
+)
 from vsss_train.ppo import seed_everything
 
 MARL_CHECKPOINT_SCHEMA = 1
 TRAJECTORY_SCHEMA = 1
 PolicyActor = (
-    SharedActor | RoleSharedActor | RecurrentSharedActor | EntityAttentionActor | LatticeSharedActor
+    SharedActor
+    | RoleSharedActor
+    | PrimitiveRoleActor
+    | RecurrentSharedActor
+    | EntityAttentionActor
+    | LatticeSharedActor
 )
 LEGACY_NEUTRAL_CONFIG = {
     "minimum_log_std": -5.0,
@@ -61,6 +73,8 @@ LEGACY_NEUTRAL_CONFIG = {
     "semantic_regression_patience": 0,
     "semantic_regression_warmup_evaluations": 0,
     "semantic_phase_patience": 2,
+    "semantic_phase_rehearsal_fraction": 0.20,
+    "semantic_phase_full_match_floor": 0.0,
     "semantic_promotion_floors": {},
     "semantic_max_idle_spin_ratio": 1.0,
     "semantic_min_match_win_rate": 0.0,
@@ -246,7 +260,7 @@ class MarlLearner:
                 sample_observation = observation.select_batch(indices)
                 sample_advantage = advantage[indices]
                 sample_active = sample_observation.self_features[..., -1] > 0.5
-                if isinstance(self.actor, LatticeSharedActor):
+                if isinstance(self.actor, (LatticeSharedActor, PrimitiveRoleActor)):
                     logits, _ = self.actor(sample_observation)
                     distribution_discrete = Categorical(logits=logits)
                     log_probability = distribution_discrete.log_prob(  # type: ignore[no-untyped-call]
@@ -264,7 +278,7 @@ class MarlLearner:
                     )
                 else:
                     mean, log_std = self.actor(sample_observation)
-                if not isinstance(self.actor, LatticeSharedActor):
+                if not isinstance(self.actor, (LatticeSharedActor, PrimitiveRoleActor)):
                     distribution = Normal(mean, log_std.exp())
                     log_probability = bounded_action_log_prob(distribution, sample["action"])
                     ratio = (log_probability - sample["sample_log_prob"]).exp()
@@ -308,10 +322,11 @@ class MarlLearner:
                 )
                 self.optimizer.step()
                 with torch.no_grad():
-                    self.actor.log_std.clamp_(
-                        min=self.config.minimum_log_std,
-                        max=self.config.maximum_log_std,
-                    )
+                    if not isinstance(self.actor, (LatticeSharedActor, PrimitiveRoleActor)):
+                        self.actor.log_std.clamp_(
+                            min=self.config.minimum_log_std,
+                            max=self.config.maximum_log_std,
+                        )
                 totals["policy_loss"] += float(policy_loss.detach())
                 totals["value_loss"] += float(value_loss.detach())
                 totals["entropy"] += float(entropy.detach())
@@ -469,6 +484,12 @@ def resolve_device(requested: str) -> torch.device:
 def _build_actor(config: MarlConfig) -> PolicyActor:
     if config.action_parser == "lattice":
         return LatticeSharedActor(config.hidden_size)
+    if config.action_parser == "primitive":
+        return PrimitiveRoleActor(
+            config.hidden_size,
+            activation=config.network_activation,
+            layer_norm=config.layer_norm,
+        )
     if config.policy_architecture == "gru":
         return RecurrentSharedActor(config.hidden_size)
     if config.policy_architecture == "attention":

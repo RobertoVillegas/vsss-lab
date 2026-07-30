@@ -377,3 +377,30 @@ def test_curriculum_state_round_trip_preserves_difficulty_history_and_failures()
     )
     restored.load_state_dict(original.state_dict())
     assert restored.state_dict() == original.state_dict()
+
+
+def test_cooperation_phase_reserves_rehearsal_and_full_matches() -> None:
+    curriculum = SemanticSkillCurriculum(
+        STATE,
+        CONFIG,
+        seed=24,
+        full_match_fraction=0.35,
+        phased=True,
+        phase_rehearsal_fraction=0.40,
+        phase_full_match_floor=0.30,
+    )
+    curriculum.phase_index = 2
+    selections = [curriculum.select_training(index) for index in range(1_000)]
+    full_matches = sum(selection.source == "full_match" for selection in selections)
+    families = [
+        selection.scenario.parameters.family
+        for selection in selections
+        if selection.scenario is not None
+    ]
+    previous_phase = sum(
+        family in {"approach", "shot", "interception", "save_deflection", "clearance"}
+        for family in families
+    )
+    assert full_matches >= 300
+    assert previous_phase >= 200
+    assert families.count("pass_receive") < 500
