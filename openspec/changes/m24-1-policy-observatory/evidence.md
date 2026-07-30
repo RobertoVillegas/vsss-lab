@@ -39,9 +39,11 @@ event markers retain exact seek targets.
 - Selecting a decision segment selects its actor, pauses playback, and seeks to
   the segment's first frame.
 - Intent channels can be collapsed without hiding the event rail.
-- Events separated by less than 1.5% of replay duration share an icon marker;
-  its badge reports the cluster size and repeated clicks cycle through every
-  exact event.
+- The primary event rail follows a Ballchasing-style signal hierarchy: goals,
+  own goals, saves, shots, and assists are visible; routine contacts stay out
+  of the navigation layer.
+- Nearby key events retain their own seek target and are distributed over
+  three vertical levels instead of being merged into an ambiguous cluster.
 - Legacy captures and heuristic-only actors no longer create inert `WHEEL`
   lanes.
 - The left rail keeps four compact, frame-synchronous insights: selected

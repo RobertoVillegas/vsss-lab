@@ -56,7 +56,7 @@ describe("PolicyTimeline", () => {
         replay={replay}
         events={[{
           time: 0.02,
-          kind: "touch",
+          kind: "save",
           team: "blue",
           robot_id: "R0",
           x: 0,
@@ -71,7 +71,7 @@ describe("PolicyTimeline", () => {
       />,
     );
     expect(screen.getAllByTitle(/NAV-E/)).toHaveLength(6);
-    fireEvent.click(screen.getByLabelText(/Seek to touch/));
+    fireEvent.click(screen.getByLabelText(/Seek to save/));
     expect(seek).toHaveBeenCalledWith(0);
     fireEvent.click(screen.getByRole("button", { name: "HIDE CHANNELS" }));
     expect(screen.queryByTitle(/NAV-E/)).toBeNull();

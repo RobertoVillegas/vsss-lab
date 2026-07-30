@@ -22,7 +22,17 @@ interface TimelineEvent {
   index: number;
   time: number;
   kind: string;
+  level: number;
 }
+
+const KEY_EVENT_KINDS = new Set([
+  "goal",
+  "own_goal",
+  "forced_own_goal",
+  "save",
+  "shot",
+  "assist",
+]);
 
 export function PolicyTimeline({
   replay,
@@ -33,7 +43,6 @@ export function PolicyTimeline({
   onSeek,
 }: Props) {
   const [showLanes, setShowLanes] = useState(true);
-  const [clusterPositions, setClusterPositions] = useState<Record<number, number>>({});
   const lanes = useMemo(
     () => Array.from({ length: 6 }, (_, actor) => ({
       actor,
@@ -43,24 +52,16 @@ export function PolicyTimeline({
     [replay],
   );
   const finalTime = replay.frames.at(-1)?.snapshot.simulation_time ?? 0;
-  const resetMarkers = useMemo(
-    () => replay.frames.flatMap((frame, index) => (
-      index > 0 && frame.episode !== replay.frames[index - 1]?.episode
-        ? [{ index, time: frame.snapshot.simulation_time, kind: "episode reset" }]
-        : []
-    )),
-    [replay],
-  );
-  const eventClusters = useMemo(
-    () => clusterEvents([
-      ...events.map((event) => ({
+  const keyEvents = useMemo(
+    () => assignEventLevels(events
+      .filter((event) => KEY_EVENT_KINDS.has(event.kind))
+      .map((event) => ({
         index: nearestFrame(replay, event.time),
         time: event.time,
         kind: event.kind,
-      })),
-      ...resetMarkers,
-    ], finalTime),
-    [events, finalTime, replay, resetMarkers],
+        level: 0,
+      })), finalTime),
+    [events, finalTime, replay],
   );
   return (
     <section className="policy-timeline" aria-label="Policy intent timeline">
@@ -75,36 +76,22 @@ export function PolicyTimeline({
         </button>
       </div>
       <div className="event-rail">
-        {eventClusters.map((cluster, clusterIndex) => {
-          const position = clusterPositions[clusterIndex] ?? 0;
-          const event = cluster.events[position % cluster.events.length]!;
-          const kinds = [...new Set(cluster.events.map((item) => item.kind))];
-          return (
+        {keyEvents.map((event, eventIndex) => (
           <button
             className={`event-mark event-${event.kind.replaceAll("_", "-")}`}
-            key={`${cluster.start}-${clusterIndex}`}
-            style={{ left: `${cluster.position}%` }}
-            title={`${event.time.toFixed(2)}s · ${event.kind}${
-              cluster.events.length > 1 ? ` · ${position + 1}/${cluster.events.length}, click to cycle` : ""
-            }`}
-            aria-label={`Seek to ${event.kind} at ${event.time.toFixed(2)} seconds${
-              cluster.events.length > 1 ? `; ${cluster.events.length} nearby events` : ""
-            }`}
-            onClick={() => {
-              onSeek(event.index);
-              if (cluster.events.length > 1) {
-                setClusterPositions((current) => ({
-                  ...current,
-                  [clusterIndex]: (position + 1) % cluster.events.length,
-                }));
-              }
+            key={`${event.kind}-${event.time}-${eventIndex}`}
+            style={{
+              left: `${percentage(event.time, finalTime)}%`,
+              bottom: `${event.level * 13 - 6}px`,
             }}
+            title={`${event.time.toFixed(2)}s · ${event.kind.replaceAll("_", " ")}`}
+            aria-label={`Seek to ${event.kind} at ${event.time.toFixed(2)} seconds`}
+            onClick={() => onSeek(event.index)}
           >
-            <i aria-hidden="true">{eventIcon(kinds)}</i>
-            {cluster.events.length > 1 ? <b>{cluster.events.length}</b> : null}
+            <i aria-hidden="true">{eventIcon(event.kind)}</i>
           </button>
-          );
-        })}
+        ))}
+        {!keyEvents.length ? <span className="no-key-events">NO KEY EVENTS</span> : null}
       </div>
       {showLanes ? <div className="intent-lanes">
         {lanes.map(({ actor, segments }) => (
@@ -150,36 +137,22 @@ export function PolicyTimeline({
   );
 }
 
-function clusterEvents(events: TimelineEvent[], finalTime: number) {
-  const clusters: Array<{
-    start: number;
-    position: number;
-    events: TimelineEvent[];
-  }> = [];
-  for (const event of [...events].sort((first, second) => first.time - second.time)) {
+function assignEventLevels(events: TimelineEvent[], finalTime: number): TimelineEvent[] {
+  const lastPosition = [-Infinity, -Infinity, -Infinity];
+  return [...events].sort((first, second) => first.time - second.time).map((event) => {
     const position = percentage(event.time, finalTime);
-    const current = clusters.at(-1);
-    if (current && position - current.position < 1.5) {
-      current.events.push(event);
-      current.position = current.events.reduce(
-        (sum, item) => sum + percentage(item.time, finalTime),
-        0,
-      ) / current.events.length;
-    } else {
-      clusters.push({ start: event.time, position, events: [event] });
-    }
-  }
-  return clusters;
+    const available = lastPosition.findIndex((previous) => position - previous >= 1.5);
+    const level = available >= 0 ? available : 2;
+    lastPosition[level] = position;
+    return { ...event, level };
+  });
 }
 
-function eventIcon(kinds: string[]): string {
-  if (kinds.length > 1) return "＋";
-  const kind = kinds[0] ?? "";
-  if (kind.includes("goal") || kind === "shot") return "●";
-  if (kind === "touch") return "×";
-  if (kind === "pass") return "→";
-  if (kind === "interception" || kind === "save") return "◇";
-  if (kind === "episode reset") return "↻";
+function eventIcon(kind: string): string {
+  if (kind.includes("goal")) return "G";
+  if (kind === "shot") return "↗";
+  if (kind === "save") return "S";
+  if (kind === "assist") return "A";
   return "·";
 }
 
