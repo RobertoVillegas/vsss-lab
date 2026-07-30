@@ -217,6 +217,9 @@ league-live-m23 steps="50000000" capture_every="25" capture_seconds="60" checkpo
 league-live-m24 steps="50000000" capture_every="25" capture_seconds="60" checkpoint_every="25" device="auto" num_envs="64" eval_every="25" eval_seeds="5" port="8765":
   run_dir=$(uv run python tools/next_run_dir.py vsss-m24-2-run); echo "Allocated M24.2 parametric MAPPO run: $run_dir"; just league-live-semantic-at "$run_dir" "{{steps}}" "{{capture_every}}" "{{capture_seconds}}" "{{checkpoint_every}}" "{{device}}" "{{num_envs}}" "{{eval_every}}" "{{eval_seeds}}" "{{port}}" "experiments/configs/m24-2-mappo-parametric.toml"
 
+league-live-m24-3 steps="50000000" capture_every="25" capture_seconds="60" checkpoint_every="25" device="auto" num_envs="64" eval_every="25" eval_seeds="5" port="8765":
+  run_dir=$(uv run python tools/next_run_dir.py vsss-m24-3-run); echo "Allocated M24.3 circular MAPPO run: $run_dir"; just league-live-semantic-at "$run_dir" "{{steps}}" "{{capture_every}}" "{{capture_seconds}}" "{{checkpoint_every}}" "{{device}}" "{{num_envs}}" "{{eval_every}}" "{{eval_seeds}}" "{{port}}" "experiments/configs/m24-3-mappo-circular.toml"
+
 league-live-m24-ippo steps="5000000" capture_every="25" capture_seconds="60" checkpoint_every="25" device="auto" num_envs="64" eval_every="25" eval_seeds="5" port="8765":
   run_dir=$(uv run python tools/next_run_dir.py vsss-m24-ippo-run); echo "Allocated M24 primitive IPPO run: $run_dir"; just league-live-semantic-at "$run_dir" "{{steps}}" "{{capture_every}}" "{{capture_seconds}}" "{{checkpoint_every}}" "{{device}}" "{{num_envs}}" "{{eval_every}}" "{{eval_seeds}}" "{{port}}" "experiments/configs/m24-ippo-primitives.toml"
 

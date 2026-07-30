@@ -22,6 +22,7 @@ from vsss_train.ablations import (
     SymmetricWheelLattice,
 )
 from vsss_train.marl import (
+    CircularPrimitiveRoleActor,
     ParametricPrimitiveRoleActor,
     PrimitiveRoleActor,
     RoleSharedActor,
@@ -32,7 +33,9 @@ from vsss_train.marl import (
 )
 from vsss_train.ppo import seed_everything
 from vsss_train.primitives import (
+    CircularPrimitiveSet,
     SoccerPrimitiveSet,
+    circular_primitive_wheel_actions,
     nearest_canonical_direction,
     parametric_primitive_wheel_actions,
     primitive_wheel_actions,
@@ -42,14 +45,26 @@ from vsss_train.roles import DynamicRoleAssigner, RoleAssignment, assign_roles
 FloatArray = NDArray[np.float32]
 ROBOT_BASE = 10
 ROBOT_WIDTH = 11
-ACTION_PARSERS = ("continuous", "lattice", "primitive", "parametric_primitive")
+# The teacher demonstrates full authority, but a target of exactly one is unreachable
+# through tanh, so it is expressed just inside the interval the policy can express.
+TEACHER_AUTHORITY = 0.9
+ACTION_PARSERS = (
+    "continuous",
+    "lattice",
+    "primitive",
+    "parametric_primitive",
+    "circular_primitive",
+)
+SKILL_PARSERS = ("primitive", "parametric_primitive", "circular_primitive")
 
 
 def team_action_width(action_parser: str) -> int:
     """Return the per-agent transport width a parser consumes before wheel conversion."""
     if action_parser not in ACTION_PARSERS:
         raise ValueError("unsupported action parser")
-    return 4 if action_parser == "parametric_primitive" else 2
+    if action_parser == "parametric_primitive":
+        return 4
+    return CircularPrimitiveSet.token_width if action_parser == "circular_primitive" else 2
 
 
 def parser_turn_authority(action_parser: str) -> float:
@@ -62,7 +77,7 @@ def parser_turn_authority(action_parser: str) -> float:
     """
     if action_parser not in ACTION_PARSERS:
         raise ValueError("unsupported action parser")
-    return TURN_AUTHORITY if action_parser in ("primitive", "parametric_primitive") else 1.0
+    return TURN_AUTHORITY if action_parser in SKILL_PARSERS else 1.0
 
 
 def check_team_actions(actions: FloatArray, expected: tuple[int, ...], role: str) -> None:
@@ -246,6 +261,12 @@ class MarlMatchEnv:
                 team=0,
                 tokens=normalized_blue,
             )
+        elif self.action_parser == "circular_primitive":
+            normalized_blue = circular_primitive_wheel_actions(
+                self.state,
+                team=0,
+                tokens=normalized_blue,
+            )
         action_delta = normalized_blue - self._previous_blue_actions
         actions = np.zeros((1, 6, 2), dtype=np.float32)
         actions[0, :3] = normalized_blue * self._max_wheel_speed
@@ -265,6 +286,12 @@ class MarlMatchEnv:
                 )
             elif self.action_parser == "parametric_primitive":
                 normalized_opponent = parametric_primitive_wheel_actions(
+                    self.state,
+                    team=1,
+                    tokens=normalized_opponent,
+                )
+            elif self.action_parser == "circular_primitive":
+                normalized_opponent = circular_primitive_wheel_actions(
                     self.state,
                     team=1,
                     tokens=normalized_opponent,
@@ -587,11 +614,16 @@ class VectorMarlMatchEnv:
         check_team_actions(blue_actions, expected, "controlled team")
         if opponent_actions is not None:
             check_team_actions(opponent_actions, expected, "opponent team")
-        if self.action_parser == "parametric_primitive":
+        if self.action_parser in ("parametric_primitive", "circular_primitive"):
+            parse = (
+                parametric_primitive_wheel_actions
+                if self.action_parser == "parametric_primitive"
+                else circular_primitive_wheel_actions
+            )
             primitive_tokens = np.clip(blue_actions, -1.0, 1.0)
             normalized_blue = self._normalized_blue_actions
             for world, team in enumerate(self.controlled_teams):
-                normalized_blue[world] = parametric_primitive_wheel_actions(
+                normalized_blue[world] = parse(
                     self.states[world],
                     team=int(team),
                     tokens=primitive_tokens[world],
@@ -646,6 +678,12 @@ class VectorMarlMatchEnv:
                         tokens=normalized_opponents[world],
                     )
                     if self.action_parser == "parametric_primitive"
+                    else circular_primitive_wheel_actions(
+                        self.states[world],
+                        team=opponent_team,
+                        tokens=normalized_opponents[world],
+                    )
+                    if self.action_parser == "circular_primitive"
                     else normalized_opponents[world]
                 )
                 actions[world, opponent_slice] = parsed_opponent * self._max_wheel_speed
@@ -1331,6 +1369,7 @@ def distill_dynamic_teacher(
     | RoleSharedActor
     | PrimitiveRoleActor
     | ParametricPrimitiveRoleActor
+    | CircularPrimitiveRoleActor
     | RecurrentSharedActor
     | EntityAttentionActor
     | LatticeSharedActor,
@@ -1357,12 +1396,14 @@ def distill_dynamic_teacher(
     primitive_indices: list[torch.Tensor] = []
     parametric_skills: list[torch.Tensor] = []
     parametric_parameters: list[torch.Tensor] = []
+    circular_headings: list[torch.Tensor] = []
     for sample_seed in range(seed, seed + samples):
         observations.append(env.reset(sample_seed))
         actions.append(torch.from_numpy(teacher.actions(env.state).copy()))
         roles = teacher.assign(env.state)
         labels: list[int] = []
         skill_labels: list[int] = []
+        heading_labels: list[float] = []
         parameter_labels: list[tuple[float, float, float]] = []
         ball = (float(env.state[5]), float(env.state[6]))
         for local_slot, role in enumerate(roles):
@@ -1390,10 +1431,14 @@ def distill_dynamic_teacher(
             # command from geometry. Distill full primitive authority here;
             # multiplying by the teacher wheel magnitude a second time makes
             # the learned controller artificially slow.
-            parameter_labels.append((math.cos(angle), math.sin(angle), 1.0))
+            # A target of exactly full authority is unreachable through tanh and drags
+            # the parameter mean into saturation, which pins intensity for the whole run.
+            parameter_labels.append((math.cos(angle), math.sin(angle), TEACHER_AUTHORITY))
+            heading_labels.append(angle)
         primitive_indices.append(torch.tensor(labels, dtype=torch.int64))
         parametric_skills.append(torch.tensor(skill_labels, dtype=torch.int64))
         parametric_parameters.append(torch.tensor(parameter_labels, dtype=torch.float32))
+        circular_headings.append(torch.tensor(heading_labels, dtype=torch.float32))
     batch = stack_team_batches(observations)
     device = next(actor.parameters()).device
     batch = batch.to(device)
@@ -1401,6 +1446,7 @@ def distill_dynamic_teacher(
     primitive_targets = torch.stack(primitive_indices).to(device)
     parametric_skill_targets = torch.stack(parametric_skills).to(device)
     parametric_parameter_targets = torch.stack(parametric_parameters).to(device)
+    circular_heading_targets = torch.stack(circular_headings).to(device)
     optimizer = torch.optim.Adam(actor.parameters(), lr=1e-3)
     loss = torch.zeros(())
     generator = torch.Generator().manual_seed(seed)
@@ -1408,7 +1454,24 @@ def distill_dynamic_teacher(
         for indices in torch.randperm(samples, generator=generator).split(256):  # type: ignore[no-untyped-call]
             indices = indices.to(device)
             selected = batch.select_batch(indices)
-            if isinstance(actor, ParametricPrimitiveRoleActor):
+            if isinstance(actor, CircularPrimitiveRoleActor):
+                skill_logits, heading, _, intensity_mean, _ = actor(selected)
+                skill_loss = torch.nn.functional.cross_entropy(
+                    skill_logits.reshape(-1, skill_logits.shape[-1]),
+                    parametric_skill_targets[indices].reshape(-1),
+                )
+                # A circular residual, so the loss does not jump across the wrap.
+                heading_loss = (1.0 - torch.cos(heading - circular_heading_targets[indices])).mean()
+                intensity_loss = (
+                    (
+                        torch.tanh(intensity_mean).squeeze(-1)
+                        - parametric_parameter_targets[indices][..., 2]
+                    )
+                    .square()
+                    .mean()
+                )
+                loss = skill_loss + heading_loss + intensity_loss
+            elif isinstance(actor, ParametricPrimitiveRoleActor):
                 skill_logits, parameter_mean, _ = actor(selected)
                 skill_loss = torch.nn.functional.cross_entropy(
                     skill_logits.reshape(-1, skill_logits.shape[-1]),
@@ -1439,7 +1502,7 @@ def distill_dynamic_teacher(
                     mean.reshape(-1, mean.shape[-1]),
                     lattice_labels.reshape(-1),
                 )
-            elif not isinstance(actor, ParametricPrimitiveRoleActor):
+            elif not isinstance(actor, (ParametricPrimitiveRoleActor, CircularPrimitiveRoleActor)):
                 loss = (torch.tanh(mean) - targets[indices]).square().mean()
             optimizer.zero_grad(set_to_none=True)
             loss.backward()  # type: ignore[no-untyped-call]

@@ -35,11 +35,12 @@ SHALL inform the reachability model that selects a strike intercept.
 - **WHEN** a teacher demonstrates full authority
 - **THEN** its distillation target lies inside the interval the policy can express
 
-#### Scenario: Reduced authority selects a reachable intercept
+#### Scenario: Reduced authority informs intercept selection
 
 - **GIVEN** a moving ball and a request below full authority
 - **WHEN** the executor selects a strike intercept
-- **THEN** the selected point is reachable at the requested authority
+- **THEN** reachability is judged at the requested authority rather than at full speed
+- **AND** full authority reproduces the selection made before authority was consulted
 
 ### Requirement: Heading contract is recorded
 

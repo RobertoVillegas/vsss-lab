@@ -44,7 +44,8 @@ export interface TrainingMetric {
     iterations_per_second?: number;
   };
   exploration?: {
-    kind?: "gaussian" | "categorical" | "hybrid";
+    kind?: "gaussian" | "categorical" | "hybrid" | "circular";
+    heading_concentration?: number | null;
     actor_log_std?: number[];
     entropy?: number;
     normalized_entropy?: number;

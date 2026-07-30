@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import random
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -11,7 +12,7 @@ import numpy as np
 import torch
 from tensordict import TensorDict
 from torch import Tensor, nn
-from torch.distributions import Categorical, Normal
+from torch.distributions import Categorical, Normal, VonMises
 
 from vsss_train.ablations import (
     EntityAttentionActor,
@@ -22,6 +23,7 @@ from vsss_train.ablations import (
 from vsss_train.config import MarlConfig
 from vsss_train.marl import (
     CentralizedCritic,
+    CircularPrimitiveRoleActor,
     LocalCritic,
     ParametricPrimitiveRoleActor,
     PrimitiveRoleActor,
@@ -38,6 +40,7 @@ PolicyActor = (
     | RoleSharedActor
     | PrimitiveRoleActor
     | ParametricPrimitiveRoleActor
+    | CircularPrimitiveRoleActor
     | RecurrentSharedActor
     | EntityAttentionActor
     | LatticeSharedActor
@@ -115,6 +118,32 @@ def bounded_action_log_prob(distribution: Normal, action: Tensor) -> Tensor:
     return cast(
         Tensor,
         (distribution.log_prob(latent) - correction).sum(-1),  # type: ignore[no-untyped-call]
+    )
+
+
+def von_mises_entropy(concentration: Tensor) -> Tensor:
+    """Return the differential entropy of a von Mises heading, per element.
+
+    Torch does not implement it, and the naive form overflows for a concentrated
+    heading, so this uses the exponentially scaled Bessel functions.
+    """
+    scaled_zero = torch.special.i0e(concentration)
+    ratio = torch.special.i1e(concentration) / scaled_zero
+    return cast(
+        Tensor,
+        -concentration * ratio + torch.log(2.0 * math.pi * scaled_zero) + concentration,
+    )
+
+
+def circular_action_log_prob(
+    heading: Tensor,
+    concentration: Tensor,
+    sampled_heading: Tensor,
+) -> Tensor:
+    """Evaluate a von Mises heading in the transported angle domain."""
+    return cast(
+        Tensor,
+        VonMises(heading, concentration).log_prob(sampled_heading),  # type: ignore[no-untyped-call]
     )
 
 
@@ -250,6 +279,10 @@ class MarlLearner:
             "approx_kl": 0.0,
             "clip_fraction": 0.0,
         }
+        if isinstance(self.actor, CircularPrimitiveRoleActor):
+            # Angular precision lives in the concentration, not in log_std, so it has to
+            # be reported for exploration to be readable at all.
+            totals["heading_concentration"] = 0.0
         steps = 0
         generator = torch.Generator().manual_seed(self.config.seed + self.policy_version)
         agents_per_step = self.config.num_envs * 3
@@ -299,6 +332,43 @@ class MarlLearner:
                         skill_distribution.entropy() + parameter_entropy,  # type: ignore[no-untyped-call]
                         sample_active,
                     )
+                elif isinstance(self.actor, CircularPrimitiveRoleActor):
+                    (
+                        skill_logits,
+                        heading,
+                        concentration,
+                        intensity_mean,
+                        intensity_log_std,
+                    ) = self.actor(sample_observation)
+                    skill_distribution = Categorical(logits=skill_logits)
+                    intensity_distribution = Normal(intensity_mean, intensity_log_std.exp())
+                    # The transported heading is the sampled angle itself, so it is scored
+                    # directly with no change of variables to invert.
+                    sampled_heading = sample["action"][..., 1] * math.pi
+                    log_probability = (
+                        skill_distribution.log_prob(  # type: ignore[no-untyped-call]
+                            sample["action_index"]
+                        )
+                        + circular_action_log_prob(heading, concentration, sampled_heading)
+                        + bounded_action_log_prob(
+                            intensity_distribution,
+                            sample["action"][..., 2:],
+                        )
+                    )
+                    ratio = (log_probability - sample["sample_log_prob"]).exp()
+                    intensity_entropy = -bounded_action_log_prob(
+                        intensity_distribution,
+                        torch.tanh(intensity_distribution.rsample()),
+                    )
+                    entropy = _masked_mean(
+                        skill_distribution.entropy()  # type: ignore[no-untyped-call]
+                        + von_mises_entropy(concentration)
+                        + intensity_entropy,
+                        sample_active,
+                    )
+                    totals["heading_concentration"] += float(
+                        _masked_mean(concentration, sample_active).detach()
+                    )
                 elif isinstance(self.actor, RecurrentSharedActor):
                     mean, log_std, _ = self.actor.forward_with_state(
                         sample_observation,
@@ -308,7 +378,12 @@ class MarlLearner:
                     mean, log_std = self.actor(sample_observation)
                 if not isinstance(
                     self.actor,
-                    (LatticeSharedActor, PrimitiveRoleActor, ParametricPrimitiveRoleActor),
+                    (
+                        LatticeSharedActor,
+                        PrimitiveRoleActor,
+                        ParametricPrimitiveRoleActor,
+                        CircularPrimitiveRoleActor,
+                    ),
                 ):
                     distribution = Normal(mean, log_std.exp())
                     log_probability = bounded_action_log_prob(distribution, sample["action"])
@@ -367,7 +442,7 @@ class MarlLearner:
         result = {name: value / steps for name, value in totals.items()}
         metric_action = (
             data["action"][..., 1:]
-            if self.config.action_parser == "parametric_primitive"
+            if self.config.action_parser in ("parametric_primitive", "circular_primitive")
             else data["action"]
         )
         # Absent roster slots still emit tokens the parser discards, so reporting them
@@ -525,6 +600,12 @@ def _build_actor(config: MarlConfig) -> PolicyActor:
         return LatticeSharedActor(config.hidden_size)
     if config.action_parser == "primitive":
         return PrimitiveRoleActor(
+            config.hidden_size,
+            activation=config.network_activation,
+            layer_norm=config.layer_norm,
+        )
+    if config.action_parser == "circular_primitive":
+        return CircularPrimitiveRoleActor(
             config.hidden_size,
             activation=config.network_activation,
             layer_norm=config.layer_norm,

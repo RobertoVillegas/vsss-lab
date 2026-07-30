@@ -10,7 +10,11 @@ import torch
 from numpy.typing import NDArray
 from torch import Tensor, nn
 
-from vsss_train.primitives import ParametricPrimitiveSet, SoccerPrimitiveSet
+from vsss_train.primitives import (
+    CircularPrimitiveSet,
+    ParametricPrimitiveSet,
+    SoccerPrimitiveSet,
+)
 from vsss_train.roles import RoleAssignment, assign_roles, role_features
 
 FloatArray = NDArray[np.float32]
@@ -402,6 +406,65 @@ class ParametricPrimitiveRoleActor(RoleSharedActor):
         return ParametricPrimitiveSet.encode(
             logits.argmax(dim=-1),
             torch.tanh(parameter_mean),
+        )
+
+
+MINIMUM_CONCENTRATION = 0.25
+
+
+class CircularPrimitiveRoleActor(RoleSharedActor):
+    """Role-aware hybrid policy over skills, a circular heading, and bounded intensity.
+
+    The heading is a direction on the circle with its own per-state concentration, so
+    angular precision does not depend on the direction requested and does not compete
+    with the intensity deviation for one shared parameter.
+    """
+
+    def __init__(
+        self,
+        hidden_size: int = 64,
+        *,
+        activation: str = "tanh",
+        layer_norm: bool = False,
+    ) -> None:
+        super().__init__(
+            hidden_size,
+            activation=activation,
+            layer_norm=layer_norm,
+        )
+        self.skill_head = nn.Linear(hidden_size, CircularPrimitiveSet.action_count)
+        self.heading_head = nn.Linear(hidden_size, 2)
+        self.concentration_head = nn.Linear(hidden_size, 1)
+        self.intensity_head = nn.Linear(hidden_size, 1)
+        del self.action_head
+        del self.log_std
+        self.log_std = nn.Parameter(torch.full((1,), -0.5))
+
+    def forward(  # type: ignore[override]
+        self,
+        observation: TeamBatch,
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+        encoded = self.encode(observation)
+        heading = self.heading_head(encoded)
+        # atan2 is scale-invariant, so the radial component of this pair carries no
+        # gradient and cannot silently act as a concentration the entropy bonus misses.
+        # Intensity keeps a trailing axis of one so that summing a bounded log
+        # probability over parameters cannot silently sum over agents instead.
+        return (
+            self.skill_head(encoded),
+            torch.atan2(heading[..., 1], heading[..., 0]),
+            MINIMUM_CONCENTRATION
+            + nn.functional.softplus(self.concentration_head(encoded).squeeze(-1)),
+            self.intensity_head(encoded),
+            self.log_std.expand(*encoded.shape[:-1], 1),
+        )
+
+    def deterministic_action(self, observation: TeamBatch) -> Tensor:
+        logits, heading, _, intensity_mean, _ = self(observation)
+        return CircularPrimitiveSet.encode(
+            logits.argmax(dim=-1),
+            heading,
+            torch.tanh(intensity_mean).squeeze(-1),
         )
 
 

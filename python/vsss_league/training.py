@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import torch
 from tensordict import TensorDict
-from torch.distributions import Categorical, Normal
+from torch.distributions import Categorical, Normal, VonMises
 from vsss_train.ablations import (
     LatticeSharedActor,
     RecurrentSharedActor,
@@ -18,6 +19,7 @@ from vsss_train.ablations import (
 )
 from vsss_train.config import MarlConfig
 from vsss_train.marl import (
+    CircularPrimitiveRoleActor,
     ParametricPrimitiveRoleActor,
     PrimitiveRoleActor,
     TeamBatch,
@@ -31,9 +33,14 @@ from vsss_train.marl_ppo import (
     PolicyActor,
     TeamTrajectory,
     TrajectoryMetadata,
+    circular_action_log_prob,
     sample_bounded_action,
 )
-from vsss_train.primitives import ParametricPrimitiveSet, SoccerPrimitiveSet
+from vsss_train.primitives import (
+    CircularPrimitiveSet,
+    ParametricPrimitiveSet,
+    SoccerPrimitiveSet,
+)
 from vsss_train.scenarios import Scenario, ScenarioCurriculum, load_suite
 from vsss_train.semantic_scenarios import (
     SemanticScenario,
@@ -296,6 +303,33 @@ def collect_self_play_trajectory(
                     + parameter_log_probability
                 )
                 action_indices.append(action_index)
+            elif isinstance(learner.actor, CircularPrimitiveRoleActor):
+                (
+                    skill_logits,
+                    heading,
+                    concentration,
+                    intensity_mean,
+                    intensity_log_std,
+                ) = learner.actor(policy_observation)
+                categorical = Categorical(logits=skill_logits)
+                heading_distribution = VonMises(heading, concentration)
+                intensity_distribution = Normal(intensity_mean, intensity_log_std.exp())
+                action_index = categorical.sample()  # type: ignore[no-untyped-call]
+                sampled_heading = heading_distribution.sample()  # type: ignore[no-untyped-call]
+                intensity, intensity_log_probability = sample_bounded_action(intensity_distribution)
+                action = CircularPrimitiveSet.encode(
+                    action_index,
+                    sampled_heading,
+                    intensity.squeeze(-1),
+                )
+                log_probability = (
+                    categorical.log_prob(  # type: ignore[no-untyped-call]
+                        action_index
+                    )
+                    + circular_action_log_prob(heading, concentration, sampled_heading)
+                    + intensity_log_probability
+                )
+                action_indices.append(action_index)
             elif isinstance(learner.actor, RecurrentSharedActor):
                 if recurrent_state is None:
                     raise AssertionError("recurrent actor requires recurrent state")
@@ -308,7 +342,12 @@ def collect_self_play_trajectory(
                 mean, log_std = learner.actor(policy_observation)
             if not isinstance(
                 learner.actor,
-                (LatticeSharedActor, PrimitiveRoleActor, ParametricPrimitiveRoleActor),
+                (
+                    LatticeSharedActor,
+                    PrimitiveRoleActor,
+                    ParametricPrimitiveRoleActor,
+                    CircularPrimitiveRoleActor,
+                ),
             ):
                 distribution = Normal(mean, log_std.exp())
                 action, log_probability = sample_bounded_action(distribution)
@@ -651,9 +690,11 @@ def train_iteration(
 
 
 def _policy_stats(trajectory: TeamTrajectory, action_parser: str) -> dict[str, object] | None:
-    if action_parser not in ("primitive", "parametric_primitive") or (
-        "action_index" not in trajectory.data.keys()
-    ):
+    if action_parser not in (
+        "primitive",
+        "parametric_primitive",
+        "circular_primitive",
+    ) or ("action_index" not in trajectory.data.keys()):
         return None
     # Absent roster slots emit tokens the parser discards; averaging them would report
     # untrained noise from robots that are not on the field.
@@ -661,23 +702,39 @@ def _policy_stats(trajectory: TeamTrajectory, action_parser: str) -> dict[str, o
     indices = trajectory.data["action_index"].detach().cpu()[active].reshape(-1)
     action_count = (
         ParametricPrimitiveSet.action_count
-        if action_parser == "parametric_primitive"
+        if action_parser in ("parametric_primitive", "circular_primitive")
         else SoccerPrimitiveSet.action_count
     )
     counts = torch.bincount(indices, minlength=action_count)
     total = max(1, int(counts.sum()))
     action = trajectory.data["action"].detach().cpu()
+    intensity_channel = (
+        3
+        if action_parser == "parametric_primitive"
+        else 2
+        if action_parser == "circular_primitive"
+        else None
+    )
     direction_change_mean_degrees: float | None = None
     direction_change_p95_degrees: float | None = None
+    decided = trajectory.data["action_index"].detach().cpu() != 0
+    continued = ~(trajectory.data["terminated"] | trajectory.data["truncated"]).detach().cpu()
+    if action_parser == "circular_primitive" and len(trajectory.data) > 1:
+        headings = action[..., 1] * math.pi
+        # A circular residual, so a heading that wraps is not reported as a reversal.
+        wrapped = torch.remainder(headings[1:] - headings[:-1] + math.pi, 2.0 * math.pi) - math.pi
+        moving = decided[1:] & decided[:-1] & active[1:] & active[:-1] & continued[:-1]
+        changes = torch.rad2deg(wrapped[moving].abs())
+        if changes.numel():
+            direction_change_mean_degrees = float(changes.mean())
+            direction_change_p95_degrees = float(torch.quantile(changes, 0.95))
     if action_parser == "parametric_primitive" and len(trajectory.data) > 1:
         vectors = action[..., 1:3]
         normalized = torch.nn.functional.normalize(vectors, dim=-1)
         dots = (normalized[1:] * normalized[:-1]).sum(dim=-1).clamp(-1.0, 1.0)
-        decided = trajectory.data["action_index"].detach().cpu() != 0
         # A near-zero direction vector normalizes to zero, which acos would report as an
         # exact right angle, and a step that ended its episode has no successor heading.
         directed = vectors.norm(dim=-1) > 1e-3
-        continued = ~(trajectory.data["terminated"] | trajectory.data["truncated"]).detach().cpu()
         moving = (
             decided[1:]
             & decided[:-1]
@@ -697,17 +754,17 @@ def _policy_stats(trajectory: TeamTrajectory, action_parser: str) -> dict[str, o
         "stop_fraction": int(counts[0]) / total,
         "navigate_fraction": (
             int(counts[1]) / total
-            if action_parser == "parametric_primitive"
+            if action_parser in ("parametric_primitive", "circular_primitive")
             else int(counts[1:9].sum()) / total
         ),
         "strike_fraction": (
             int(counts[2]) / total
-            if action_parser == "parametric_primitive"
+            if action_parser in ("parametric_primitive", "circular_primitive")
             else int(counts[9:17].sum()) / total
         ),
         "mean_intensity": (
-            float(((action[..., 3][active] + 1.0) * 0.5).mean())
-            if action_parser == "parametric_primitive"
+            float(((action[..., intensity_channel][active] + 1.0) * 0.5).mean())
+            if intensity_channel is not None
             else None
         ),
         "direction_change_mean_degrees": direction_change_mean_degrees,

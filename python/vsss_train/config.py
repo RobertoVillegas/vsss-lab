@@ -82,9 +82,13 @@ class MarlConfig:
     schema_version: int = 1
     algorithm: Literal["ippo", "mappo"] = "mappo"
     policy_architecture: Literal["mlp", "gru", "attention", "role_mlp"] = "mlp"
-    action_parser: Literal["continuous", "lattice", "primitive", "parametric_primitive"] = (
-        "continuous"
-    )
+    action_parser: Literal[
+        "continuous",
+        "lattice",
+        "primitive",
+        "parametric_primitive",
+        "circular_primitive",
+    ] = "continuous"
     adaptive_curriculum: bool = False
     semantic_curriculum: bool = False
     semantic_phased_curriculum: bool = False
@@ -171,16 +175,18 @@ class MarlConfig:
             "lattice",
             "primitive",
             "parametric_primitive",
+            "circular_primitive",
         ):
             raise ValueError(
-                "action_parser must be continuous, lattice, primitive, or parametric_primitive"
+                "action_parser must be continuous, lattice, primitive, "
+                "parametric_primitive, or circular_primitive"
             )
         if self.network_activation not in ("tanh", "relu"):
             raise ValueError("network_activation must be tanh or relu")
         if self.action_parser == "lattice" and self.policy_architecture != "mlp":
             raise ValueError("lattice ablation currently requires the MLP architecture")
         if (
-            self.action_parser in ("primitive", "parametric_primitive")
+            self.action_parser in ("primitive", "parametric_primitive", "circular_primitive")
             and self.policy_architecture != "role_mlp"
         ):
             raise ValueError("primitive actions require the role_mlp architecture")

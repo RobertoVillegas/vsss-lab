@@ -505,7 +505,7 @@ def _run(arguments: argparse.Namespace) -> None:
             actor_log_std = tuple(
                 float(value) for value in learner.actor.log_std.detach().cpu().tolist()
             )
-            exploration = (
+            exploration: dict[str, Any] = (
                 {
                     "kind": "categorical",
                     "entropy": result.losses["entropy"],
@@ -519,6 +519,15 @@ def _run(arguments: argparse.Namespace) -> None:
                     "kind": "hybrid",
                     "actor_log_std": actor_log_std,
                     "entropy": result.losses["entropy"],
+                }
+            if config.action_parser == "circular_primitive":
+                # Angular exploration lives in the concentration, not in log_std, which
+                # here covers intensity alone.
+                exploration = {
+                    "kind": "circular",
+                    "actor_log_std": actor_log_std,
+                    "entropy": result.losses["entropy"],
+                    "heading_concentration": result.losses.get("heading_concentration"),
                 }
             metric_record = {
                 **asdict(result),

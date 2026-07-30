@@ -1,6 +1,6 @@
 # ADR 0014: Circular heading parameterization
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-07-30
 
 ## Context
@@ -65,6 +65,23 @@ which heading contract they were trained under.
 - **Keep the pair and add a per-state deviation head.** Fixes state dependence but
   leaves precision heading-dependent, so the axis-aligned strike stays the worst
   case.
+
+## Scope learned during implementation
+
+Two claims in the first draft were narrower than written.
+
+Continuity across the wrap belongs to the requested heading, not to the executed
+wheels. Reversing by exactly half a turn is a genuine tie for a differential drive,
+and `go_to_target` breaks it by the sign of the heading error, which flips at ±π.
+The token, the decoded direction, and the target are continuous; the tie-break is
+not, and it is not this contract's business.
+
+Letting authority inform intercept selection changes the choice only where full
+authority would have committed early. When no candidate is reachable at any
+authority, the executor still falls through to the furthest prediction, so a very
+slow request can still chase a point it cannot reach. Changing that fallback is a
+control decision needing its own trajectory evidence, and is recorded as an open
+task rather than decided here.
 
 ## Consequences
 

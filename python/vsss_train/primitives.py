@@ -120,6 +120,143 @@ class ParametricPrimitiveSet:
         )
 
 
+class CircularPrimitiveSet:
+    """Stop, navigate, and strike with a circular heading and bounded intensity.
+
+    The heading travels as an angle rather than as a bounded vector pair, so the
+    precision a policy can request does not depend on the direction it requests.
+    """
+
+    action_count = 3
+    skill_labels = ("stop", "navigate", "strike")
+    token_width = 3
+
+    @classmethod
+    def encode(cls, skill_indices: Tensor, headings: Tensor, intensities: Tensor) -> Tensor:
+        """Encode categorical skills, a heading in radians, and a bounded intensity."""
+        if skill_indices.dtype not in (torch.int32, torch.int64):
+            raise ValueError("circular primitive skills must be integer indices")
+        if headings.shape != skill_indices.shape or intensities.shape != skill_indices.shape:
+            raise ValueError("circular primitive heading and intensity must match the skills")
+        if bool(torch.any(skill_indices < 0)) or bool(torch.any(skill_indices >= cls.action_count)):
+            raise ValueError("circular primitive skill index out of range")
+        skill = skill_indices.to(torch.float32) - 1.0
+        wrapped = torch.remainder(headings + math.pi, 2.0 * math.pi) - math.pi
+        return torch.stack(
+            (skill, wrapped / math.pi, intensities.clamp(-1.0, 1.0)),
+            dim=-1,
+        )
+
+    @classmethod
+    def decode(cls, token: FloatArray) -> ParametricPrimitiveCommand:
+        """Decode a bounded transport token into physical controller parameters."""
+        if token.shape != (3,):
+            raise ValueError("circular primitive token must contain skill, heading, and intensity")
+        skill_index = int(np.clip(round(float(token[0]) + 1.0), 0, 2))
+        return ParametricPrimitiveCommand(
+            cls.skill_labels[skill_index],
+            float(np.clip(token[1], -1.0, 1.0)) * math.pi,
+            float(np.clip((token[2] + 1.0) * 0.5, 0.0, 1.0)),
+        )
+
+
+def circular_primitive_wheel_actions(
+    state: FloatArray,
+    *,
+    team: int,
+    tokens: FloatArray,
+    ball_deceleration: float = 0.8,
+) -> FloatArray:
+    """Execute a circular heading at the requested authority."""
+    if tokens.shape != (3, 3):
+        raise ValueError("circular primitive team actions must have shape (3, 3)")
+    if ball_deceleration <= 0.0:
+        raise ValueError("ball deceleration must be positive")
+    result = np.zeros((3, 2), dtype=np.float32)
+    offset = 0 if team == 0 else 3
+    for local_slot, token in enumerate(tokens):
+        slot = offset + local_slot
+        if not bool(float(state[ROBOT_BASE + slot * ROBOT_WIDTH + 10])):
+            continue
+        command = CircularPrimitiveSet.decode(token)
+        if command.skill == "stop" or command.intensity <= 1e-4:
+            continue
+        sign = 1.0 if team == 0 else -1.0
+        direction = (sign * math.cos(command.direction), sign * math.sin(command.direction))
+        pose = robot_pose(state, slot)
+        if command.skill == "navigate":
+            target = (pose[0] + 0.4 * direction[0], pose[1] + 0.4 * direction[1])
+            arrival_scale = 1.0
+        else:
+            target = _strike_target(
+                state,
+                pose,
+                direction,
+                ball_deceleration=ball_deceleration,
+                authority=command.intensity,
+            )
+            ball = np.asarray(state[5:7], dtype=np.float64)
+            target_vector = np.asarray(target, dtype=np.float64) - ball
+            arrival_scale = 1.0 if float(np.dot(target_vector, direction)) > 0.0 else 0.72
+        wheels = go_to_target(pose, target)
+        result[local_slot] = wheels * np.float32(command.intensity * arrival_scale)
+    return result
+
+
+def describe_circular_primitive_actions(
+    state: FloatArray,
+    *,
+    team: int,
+    tokens: FloatArray,
+) -> list[dict[str, object]]:
+    """Describe circular intent for replay inspection, at the executed authority."""
+    if tokens.shape != (3, 3):
+        raise ValueError("circular primitive team actions must have shape (3, 3)")
+    offset = 0 if team == 0 else 3
+    descriptions: list[dict[str, object]] = []
+    for local_slot, token in enumerate(tokens):
+        slot = offset + local_slot
+        command = CircularPrimitiveSet.decode(token)
+        pose = robot_pose(state, slot)
+        sign = 1.0 if team == 0 else -1.0
+        direction = (
+            (sign * math.cos(command.direction), sign * math.sin(command.direction))
+            if command.skill != "stop"
+            else (0.0, 0.0)
+        )
+        if command.skill == "stop":
+            target = (pose[0], pose[1])
+            phase = "stop"
+        elif command.skill == "navigate":
+            target = (pose[0] + 0.4 * direction[0], pose[1] + 0.4 * direction[1])
+            phase = "navigate"
+        else:
+            target = _strike_target(
+                state,
+                pose,
+                direction,
+                ball_deceleration=0.8,
+                authority=command.intensity,
+            )
+            ball = np.asarray(state[5:7], dtype=np.float64)
+            forward = float(np.dot(np.asarray(target, dtype=np.float64) - ball, direction)) > 0.0
+            phase = "strike" if forward else "acquire"
+        descriptions.append(
+            {
+                "skill": command.skill,
+                "phase": phase,
+                "direction": f"{math.degrees(command.direction):+.1f}°",
+                "direction_radians": command.direction,
+                "direction_index": None,
+                "intensity": command.intensity,
+                "target": {"x": float(target[0]), "y": float(target[1])},
+                "exit_direction": {"x": direction[0], "y": direction[1]},
+                "ball_distance": float(math.dist((pose[0], pose[1]), (state[5], state[6]))),
+            }
+        )
+    return descriptions
+
+
 def canonical_direction(index: int, team: int) -> tuple[float, float]:
     """Return one eight-way direction reflected into the team's world frame."""
     if not 0 <= index < SoccerPrimitiveSet.directions:
@@ -331,8 +468,13 @@ def _strike_target(
     direction: tuple[float, float],
     *,
     ball_deceleration: float,
+    authority: float = 1.0,
 ) -> tuple[float, float]:
-    """Select a reachable behind-ball point, then drive through contact."""
+    """Select a reachable behind-ball point, then drive through contact.
+
+    Reachability is judged at the authority the caller will actually execute, so a
+    reduced-intensity request cannot select an intercept it can never arrive at.
+    """
     ball = np.asarray(state[5:7], dtype=np.float64)
     velocity = np.asarray(state[7:9], dtype=np.float64)
     robot = np.asarray(pose[:2], dtype=np.float64)
@@ -340,8 +482,9 @@ def _strike_target(
     contact_offset = 0.10
     selected_ball = ball
     selected_acquisition = ball - contact_offset * exit_direction
-    maximum_robot_speed = 0.62
-    maximum_turn_rate = 5.0
+    scale = max(1e-3, float(authority))
+    maximum_robot_speed = 0.62 * scale
+    maximum_turn_rate = 5.0 * scale
     heading = np.asarray((math.cos(pose[2]), math.sin(pose[2])), dtype=np.float64)
 
     for elapsed in np.linspace(0.0, 0.6, 7):

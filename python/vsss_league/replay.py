@@ -18,6 +18,7 @@ from vsss_train.ablations import (
     RecurrentState,
 )
 from vsss_train.marl import (
+    CircularPrimitiveRoleActor,
     ParametricPrimitiveRoleActor,
     PrimitiveRoleActor,
     RoleSharedActor,
@@ -26,8 +27,10 @@ from vsss_train.marl import (
 )
 from vsss_train.marl_env import MarlMatchEnv, _goal_geometry_metrics
 from vsss_train.primitives import (
+    CircularPrimitiveSet,
     ParametricPrimitiveSet,
     SoccerPrimitiveSet,
+    describe_circular_primitive_actions,
     describe_parametric_primitive_actions,
     describe_primitive_actions,
 )
@@ -50,6 +53,7 @@ def run_policy_replay(
     | RoleSharedActor
     | PrimitiveRoleActor
     | ParametricPrimitiveRoleActor
+    | CircularPrimitiveRoleActor
     | RecurrentSharedActor
     | EntityAttentionActor
     | LatticeSharedActor,
@@ -57,6 +61,7 @@ def run_policy_replay(
     | RoleSharedActor
     | PrimitiveRoleActor
     | ParametricPrimitiveRoleActor
+    | CircularPrimitiveRoleActor
     | RecurrentSharedActor
     | EntityAttentionActor
     | LatticeSharedActor
@@ -167,8 +172,13 @@ def run_policy_replay(
                             **execution,
                             **yellow_policy_intents[slot],
                         }
-            elif action_parser == "parametric_primitive":
-                blue_execution = describe_parametric_primitive_actions(
+            elif action_parser in ("parametric_primitive", "circular_primitive"):
+                describe = (
+                    describe_parametric_primitive_actions
+                    if action_parser == "parametric_primitive"
+                    else describe_circular_primitive_actions
+                )
+                blue_execution = describe(
                     environment.state,
                     team=0,
                     tokens=blue_action,
@@ -176,7 +186,7 @@ def run_policy_replay(
                 for slot, execution in enumerate(blue_execution):
                     policy_intents[slot] = {**execution, **blue_policy_intents[slot]}
                 if yellow_action is not None:
-                    yellow_execution = describe_parametric_primitive_actions(
+                    yellow_execution = describe(
                         environment.state,
                         team=1,
                         tokens=yellow_action,
@@ -365,6 +375,7 @@ def _initial_recurrent(
     | RoleSharedActor
     | PrimitiveRoleActor
     | ParametricPrimitiveRoleActor
+    | CircularPrimitiveRoleActor
     | RecurrentSharedActor
     | EntityAttentionActor
     | LatticeSharedActor,
@@ -380,6 +391,7 @@ def _policy_action(
     | RoleSharedActor
     | PrimitiveRoleActor
     | ParametricPrimitiveRoleActor
+    | CircularPrimitiveRoleActor
     | RecurrentSharedActor
     | EntityAttentionActor
     | LatticeSharedActor,
@@ -416,6 +428,43 @@ def _policy_action(
                 }
             )
         return SoccerPrimitiveSet.encode(indices).cpu().numpy(), None, intents
+    if isinstance(actor, CircularPrimitiveRoleActor):
+        skill_logits, heading, concentration, intensity_mean, _ = actor(observation)
+        probabilities = torch.softmax(skill_logits, dim=-1)
+        indices = probabilities.argmax(dim=-1)
+        intents = []
+        for agent, index in enumerate(indices.tolist()):
+            top_probabilities, top_indices = probabilities[agent].topk(3)
+            intents.append(
+                {
+                    "action_index": index,
+                    "confidence": float(probabilities[agent, index]),
+                    "concentration": float(concentration[agent]),
+                    "top_actions": [
+                        {
+                            "action_index": candidate,
+                            "label": CircularPrimitiveSet.skill_labels[candidate].upper(),
+                            "probability": float(probability),
+                        }
+                        for candidate, probability in zip(
+                            top_indices.tolist(),
+                            top_probabilities.tolist(),
+                            strict=True,
+                        )
+                    ],
+                }
+            )
+        return (
+            CircularPrimitiveSet.encode(
+                indices,
+                heading,
+                torch.tanh(intensity_mean).squeeze(-1),
+            )
+            .cpu()
+            .numpy(),
+            None,
+            intents,
+        )
     if isinstance(actor, ParametricPrimitiveRoleActor):
         skill_logits, parameter_mean, _ = actor(observation)
         probabilities = torch.softmax(skill_logits, dim=-1)
