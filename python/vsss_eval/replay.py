@@ -14,7 +14,7 @@ def inspect_replay(path: Path) -> dict[str, object]:
     if not lines:
         raise ValueError("empty replay")
     header = json.loads(lines[0])
-    if header.get("type") != "header" or header.get("version") != 1:
+    if header.get("type") != "header" or header.get("version") not in (1, 2):
         raise ValueError("unsupported replay header")
     goals = 0
     last: dict[str, Any] | None = None

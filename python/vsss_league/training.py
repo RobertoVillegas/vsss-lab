@@ -64,6 +64,7 @@ class IterationResult:
     match_outcomes: dict[str, int] = field(default_factory=dict)
     episode_kinds: dict[str, int] = field(default_factory=dict)
     goal_events: dict[str, int] = field(default_factory=dict)
+    policy_stats: dict[str, object] | None = None
 
 
 @dataclass
@@ -598,6 +599,7 @@ def train_iteration(
         session=session,
     )
     losses = learner.optimize(trajectory)
+    policy_stats = _policy_stats(trajectory, learner.config.action_parser)
     if checkpoint is not None:
         learner.save(checkpoint)
     return IterationResult(
@@ -621,7 +623,23 @@ def train_iteration(
         match_outcomes=match_outcomes,
         episode_kinds=episode_kinds,
         goal_events=goal_events,
+        policy_stats=policy_stats,
     )
+
+
+def _policy_stats(trajectory: TeamTrajectory, action_parser: str) -> dict[str, object] | None:
+    if action_parser != "primitive" or "action_index" not in trajectory.data.keys():
+        return None
+    indices = trajectory.data["action_index"].detach().cpu().reshape(-1)
+    counts = torch.bincount(indices, minlength=SoccerPrimitiveSet.action_count)
+    total = max(1, int(counts.sum()))
+    return {
+        "action_parser": "primitive",
+        "action_counts": [int(value) for value in counts.tolist()],
+        "stop_fraction": int(counts[0]) / total,
+        "navigate_fraction": int(counts[1:9].sum()) / total,
+        "strike_fraction": int(counts[9:17].sum()) / total,
+    }
 
 
 def _reset_world(session: RolloutSession, world: int, index: int) -> TeamBatch:

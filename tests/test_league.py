@@ -20,7 +20,7 @@ from vsss_league.tournament import (
 )
 from vsss_league.training import IterationResult, create_rollout_session, train_iteration
 from vsss_train.config import MarlConfig
-from vsss_train.marl import SharedActor
+from vsss_train.marl import PrimitiveRoleActor, SharedActor
 from vsss_train.marl_ppo import MarlLearner
 
 ROOT = Path(__file__).parents[1]
@@ -457,6 +457,36 @@ def test_learned_policy_replay_is_viewer_compatible(tmp_path: Path) -> None:
     records = [json.loads(line) for line in analysis.read_text().splitlines()]
     assert records[0]["policy_visible"] is False
     assert any(record["type"] == "prediction_error" for record in records)
+
+
+def test_primitive_replay_preserves_policy_intent_separately_from_wheels(
+    tmp_path: Path,
+) -> None:
+    replay = tmp_path / "primitive.jsonl"
+    run_policy_replay(
+        PrimitiveRoleActor(hidden_size=8),
+        None,
+        CONFIG,
+        STATE,
+        seed=18,
+        ticks=3,
+        replay_path=replay,
+        blue_policy="primitive@1",
+        yellow_policy="heuristic",
+        action_parser="primitive",
+    )
+    records = [json.loads(line) for line in replay.read_text().splitlines()]
+    assert records[0]["version"] == 2
+    assert records[0]["action_parser"] == "primitive"
+    frame = records[1]
+    assert len(frame["actions"]) == 6
+    assert len(frame["policy_intents"]) == 6
+    intent = frame["policy_intents"][0]
+    assert intent["skill"] in {"stop", "navigate", "strike"}
+    assert 0.0 <= intent["confidence"] <= 1.0
+    assert len(intent["top_actions"]) == 3
+    assert {"phase", "target", "exit_direction", "ball_distance"} <= intent.keys()
+    assert frame["policy_intents"][3:] == [None, None, None]
 
 
 def test_tournament_report_is_byte_reproducible_with_side_switch(tmp_path: Path) -> None:

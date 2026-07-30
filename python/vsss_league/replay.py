@@ -19,6 +19,7 @@ from vsss_train.ablations import (
 )
 from vsss_train.marl import PrimitiveRoleActor, RoleSharedActor, SharedActor, build_team_observation
 from vsss_train.marl_env import MarlMatchEnv, _goal_geometry_metrics
+from vsss_train.primitives import SoccerPrimitiveSet, describe_primitive_actions
 from vsss_train.roles import assign_roles
 from vsss_vision import (
     BallEstimate,
@@ -93,12 +94,13 @@ def run_policy_replay(
     ):
         header: dict[str, Any] = {
             "type": "header",
-            "version": 1,
+            "version": 2,
             "seed": seed,
             "ticks": ticks,
             "config_sha256": hashlib.sha256(config_json.encode()).hexdigest(),
             "config": config,
             "policies": {"blue": blue_policy, "yellow": yellow_policy},
+            "action_parser": action_parser,
         }
         if semantic_context is not None:
             header["semantic_context"] = semantic_context
@@ -118,19 +120,40 @@ def run_policy_replay(
         episode = 0
         while index < ticks:
             with torch.inference_mode():
-                blue_action, blue_recurrent = _policy_action(
+                blue_action, blue_recurrent, blue_policy_intents = _policy_action(
                     blue,
                     observation.to(blue_device),
                     blue_recurrent,
                 )
                 yellow_action: np.ndarray[Any, np.dtype[np.float32]] | None = None
+                yellow_policy_intents: list[dict[str, object]] = []
                 if yellow is not None:
                     yellow_device = next(yellow.parameters()).device
-                    yellow_action, yellow_recurrent = _policy_action(
+                    yellow_action, yellow_recurrent, yellow_policy_intents = _policy_action(
                         yellow,
                         build_team_observation(environment.state, team=1).to(yellow_device),
                         yellow_recurrent,
                     )
+            policy_intents: list[dict[str, object] | None] = [None] * 6
+            if action_parser == "primitive":
+                blue_execution = describe_primitive_actions(
+                    environment.state,
+                    team=0,
+                    tokens=blue_action,
+                )
+                for slot, execution in enumerate(blue_execution):
+                    policy_intents[slot] = {**execution, **blue_policy_intents[slot]}
+                if yellow_action is not None:
+                    yellow_execution = describe_primitive_actions(
+                        environment.state,
+                        team=1,
+                        tokens=yellow_action,
+                    )
+                    for slot, execution in enumerate(yellow_execution):
+                        policy_intents[slot + 3] = {
+                            **execution,
+                            **yellow_policy_intents[slot],
+                        }
             observation, reward, done, info = environment.step(blue_action, yellow_action)
             snapshot = environment.snapshot()
             if int(info["events"]) & 1:
@@ -242,6 +265,7 @@ def run_policy_replay(
                     "index": index,
                     "episode": episode,
                     "actions": actions.tolist(),
+                    "policy_intents": policy_intents,
                     "roles": list(info["roles"]) + list(yellow_roles.roles),
                     "role_changes": list(info["role_changes"]) + list(yellow_roles.changed),
                     "coverage_uncovered": {
@@ -327,10 +351,48 @@ def _policy_action(
     | LatticeSharedActor,
     observation: Any,
     recurrent: RecurrentState | None,
-) -> tuple[np.ndarray[Any, np.dtype[np.float32]], RecurrentState | None]:
+) -> tuple[
+    np.ndarray[Any, np.dtype[np.float32]],
+    RecurrentState | None,
+    list[dict[str, object]],
+]:
+    if isinstance(actor, PrimitiveRoleActor):
+        logits, _ = actor(observation)
+        probabilities = torch.softmax(logits, dim=-1)
+        indices = probabilities.argmax(dim=-1)
+        intents = []
+        for agent, index in enumerate(indices.tolist()):
+            top_probabilities, top_indices = probabilities[agent].topk(3)
+            intents.append(
+                {
+                    "action_index": index,
+                    "confidence": float(probabilities[agent, index]),
+                    "top_actions": [
+                        {
+                            "action_index": candidate,
+                            "label": _primitive_label(candidate),
+                            "probability": float(probability),
+                        }
+                        for candidate, probability in zip(
+                            top_indices.tolist(),
+                            top_probabilities.tolist(),
+                            strict=True,
+                        )
+                    ],
+                }
+            )
+        return SoccerPrimitiveSet.encode(indices).cpu().numpy(), None, intents
     if isinstance(actor, RecurrentSharedActor):
         if recurrent is None:
             raise AssertionError("recurrent actor requires state")
         mean, _, recurrent = actor.forward_with_state(observation, recurrent)
-        return torch.tanh(mean).cpu().numpy(), recurrent
-    return actor.deterministic_action(observation).cpu().numpy(), None
+        return torch.tanh(mean).cpu().numpy(), recurrent, []
+    return actor.deterministic_action(observation).cpu().numpy(), None, []
+
+
+def _primitive_label(index: int) -> str:
+    if index == 0:
+        return "STOP"
+    skill = "NAV" if index <= SoccerPrimitiveSet.directions else "STRIKE"
+    direction = SoccerPrimitiveSet.direction_labels[(index - 1) % SoccerPrimitiveSet.directions]
+    return f"{skill}-{direction}"

@@ -499,6 +499,15 @@ def _run(arguments: argparse.Namespace) -> None:
             actor_log_std = tuple(
                 float(value) for value in learner.actor.log_std.detach().cpu().tolist()
             )
+            exploration = (
+                {
+                    "kind": "categorical",
+                    "entropy": result.losses["entropy"],
+                    "normalized_entropy": result.losses["entropy"] / math.log(17),
+                }
+                if config.action_parser == "primitive"
+                else {"kind": "gaussian", "actor_log_std": actor_log_std}
+            )
             metric_record = {
                 **asdict(result),
                 "environment_steps": total_frames,
@@ -513,7 +522,7 @@ def _run(arguments: argparse.Namespace) -> None:
                     "full_matches_per_second": full_matches_per_second,
                     "iterations_per_second": rate,
                 },
-                "exploration": {"actor_log_std": actor_log_std},
+                "exploration": exploration,
                 "opponent_mixture": dict(opponent_counts),
                 "semantic_evaluation": semantic_evaluation,
             }

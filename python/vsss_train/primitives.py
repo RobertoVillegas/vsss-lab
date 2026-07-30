@@ -29,6 +29,7 @@ class SoccerPrimitiveSet:
 
     directions = 8
     action_count = 1 + 2 * directions
+    direction_labels = ("E", "NE", "N", "NW", "W", "SW", "S", "SE")
 
     @classmethod
     def encode(cls, indices: Tensor) -> Tensor:
@@ -131,6 +132,55 @@ def primitive_wheel_actions(
             )
         result[local_slot] = go_to_target(pose, target)
     return result
+
+
+def describe_primitive_actions(
+    state: FloatArray,
+    *,
+    team: int,
+    tokens: FloatArray,
+) -> list[dict[str, object]]:
+    """Describe the exact deterministic plan used for replay inspection."""
+    if tokens.shape != (3, 2):
+        raise ValueError("primitive team actions must have shape (3, 2)")
+    offset = 0 if team == 0 else 3
+    descriptions: list[dict[str, object]] = []
+    for local_slot, token in enumerate(tokens):
+        slot = offset + local_slot
+        command = SoccerPrimitiveSet.decode(token)
+        pose = robot_pose(state, slot)
+        ball = (float(state[5]), float(state[6]))
+        direction = (
+            canonical_direction(command.direction_index, team)
+            if command.direction_index is not None
+            else (0.0, 0.0)
+        )
+        if command.skill == "stop":
+            target = (pose[0], pose[1])
+            phase = "stop"
+        elif command.skill == "navigate":
+            target = (pose[0] + 0.4 * direction[0], pose[1] + 0.4 * direction[1])
+            phase = "navigate"
+        else:
+            target = _strike_target(state, pose, direction, ball_deceleration=0.8)
+            exit_dot = (target[0] - ball[0]) * direction[0] + (target[1] - ball[1]) * direction[1]
+            phase = "strike" if exit_dot > 0.0 else "acquire"
+        descriptions.append(
+            {
+                "skill": command.skill,
+                "direction_index": command.direction_index,
+                "direction": (
+                    SoccerPrimitiveSet.direction_labels[command.direction_index]
+                    if command.direction_index is not None
+                    else None
+                ),
+                "phase": phase,
+                "target": {"x": target[0], "y": target[1]},
+                "exit_direction": {"x": direction[0], "y": direction[1]},
+                "ball_distance": math.hypot(pose[0] - ball[0], pose[1] - ball[1]),
+            }
+        )
+    return descriptions
 
 
 def _strike_target(
