@@ -240,6 +240,13 @@ def _run(arguments: argparse.Namespace) -> None:
     completed = 0
     total_frames = 0
     total_matches = 0
+    total_match_outcomes = {"win": 0, "draw": 0, "loss": 0}
+    total_goal_events = {
+        "full_match_for": 0,
+        "full_match_against": 0,
+        "skill_for": 0,
+        "skill_against": 0,
+    }
     started_at = time.monotonic()
     rollout_session = create_rollout_session(config, config_json, state_json)
     curriculum_state_path = run_dir / "semantic-curriculum.json"
@@ -395,7 +402,7 @@ def _run(arguments: argparse.Namespace) -> None:
                 phase_before = rollout_session.semantic_curriculum.phase_name
                 phase_advanced = rollout_session.semantic_curriculum.observe_holdout_rates(
                     family_rates,
-                    behavior_eligible=behavior_gate_passed and match_gate_passed,
+                    behavior_eligible=behavior_gate_passed,
                 )
                 semantic_evaluation = {
                     "iteration": iteration,
@@ -457,6 +464,7 @@ def _run(arguments: argparse.Namespace) -> None:
                 elif (
                     candidate_score < previous_score
                     and semantic_evaluation_count > config.semantic_regression_warmup_evaluations
+                    and (not config.semantic_phased_curriculum or phase_before == "integration")
                 ):
                     semantic_regressions += 1
                     if (
@@ -477,10 +485,15 @@ def _run(arguments: argparse.Namespace) -> None:
             completed += 1
             total_frames += result.frames
             total_matches += result.matches
+            for name, value in result.match_outcomes.items():
+                total_match_outcomes[name] += value
+            for name, value in result.goal_events.items():
+                total_goal_events[name] += value
             elapsed = time.monotonic() - started_at
             rate = completed / elapsed
             frame_rate = total_frames / elapsed
             matches_per_second = total_matches / elapsed
+            full_matches_per_second = sum(total_match_outcomes.values()) / elapsed
             actor_log_std = tuple(
                 float(value) for value in learner.actor.log_std.detach().cpu().tolist()
             )
@@ -488,9 +501,14 @@ def _run(arguments: argparse.Namespace) -> None:
                 **asdict(result),
                 "environment_steps": total_frames,
                 "total_matches": total_matches,
+                "total_full_matches": sum(total_match_outcomes.values()),
+                "total_match_outcomes": total_match_outcomes,
+                "total_goal_events": total_goal_events,
                 "performance": {
                     "frames_per_second": frame_rate,
+                    "episodes_per_second": matches_per_second,
                     "matches_per_second": matches_per_second,
+                    "full_matches_per_second": full_matches_per_second,
                     "iterations_per_second": rate,
                 },
                 "exploration": {"actor_log_std": actor_log_std},

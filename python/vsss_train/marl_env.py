@@ -409,6 +409,7 @@ class VectorMarlMatchEnv:
         self._action_delta = np.zeros((num_envs, 3, 2), dtype=np.float32)
         self._native_actions = np.zeros((num_envs, 6, 2), dtype=np.float32)
         self._events = np.zeros(num_envs, dtype=np.int64)
+        self._episode_goal_events = np.zeros(num_envs, dtype=np.int64)
         self._goal_grace_remaining = np.full(num_envs, -1, dtype=np.int64)
         self._defensive_distance = np.zeros(num_envs, dtype=np.float32)
         self._stagnation_anchor = np.zeros((num_envs, 2), dtype=np.float32)
@@ -457,6 +458,7 @@ class VectorMarlMatchEnv:
         self._initial_closest[world] = self._closest[world]
         self._previous_blue_actions[world].fill(0.0)
         self._goal_grace_remaining[world] = -1
+        self._episode_goal_events[world] = 0
         self._defensive_distance[world] = _defensive_distance(
             self.states[world], self._config, team
         )
@@ -605,6 +607,7 @@ class VectorMarlMatchEnv:
             self.opponent_deadlocks[world] += metric.opponent_deadlocks
             self.contact_escapes[world] += metric.escapes
         newly_scored = ((events & 0b11) != 0) & (self._goal_grace_remaining < 0)
+        self._episode_goal_events[newly_scored] = events[newly_scored] & 0b11
         self._goal_grace_remaining[newly_scored] = round(
             float(self._config["reset"]["goal_pause"]) / self._decision_period
         )
@@ -767,7 +770,9 @@ class VectorMarlMatchEnv:
         # Episode completion and value-bootstrap termination have different
         # semantics for timeouts. Never alias them: the collector may mark a
         # skill timeout as truncated without cancelling the required reset.
-        return observations, rewards, done, events, done.copy()
+        reported_events = events.copy()
+        reported_events[goal_complete] |= self._episode_goal_events[goal_complete]
+        return observations, rewards, done, reported_events, done.copy()
 
     def mark_progress_origin(self) -> None:
         self._initial_closest = self._closest.copy()

@@ -171,9 +171,9 @@ class TrainingDashboard:
             ),
         )
         table.add_row(
-            "matches",
+            "episodes (all)",
             f"{self._matches:,}",
-            f"{self._match_rate:.2f} matches/s",
+            f"{self._match_rate:.2f} episodes/s",
         )
         table.add_row(
             "return",
@@ -194,6 +194,21 @@ class TrainingDashboard:
             table.add_row(
                 "full matches W/D/L",
                 " / ".join(str(match_counts.get(name, 0)) for name in ("win", "draw", "loss")),
+                "",
+            )
+            episode_kinds = latest.episode_kinds
+            table.add_row(
+                "completed full / skill",
+                f"{episode_kinds.get('full_match', 0)} / {episode_kinds.get('skill', 0)}",
+                "",
+            )
+            goals = latest.goal_events
+            table.add_row(
+                "goals full F/A · skill F/A",
+                (
+                    f"{goals.get('full_match_for', 0)}/{goals.get('full_match_against', 0)}"
+                    f" · {goals.get('skill_for', 0)}/{goals.get('skill_against', 0)}"
+                ),
                 "",
             )
         table.add_row(

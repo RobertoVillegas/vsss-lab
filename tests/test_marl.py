@@ -9,6 +9,7 @@ import torch
 from tensordict import TensorDict
 from torch.distributions import Normal
 from vsss_env._native import BatchSimulator
+from vsss_league.training import create_rollout_session
 from vsss_train.config import MarlConfig, load_marl_config
 from vsss_train.marl import (
     CentralizedCritic,
@@ -78,6 +79,43 @@ def test_team_gae_never_crosses_an_episode_reset() -> None:
     )
 
     assert advantage[:, 0].tolist() == pytest.approx([0.0, 0.0, 1.8])
+
+
+def test_vector_environment_reports_latched_goal_when_grace_period_finishes() -> None:
+    config = json.loads(CONFIG)
+    config["reset"]["goal_pause"] = 0.04
+    snapshot = json.loads(STATE)
+    snapshot["ball"].update(x=0.72, y=0.0, vx=1.0, vy=0.0)
+    training_config = MarlConfig(
+        device="cpu",
+        num_envs=1,
+        horizon=100,
+        action_repeat=1,
+        defensive_coverage_coefficient=0.0,
+    )
+    environment = create_rollout_session(
+        training_config,
+        json.dumps(config),
+        STATE,
+    ).environment
+    environment.reset_state(0, snapshot)
+    actions = np.zeros((1, 3, 2), dtype=np.float32)
+    observed_goal = False
+    goal_reward_steps = 0
+
+    for _ in range(20):
+        _, rewards, done, events, _ = environment.step(actions, None)
+        goal_reward_steps += int(rewards[0] > training_config.goal_coefficient / 2)
+        observed_goal |= bool(events[0] & 1)
+        if done[0]:
+            assert events[0] & 1
+            assert environment.last_terminal_reasons[0] == "goal"
+            break
+    else:
+        pytest.fail("goal grace period did not complete")
+
+    assert observed_goal
+    assert goal_reward_steps == 1
 
 
 CONFIG = (ROOT / "tests/golden/m1_match_config.json").read_text()
@@ -448,6 +486,11 @@ def test_versioned_marl_configs() -> None:
     assert load_marl_config(ROOT / "experiments/configs/m6-ippo.toml").algorithm == "ippo"
     assert load_marl_config(ROOT / "experiments/configs/m6-mappo.toml").algorithm == "mappo"
     coordinated = load_marl_config(ROOT / "experiments/configs/m13-mappo-directional.toml")
+    clean_curriculum = load_marl_config(
+        ROOT / "experiments/configs/m23-mappo-clean-curriculum.toml"
+    )
+    assert clean_curriculum.seed == 23
+    assert clean_curriculum.semantic_full_match_fraction == 0.30
     assert coordinated.teammate_congestion_coefficient > 0.0
     assert coordinated.defensive_coverage_coefficient > 0.0
     assert coordinated.ball_direction_coefficient == 1.0

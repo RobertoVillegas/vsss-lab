@@ -306,6 +306,8 @@ def test_real_self_play_iteration_updates_version_and_checkpoint(tmp_path: Path)
     assert result.policy_version == learner.policy_version == 1
     assert result.frames == 4
     assert result.matches == 1
+    assert result.episode_kinds == {"full_match": 1, "skill": 0}
+    assert sum(result.match_outcomes.values()) == 1
     assert checkpoint.is_file()
     assert all(torch.isfinite(torch.tensor(value)) for value in result.losses.values())
 
@@ -378,6 +380,8 @@ def test_semantic_curriculum_runs_mirrored_worlds_and_reports_outcomes() -> None
     )
     assert set(session.environment.controlled_teams) == {0, 1}
     assert result.matches == config.num_envs
+    assert result.episode_kinds == {"full_match": 0, "skill": config.num_envs}
+    assert sum(result.match_outcomes.values()) == 0
     assert result.curriculum is not None
     levels = result.curriculum["levels"]
     assert isinstance(levels, dict)

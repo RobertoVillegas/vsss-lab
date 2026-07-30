@@ -56,6 +56,8 @@ class IterationResult:
     curriculum: dict[str, object] | None = None
     completed_episode_return: float | None = None
     match_outcomes: dict[str, int] = field(default_factory=dict)
+    episode_kinds: dict[str, int] = field(default_factory=dict)
+    goal_events: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -166,6 +168,8 @@ def collect_self_play_trajectory(
     dict[str, int],
     list[float],
     dict[str, int],
+    dict[str, int],
+    dict[str, int],
 ]:
     """Collect fixed-horizon vector self-play on the learner device."""
     if opponent is not None:
@@ -226,6 +230,13 @@ def collect_self_play_trajectory(
     completed_matches = 0
     completed_episode_returns: list[float] = []
     match_outcomes = {"win": 0, "draw": 0, "loss": 0}
+    episode_kinds = {"full_match": 0, "skill": 0}
+    goal_events = {
+        "full_match_for": 0,
+        "full_match_against": 0,
+        "skill_for": 0,
+        "skill_against": 0,
+    }
     termination_counts = {
         "goal": 0,
         "draw": 0,
@@ -361,11 +372,19 @@ def collect_self_play_trajectory(
                 completed_matches += 1
                 completed_episode_returns.append(session.episode_returns[world])
                 session.episode_returns[world] = 0.0
-                if session.semantic_curriculum is None or session.semantic_scenarios[world] is None:
-                    events = int(step_events[world])
-                    controlled_team = int(environment.controlled_teams[world])
-                    scored = bool(events & (1 if controlled_team == 0 else 2))
-                    conceded = bool(events & (2 if controlled_team == 0 else 1))
+                events = int(step_events[world])
+                controlled_team = int(environment.controlled_teams[world])
+                scored = bool(events & (1 if controlled_team == 0 else 2))
+                conceded = bool(events & (2 if controlled_team == 0 else 1))
+                full_match = (
+                    session.semantic_curriculum is not None
+                    and session.semantic_scenarios[world] is None
+                ) or (session.semantic_curriculum is None and session.curriculum is None)
+                episode_kind = "full_match" if full_match else "skill"
+                episode_kinds[episode_kind] += 1
+                goal_events[f"{episode_kind}_for"] += int(scored)
+                goal_events[f"{episode_kind}_against"] += int(conceded)
+                if full_match:
                     match_outcome = "win" if scored else "loss" if conceded else "draw"
                     match_outcomes[match_outcome] += 1
                 scenario = session.scenarios[world]
@@ -518,6 +537,8 @@ def collect_self_play_trajectory(
         termination_counts,
         completed_episode_returns,
         match_outcomes,
+        episode_kinds,
+        goal_events,
     )
 
 
@@ -552,6 +573,8 @@ def train_iteration(
         termination_counts,
         completed_episode_returns,
         match_outcomes,
+        episode_kinds,
+        goal_events,
     ) = collect_self_play_trajectory(
         learner,
         opponent,
@@ -583,6 +606,8 @@ def train_iteration(
             else None
         ),
         match_outcomes=match_outcomes,
+        episode_kinds=episode_kinds,
+        goal_events=goal_events,
     )
 
 

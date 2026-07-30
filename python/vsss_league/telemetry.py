@@ -67,6 +67,8 @@ class TrainingTelemetry:
             **{f"loss/{name}": value for name, value in result.losses.items()},
             **{f"termination/{name}": value for name, value in result.terminations.items()},
             **{f"match_outcome/{name}": value for name, value in result.match_outcomes.items()},
+            **{f"episode_kind/{name}": value for name, value in result.episode_kinds.items()},
+            **{f"goal_event/{name}": value for name, value in result.goal_events.items()},
             **{f"exploration/log_std_{index}": value for index, value in enumerate(actor_log_std)},
             **_curriculum_scalars(result.curriculum),
         }
