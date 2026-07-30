@@ -114,8 +114,9 @@ The default learner is multi-agent proximal policy optimization (MAPPO):
 - one policy is shared by the three allied robots;
 - each actor receives its local, role-aware observation;
 - a centralized critic uses joint training information;
-- M24 selects categorical navigation and directed-strike primitives, while M23
-  retains direct left/right wheel control as an ablation;
+- M24.2 selects categorical soccer skills with continuous heading and
+  intensity, while M24 retains eight-way primitives and M23 retains direct
+  left/right wheel control as backward-compatible ablations;
 - rollout collection runs many simulation worlds in parallel;
 - policy inference and optimization use CUDA when available;
 - deterministic physics remains CPU-based and parallelized with Rayon.
@@ -132,12 +133,14 @@ mirror opponent and makes regressions easier to detect.
 ## Observations, actions, and roles
 
 Observations describe the ball, goals, teammates, opponents, robot motion, and
-role context in normalized field coordinates. The M24 strategy actor chooses
-from a versioned 17-action set: stop, eight navigation directions, and eight
-directed strikes. A causal controller predicts a reachable ball point, acquires
-behind it, and converts intent into bounded differential wheel commands. Earlier
-configs preserve direct wheel control for controlled comparison; neither path
-uses teleportation or direct velocity assignment.
+role context in normalized field coordinates. The default M24.2 strategy actor
+chooses stop, navigate, or strike and jointly samples a continuous unit heading
+and drive intensity. A causal controller predicts a reachable ball point,
+acquires behind it, and converts intent into bounded differential wheel
+commands. The vector heading has no ±π discontinuity and allows curved
+approaches between the former 45-degree bins. Earlier configs preserve discrete
+primitives and direct wheel control for controlled comparison; no path uses
+teleportation or direct velocity assignment.
 
 Roles are reassigned dynamically as attacker, support, and coverage by evaluating
 every responsibility permutation from projected interception and defensive cost.
@@ -352,7 +355,7 @@ semantics, and rollback procedure are in
 
 ## Train and inspect a run
 
-Start the M24 50-million-environment-step primitive MAPPO run with automatic run naming,
+Start the M24.2 50-million-environment-step parametric MAPPO run with automatic run naming,
 replay capture every 25 learner iterations, 60-second captures, checkpoints every
 25 iterations, paired semantic evaluation at every checkpoint, automatic CUDA
 selection, and 64 parallel worlds:
@@ -362,11 +365,11 @@ just league-live-m24 50000000 25 60 25 auto 64
 ```
 
 The command allocates a directory such as
-`~/runs/vsss-m24-run-0001`, starts the private viewer at
+`~/runs/vsss-m24-2-run-0001`, starts the private viewer at
 `http://127.0.0.1:8765`, and runs training in the foreground. CUDA is selected
 when available; otherwise the command reports that it is using CPU.
 
-M24 starts clean from a seeded primitive teacher. Each checkpoint is
+M24.2 starts clean from a seeded continuous-geometry teacher. Each checkpoint is
 measured on immutable paired-color skill holdouts; `best-semantic.json` points
 to the strongest balanced checkpoint, ranking the weakest skill family before
 aggregate success. `semantic-evaluations.jsonl` preserves the full selection
@@ -389,9 +392,9 @@ PYTHONPATH=python:. uv run python -m tools.trajectory_diagnostics \
   ~/runs/vsss-m24-run-0001/replays/iteration-000425.jsonl
 ```
 
-For the controlled independent-critic ablation, use
-`just league-live-m24-ippo 5000000 25 60 25 auto 64`. Its environment,
-primitive set, rewards, seed, rollout, and network width match M24 MAPPO.
+The existing `league-live-m24-ippo` recipe intentionally retains the discrete
+M24 parser as a historical independent-critic ablation; do not treat it as a
+paired M24.2 comparison.
 
 Optional TensorBoard:
 

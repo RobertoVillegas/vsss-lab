@@ -19,20 +19,21 @@ The current default is shared-policy MAPPO: three decentralized actors share
 weights while a centralized critic is used during training. PPO/IPPO remain
 available for controlled ablations.
 
-For new long runs, M24 uses a categorical strategy policy over stop, eight
-navigation directions, and eight directed-strike primitives. The exact Rapier
-environment converts those causal intents into differential-drive commands.
-This separates trajectory execution from team strategy without changing the
-authoritative physics engine.
+For new long runs, M24.2 uses a hybrid strategy policy: stop, navigate, or
+strike is categorical, while heading and intensity are continuous. Heading is
+represented by a two-component vector so crossing ±π remains smooth. The exact
+Rapier environment converts those causal intents into differential-drive
+commands. This separates trajectory execution from team strategy without
+changing the authoritative physics engine.
 
 ```bash
 just m24-trajectory-benchmark
 just league-live-m24 50000000 25 60 25 auto 64
 ```
 
-The equivalent 5-million-step independent-critic ablation is
-`just league-live-m24-ippo 5000000 25 60 25 auto 64`. Compare paired semantic
-holdouts and terminal outcomes across repeated seeds, not training return alone.
+The `league-live-m24-ippo` recipe retains the older eight-way M24 action parser
+as a historical ablation. Compare paired semantic holdouts and terminal
+outcomes across repeated seeds, not training return alone.
 
 `device=auto` selects CUDA when available and otherwise continues on CPU with a
 visible warning. Physics remains native Rapier on CPU; CUDA batches actor,
