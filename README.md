@@ -198,6 +198,10 @@ frames/second, matches/second, return, losses, entropy, and checkpoint status.
 The browser viewer adds:
 
 - play, pause, seek, rewind, skip, loop, and speed controls;
+- selectable actor inspection with primitive, confidence, phase, target,
+  alternatives, requested wheels, and applied motion;
+- synchronized primitive lanes with clickable match-event and episode markers;
+- selected-actor acquisition and requested ball-exit overlays;
 - client-side WebM video and bounded animated-GIF export;
 - lazy replay discovery and loading;
 - filters for goals, wins, losses, draws, passes, and other events;
@@ -205,6 +209,10 @@ The browser viewer adds:
 - ball trajectory inspection;
 - live polling for newly captured iterations and checkpoints;
 - in-project metric charts backed by the same run artifacts.
+
+Primitive runs use categorical exploration diagnostics and action-family usage;
+the viewer does not mislabel their compatibility `log_std` buffer as Gaussian
+wheel exploration. Geist Mono is self-hosted with the viewer assets.
 
 TensorBoard remains available as a specialized optional view. Checkpoints should
 be selected through seeded evaluation against a population—not by choosing the
