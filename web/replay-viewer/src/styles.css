@@ -50,7 +50,7 @@ h1 { margin: 2px 0 0; font-size: 18px; font-weight: 600; letter-spacing: -.02em;
 .view-tabs button { padding: 8px 11px; color: #91aa9f; font-size: 9px; letter-spacing: .08em; }
 .view-tabs button.active { border-color: #4faa80; color: #71e1ae; background: #102a20; }
 
-.workspace { display: grid; grid-template-columns: 230px minmax(0, 1fr) 300px; min-height: 0; }
+.workspace { display: grid; grid-template-columns: 250px minmax(0, 1fr) 300px; min-height: 0; }
 .workspace.metrics-workspace { grid-template-columns: minmax(0, 1fr); }
 .metrics-workspace > .sidebar, .metrics-workspace > .telemetry { display: none; }
 .sidebar { padding: 22px; border-right: 1px solid #20332c; background: rgba(8, 20, 16, .8); overflow: auto; }
@@ -77,6 +77,8 @@ select { appearance: none; border: 1px solid #315044; border-radius: 3px; backgr
 .details div { display: flex; justify-content: space-between; font: 11px "Geist Mono Variable", "Geist Mono", ui-monospace, monospace; }
 .details dt { color: #6c857a; }
 .details dd { margin: 0; }
+.quick-insights { margin-top: 20px; padding-top: 16px; border-top: 1px solid #20332c; }
+.quick-insights .details { margin-top: 12px; }
 .telemetry { padding: 18px; border-left: 1px solid #20332c; background: rgba(8, 20, 16, .8); overflow: auto; }
 .actor-list { display: grid; gap: 8px; margin-top: 14px; }
 .actor-card { width: 100%; padding: 9px 10px; border: 1px solid #203c31; background: #0b1914; color: inherit; text-align: left; }
@@ -144,11 +146,14 @@ button:disabled { opacity: .4; cursor: default; }
 kbd { display: inline-block; margin: 0 2px; padding: 2px 4px; border: 1px solid #294338; border-radius: 2px; color: #87a398; }
 
 .policy-timeline { display: grid; grid-template-columns: minmax(0, 1fr); margin: 0 82px 8px; }
-.event-rail { position: relative; height: 14px; margin-left: 32px; border-bottom: 1px solid #263f35; }
-.event-mark { position: absolute; bottom: -4px; width: 10px; height: 14px; padding: 0; border: 0; background: transparent; transform: translateX(-50%); }
-.event-mark i { display: block; width: 6px; height: 6px; margin: auto; border-radius: 50%; background: #ff8a62; box-shadow: 0 0 7px rgba(255,138,98,.7); }
+.timeline-toolbar { display: flex; align-items: center; justify-content: space-between; min-height: 22px; margin-left: 32px; color: #526b60; font-size: 8px; letter-spacing: .11em; }
+.timeline-toolbar button { padding: 3px 6px; color: #789287; font: inherit; letter-spacing: inherit; }
+.event-rail { position: relative; height: 18px; margin-left: 32px; border-bottom: 1px solid #263f35; }
+.event-mark { position: absolute; bottom: -6px; width: 16px; height: 18px; padding: 0; border: 0; background: transparent; transform: translateX(-50%); }
+.event-mark i { display: grid; width: 12px; height: 12px; margin: auto; place-items: center; border-radius: 50%; color: #07100d; background: #ff8a62; box-shadow: 0 0 7px rgba(255,138,98,.55); font: 9px/1 "Geist Mono Variable", monospace; font-style: normal; }
 .event-mark.event-touch i, .event-mark.event-pass i, .event-mark.event-interception i { background: #71e1ae; }
-.event-mark.event-episode-reset i { border-radius: 0; background: #bd8cff; transform: rotate(45deg); }
+.event-mark.event-episode-reset i { background: #bd8cff; }
+.event-mark b { position: absolute; top: -5px; right: -3px; min-width: 10px; padding: 1px 2px; border-radius: 6px; color: #dff8ed; background: #315044; font-size: 7px; line-height: 9px; }
 .intent-lanes { display: grid; gap: 2px; margin-top: 5px; }
 .intent-lane { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 4px; height: 16px; opacity: .68; }
 .intent-lane.selected { opacity: 1; }
@@ -161,6 +166,8 @@ kbd { display: inline-block; margin: 0 2px; padding: 2px 4px; border: 1px solid 
 .intent-segment.skill-strike { background: #7c432e; }
 .intent-segment.skill-legacy { background: #32443d; }
 .intent-segment:hover { filter: brightness(1.35); }
+.timeline-playhead { position: absolute; z-index: 3; top: 0; bottom: 0; width: 1px; background: #e9fff5; box-shadow: 0 0 5px #e9fff5; pointer-events: none; }
+.timeline-empty { margin-left: 32px; padding: 8px 10px; border: 1px dashed #2b473c; color: #789287; font-size: 9px; letter-spacing: .04em; text-align: center; }
 
 @media (max-width: 760px) {
   .app-shell { grid-template-rows: 68px minmax(0, 1fr) 190px; }

@@ -185,6 +185,33 @@ export default function App() {
   const frame = replay?.frames[frameIndex];
   const latestReplayIteration = index?.replays.at(-1)?.iteration;
   const latestCheckpoint = index?.checkpoints.at(-1);
+  const selectedIntent = frame?.policy_intents?.[selectedActor];
+  const closestRobot = useMemo(() => {
+    if (!frame) return null;
+    return frame.snapshot.robots
+      .map((robot, actor) => ({ robot, actor }))
+      .filter(({ robot }) => robot.enabled)
+      .map(({ robot, actor }) => ({
+        actor,
+        distance: Math.hypot(
+          robot.pose.x - frame.snapshot.ball.x,
+          robot.pose.y - frame.snapshot.ball.y,
+        ),
+      }))
+      .sort((first, second) => first.distance - second.distance)[0] ?? null;
+  }, [frame]);
+  const recentChanges = useMemo(() => {
+    if (!replay) return 0;
+    const window = replay.frames.slice(Math.max(0, frameIndex - 49), frameIndex + 1);
+    let changes = 0;
+    let previous: number | undefined;
+    for (const candidate of window) {
+      const action = candidate.policy_intents?.[selectedActor]?.action_index;
+      if (action !== undefined && previous !== undefined && action !== previous) changes += 1;
+      previous = action;
+    }
+    return changes;
+  }, [frameIndex, replay, selectedActor]);
   return (
     <main className={`app-shell ${activeView === "metrics" ? "metrics-mode" : ""}`}>
       <header className="topbar">
@@ -261,6 +288,35 @@ export default function App() {
             <Metric label="Blue" value={frame?.snapshot.score_blue ?? "—"} tone="blue" />
             <Metric label="Yellow" value={frame?.snapshot.score_yellow ?? "—"} tone="yellow" />
           </div>
+          <section className="quick-insights">
+            <p className="side-heading">AT A GLANCE</p>
+            <dl className="details">
+              <div>
+                <dt>Selected</dt>
+                <dd>{selectedIntent
+                  ? `${selectedIntent.skill.toUpperCase()} ${selectedIntent.direction ?? ""}`
+                  : "LEGACY"}</dd>
+              </div>
+              <div>
+                <dt>Decision changes</dt>
+                <dd>{selectedIntent ? `${recentChanges} / recent 1s` : "—"}</dd>
+              </div>
+              <div>
+                <dt>Closest to ball</dt>
+                <dd>{closestRobot
+                  ? `${closestRobot.actor >= 3 ? "Y" : "B"}${closestRobot.actor % 3} · ${closestRobot.distance.toFixed(2)}m`
+                  : "—"}</dd>
+              </div>
+              <div>
+                <dt>Ball region</dt>
+                <dd>{frame
+                  ? Math.abs(frame.snapshot.ball.x) < 0.15
+                    ? "MIDFIELD"
+                    : frame.snapshot.ball.x < 0 ? "BLUE HALF" : "YELLOW HALF"
+                  : "—"}</dd>
+              </div>
+            </dl>
+          </section>
         </aside>
 
         <section className={`stage ${activeView === "metrics" ? "metrics-stage" : ""}`}>
@@ -306,6 +362,7 @@ export default function App() {
           <PolicyTimeline
             replay={replay}
             events={analytics?.events ?? []}
+            frameIndex={frameIndex}
             selectedActor={selectedActor}
             onSelectActor={setSelectedActor}
             onSeek={(target) => {

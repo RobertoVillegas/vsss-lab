@@ -64,6 +64,7 @@ describe("PolicyTimeline", () => {
           attribution: null,
           related_team: null,
         }]}
+        frameIndex={0}
         selectedActor={0}
         onSelectActor={vi.fn()}
         onSeek={seek}
@@ -72,5 +73,32 @@ describe("PolicyTimeline", () => {
     expect(screen.getAllByTitle(/NAV-E/)).toHaveLength(6);
     fireEvent.click(screen.getByLabelText(/Seek to touch/));
     expect(seek).toHaveBeenCalledWith(0);
+    fireEvent.click(screen.getByRole("button", { name: "HIDE CHANNELS" }));
+    expect(screen.queryByTitle(/NAV-E/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /SHOW CHANNELS/ }));
+    expect(screen.getAllByTitle(/NAV-E/)).toHaveLength(6);
+  });
+
+  it("explains legacy replays instead of rendering empty actor lanes", () => {
+    const legacyReplay = {
+      ...replay,
+      frames: replay.frames.map(({ policy_intents: _policyIntents, ...frame }) => frame),
+    };
+
+    const { container } = render(
+      <PolicyTimeline
+        replay={legacyReplay}
+        events={[]}
+        frameIndex={0}
+        selectedActor={0}
+        onSelectActor={vi.fn()}
+        onSeek={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelector(".intent-lane")).toBeNull();
+    expect(container.querySelector(".timeline-empty")?.textContent).toMatch(
+      /predates policy-intent telemetry/i,
+    );
   });
 });
