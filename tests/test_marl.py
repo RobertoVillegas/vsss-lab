@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import numpy as np
@@ -34,7 +35,6 @@ from vsss_train.marl_env import (
     _useful_touch_impulse,
     distill_dynamic_teacher,
     evaluate_against_random,
-    parser_turn_authority,
     team_action_width,
 )
 from vsss_train.marl_ppo import (
@@ -254,27 +254,6 @@ def test_discounted_goal_geometry_cannot_reward_camping_behind_ball() -> None:
     assert advancing_reward > 0.0
 
 
-def test_idle_spin_detection_exempts_orientation_and_ball_control() -> None:
-    state = initial_state()
-    actions = np.asarray(((-0.8, 0.8), (0.4, 0.8), (-0.8, 0.8)), dtype=np.float32)
-    state[12:14] = (-0.50, -0.40)
-    state[23:25] = (-0.25, 0.0)
-    state[34:36] = state[5:7]
-
-    flags, intensity = _idle_spin_flags(
-        state,
-        0,
-        actions,
-        turn_threshold=0.25,
-        drive_threshold=0.15,
-        speed_threshold=0.08,
-        ball_distance=0.12,
-    )
-
-    assert flags.tolist() == [True, False, False]
-    assert intensity.tolist() == pytest.approx([0.8, 0.2, 0.8])
-
-
 def test_terminal_state_carries_no_shaping_potential() -> None:
     environment = MarlMatchEnv(
         CONFIG,
@@ -296,43 +275,91 @@ def test_terminal_state_carries_no_shaping_potential() -> None:
     assert reward.goal_geometry == pytest.approx(-0.5 * entry, abs=2e-3)
 
 
-def test_idle_spin_detection_reaches_wheels_a_skill_parser_can_produce() -> None:
-    assert parser_turn_authority("continuous") == 1.0
-    assert parser_turn_authority("lattice") == 1.0
-    assert parser_turn_authority("primitive") == TURN_AUTHORITY
-    assert parser_turn_authority("parametric_primitive") == TURN_AUTHORITY
+def test_idle_spin_detection_exempts_orientation_and_ball_control() -> None:
     state = initial_state()
-    # `go_to_target` spends at most TURN_AUTHORITY on turning, so this is the hardest
-    # turn-in-place a policy can request through a skill parser.
-    spin = float(TURN_AUTHORITY)
-    actions = np.asarray(((-spin, spin), (-spin, spin), (-spin, spin)), dtype=np.float32)
+    actions = np.asarray(((-0.8, 0.8), (0.4, 0.8), (-0.8, 0.8)), dtype=np.float32)
     state[12:14] = (-0.50, -0.40)
     state[23:25] = (-0.25, 0.0)
     state[34:36] = state[5:7]
+    state[17] = 2.0
+    state[28] = 2.0
+    state[39] = 2.0
 
-    unreachable, _ = _idle_spin_flags(
-        state,
-        0,
-        actions,
-        turn_threshold=0.13,
-        drive_threshold=0.07,
-        speed_threshold=0.08,
-        ball_distance=0.12,
-    )
     flags, intensity = _idle_spin_flags(
         state,
         0,
         actions,
-        turn_threshold=0.13,
+        angular_speed_threshold=1.0,
+        drive_threshold=0.15,
+        speed_threshold=0.08,
+        ball_distance=0.12,
+    )
+
+    # Slot 1 asks to drive and slot 2 is on the ball, so only slot 0 is idle spin.
+    assert flags.tolist() == [True, False, False]
+    assert intensity.tolist() == pytest.approx([1.0, 1.0, 1.0])
+
+
+def test_idle_spin_detection_is_reachable_under_every_action_parser() -> None:
+    """Judged on measured yaw, so the differential a parser can request is irrelevant.
+
+    A geometric controller spends at most a small fraction of the wheel limit on turning.
+    The command-space threshold this replaced was either unreachable through such a parser
+    or, once rescaled by that fraction, fired on an ordinary heading error of 12 degrees.
+    """
+    state = initial_state()
+    state[12:14] = (-0.50, -0.40)
+    state[23:25] = (-0.25, 0.0)
+    state[34:36] = (-0.40, 0.30)
+    state[17] = 1.4
+    state[28] = 0.2
+    state[39] = 1.4
+    # Wheels a skill parser can actually produce: the executor never exceeds its own turn
+    # authority, so these differentials are tiny next to direct wheel control.
+    skill_parser_wheels = np.asarray(
+        ((-TURN_AUTHORITY, TURN_AUTHORITY), (-TURN_AUTHORITY, TURN_AUTHORITY), (0.5, 0.6)),
+        dtype=np.float32,
+    )
+
+    flags, intensity = _idle_spin_flags(
+        state,
+        0,
+        skill_parser_wheels,
+        angular_speed_threshold=1.0,
         drive_threshold=0.07,
         speed_threshold=0.08,
         ball_distance=0.12,
-        turn_authority=parser_turn_authority("parametric_primitive"),
     )
 
-    assert not unreachable.any()
-    assert flags.tolist() == [True, True, False]
-    assert intensity.tolist() == pytest.approx([1.0, 1.0, 1.0])
+    # Slot 0 spins in place, slot 1 turns slowly, slot 2 asks to drive.
+    assert flags.tolist() == [True, False, False]
+    assert intensity.tolist() == pytest.approx([0.7, 0.1, 0.7])
+
+
+def test_idle_spin_detection_ignores_an_ordinary_heading_correction() -> None:
+    """The false positive a rescaled command-space threshold reintroduced."""
+    state = initial_state()
+    state[12:14] = (-0.50, -0.40)
+    state[23:25] = (-0.25, 0.0)
+    state[34:36] = (-0.40, 0.30)
+    turn = TURN_AUTHORITY * math.radians(20.0) / (math.pi / 2.0)
+    wheels = np.asarray(((-turn, turn), (-turn, turn), (-turn, turn)), dtype=np.float32)
+    # A twenty degree correction yields well under a radian per second of yaw.
+    state[17] = 0.35
+    state[28] = 0.35
+    state[39] = 0.35
+
+    flags, _ = _idle_spin_flags(
+        state,
+        0,
+        wheels,
+        angular_speed_threshold=1.0,
+        drive_threshold=0.07,
+        speed_threshold=0.08,
+        ball_distance=0.12,
+    )
+
+    assert not flags.any()
 
 
 def trajectory(learner: MarlLearner, steps: int = 4) -> TeamTrajectory:

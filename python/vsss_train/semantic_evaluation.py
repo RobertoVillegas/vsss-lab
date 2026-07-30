@@ -30,7 +30,7 @@ EvaluationControl = Literal["policy", "random", "heuristic"]
 class IdleSpinThresholds:
     """Behavior-gate thresholds, supplied by the run so the gate matches training."""
 
-    turn_threshold: float = 0.13
+    angular_speed: float = 1.0
     drive_threshold: float = 0.07
     speed_threshold: float = 0.08
     ball_distance: float = 0.12
@@ -137,7 +137,7 @@ def evaluate_semantic_skills(
     started = time.perf_counter()
     maximum_horizon = max(scenario.context.horizon for scenario in scenarios)
     idle_action = np.zeros((len(scenarios), 3, action_width), dtype=np.float32)
-    if evaluation_parser == "parametric_primitive":
+    if evaluation_parser in ("parametric_primitive", "circular_primitive"):
         # A -1 skill token decodes to STOP, matching the idle meaning of continuous zeros.
         idle_action[..., 0] = -1.0
     for _ in range(maximum_horizon):
@@ -252,7 +252,7 @@ def _environment(
         goal_geometry_discount=0.99,
         idle_spin_coefficient=0.0,
         idle_spin_grace_seconds=idle_spin.grace_seconds,
-        idle_spin_turn_threshold=idle_spin.turn_threshold,
+        idle_spin_angular_speed=idle_spin.angular_speed,
         idle_spin_drive_threshold=idle_spin.drive_threshold,
         idle_spin_speed_threshold=idle_spin.speed_threshold,
         idle_spin_ball_distance=idle_spin.ball_distance,

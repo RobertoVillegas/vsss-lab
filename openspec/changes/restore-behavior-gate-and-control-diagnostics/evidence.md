@@ -46,3 +46,25 @@ first time. The run record now carries `resolved_drills_per_second = 6.05` over
 - `mise run lint` green across `cargo fmt`, `cargo clippy`, Ruff over 421 files,
   mypy over 103 sources, and the web typecheck.
 - `openspec validate --strict` accepts this change.
+
+## Correction: the first normalization measured the wrong thing
+
+Normalizing the commanded differential by the parser's attainable turn authority did not
+preserve the threshold's meaning. Under a skill parser the executor sets
+`turn = TURN_AUTHORITY · clamp(error / (π/2))`, so dividing by `TURN_AUTHORITY` leaves
+`|error| / 90°`. The configured `0.13` therefore stopped meaning "thirteen percent of the
+wheel range spent deliberately on turning" and started meaning "aiming 11.7 degrees off",
+which is ordinary navigation rather than a pathology.
+
+The run `vsss-m24-3-run-0001` exposed it. Three consecutive paired evaluations reported
+`0.1457`, `0.1331`, and `0.1472` against the `0.08` ceiling: flat at roughly 1.8 times the
+ceiling with the penalty active and 1.2 million steps elapsed, and the curriculum unable to
+leave `foundation` because phase eligibility is gated on the same flag. A policy learning
+to drive would have shown a trend; a mis-specified detector shows a plateau.
+
+Detection now reads measured angular speed from the state row, which carries the same
+meaning for every parser. Measured ceilings: a geometric controller reaches about
+2 rad/s of yaw, direct wheel control about 25, so a threshold of 1 rad/s is reachable under
+both. A fresh policy now reports `0.0892` under the circular parser and `0.1069` under the
+parametric one — marginally above the ceiling, which is what an uncalibrated-but-honest gate
+should look like at initialization, rather than 1.8 times above it with no trend.

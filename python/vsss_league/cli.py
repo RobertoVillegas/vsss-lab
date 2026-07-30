@@ -360,7 +360,7 @@ def _run(arguments: argparse.Namespace) -> None:
                     device=learner.device,
                     action_parser=config.action_parser,
                     idle_spin=IdleSpinThresholds(
-                        turn_threshold=config.idle_spin_turn_threshold,
+                        angular_speed=config.idle_spin_angular_speed,
                         drive_threshold=config.idle_spin_drive_threshold,
                         speed_threshold=config.idle_spin_speed_threshold,
                         ball_distance=config.idle_spin_ball_distance,

@@ -2,29 +2,36 @@
 
 ### Requirement: Parser-independent behavior detection
 
-Behavior detection SHALL remain reachable for every supported action parser. Turn
-intensity SHALL be reported as a fraction of the turn authority the active parser
-can request, and behavior thresholds SHALL come from the run configuration rather
-than from a copy held by the evaluator.
+Behavior detection SHALL judge rotation on measured angular speed rather than on the
+commanded wheel differential, because the differential a policy can request depends on
+its action parser. Its threshold SHALL be expressed in physical units, and behavior
+thresholds SHALL come from the run configuration rather than from a copy held by the
+evaluator.
 
 #### Scenario: Turn-in-place through a skill parser
 
 - **GIVEN** a policy whose wheels are produced by a geometric controller
-- **WHEN** it requests the largest turn-in-place that controller can execute while
-  remaining slow and remote from the ball
+- **WHEN** a robot rotates beyond the configured angular speed while slow, remote from
+  the ball, and not asking to drive
 - **THEN** the idle-spin flag is raised
 - **AND** the reported idle-spin ratio can exceed the configured ceiling
+
+#### Scenario: Ordinary heading correction
+
+- **WHEN** a robot turns to correct a heading error of a few tens of degrees
+- **THEN** no idle-spin flag is raised, because such a correction does not reach the
+  configured angular speed
 
 #### Scenario: Threshold retuned in configuration
 
 - **WHEN** a run changes an idle-spin threshold in its configuration
 - **THEN** the behavior gate of its paired evaluation observes the new value
 
-#### Scenario: Wheel-space policy is unaffected
+#### Scenario: Wheel-space policy is still detected
 
 - **GIVEN** a policy that emits wheel commands directly
-- **WHEN** the same configured threshold is applied
-- **THEN** detection behaves as it did before turn intensity was normalized
+- **WHEN** it holds opposite wheels and rotates in place away from the ball
+- **THEN** the flag is raised on the same physical criterion
 
 ### Requirement: One decision executes one opponent parse
 

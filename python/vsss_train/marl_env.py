@@ -12,7 +12,7 @@ import numpy as np
 import torch
 from numpy.typing import NDArray
 from vsss_baselines import DynamicTeamController
-from vsss_baselines.controllers import TURN_AUTHORITY, robot_pose
+from vsss_baselines.controllers import robot_pose
 from vsss_env._native import BatchSimulator
 
 from vsss_train.ablations import (
@@ -55,7 +55,6 @@ ACTION_PARSERS = (
     "parametric_primitive",
     "circular_primitive",
 )
-SKILL_PARSERS = ("primitive", "parametric_primitive", "circular_primitive")
 
 
 def team_action_width(action_parser: str) -> int:
@@ -65,19 +64,6 @@ def team_action_width(action_parser: str) -> int:
     if action_parser == "parametric_primitive":
         return 4
     return CircularPrimitiveSet.token_width if action_parser == "circular_primitive" else 2
-
-
-def parser_turn_authority(action_parser: str) -> float:
-    """Return the largest wheel differential a parser can request.
-
-    A policy that emits wheels reaches the full normalized differential, while a
-    policy that emits skills reaches only what `go_to_target` spends on turning.
-    Idle-spin thresholds are expressed as a fraction of this, so one configured
-    value keeps its meaning across action spaces.
-    """
-    if action_parser not in ACTION_PARSERS:
-        raise ValueError("unsupported action parser")
-    return TURN_AUTHORITY if action_parser in SKILL_PARSERS else 1.0
 
 
 def check_team_actions(actions: FloatArray, expected: tuple[int, ...], role: str) -> None:
@@ -448,7 +434,7 @@ class VectorMarlMatchEnv:
         goal_geometry_discount: float,
         idle_spin_coefficient: float,
         idle_spin_grace_seconds: float,
-        idle_spin_turn_threshold: float,
+        idle_spin_angular_speed: float,
         idle_spin_drive_threshold: float,
         idle_spin_speed_threshold: float,
         idle_spin_ball_distance: float,
@@ -492,7 +478,7 @@ class VectorMarlMatchEnv:
         self._decision_period = float(self._config["timestep"]) * action_repeat
         self.idle_spin_coefficient = idle_spin_coefficient
         self.idle_spin_grace_steps = max(1, round(idle_spin_grace_seconds / self._decision_period))
-        self.idle_spin_turn_threshold = idle_spin_turn_threshold
+        self.idle_spin_angular_speed = idle_spin_angular_speed
         self.idle_spin_drive_threshold = idle_spin_drive_threshold
         self.idle_spin_speed_threshold = idle_spin_speed_threshold
         self.idle_spin_ball_distance = idle_spin_ball_distance
@@ -834,11 +820,10 @@ class VectorMarlMatchEnv:
                 state,
                 int(team),
                 normalized_blue[world],
-                turn_threshold=self.idle_spin_turn_threshold,
+                angular_speed_threshold=self.idle_spin_angular_speed,
                 drive_threshold=self.idle_spin_drive_threshold,
                 speed_threshold=self.idle_spin_speed_threshold,
                 ball_distance=self.idle_spin_ball_distance,
-                turn_authority=parser_turn_authority(self.action_parser),
             )
             self._idle_spin_streaks[world] = np.where(flags, self._idle_spin_streaks[world] + 1, 0)
             penalized = flags & (self._idle_spin_streaks[world] > self.idle_spin_grace_steps)
@@ -1275,38 +1260,44 @@ def _idle_spin_flags(
     team: int,
     normalized_actions: FloatArray,
     *,
-    turn_threshold: float,
+    angular_speed_threshold: float,
     drive_threshold: float,
     speed_threshold: float,
     ball_distance: float,
-    turn_authority: float = 1.0,
 ) -> tuple[NDArray[np.bool_], FloatArray]:
-    """Find turn-in-place actions that are slow, remote from the ball, and non-progressive.
+    """Find robots rotating in place, slow, remote from the ball, and not asking to drive.
 
-    Turn intensity is reported as a fraction of the authority the action parser can
-    actually request, so the threshold does not silently become unreachable when a
-    geometric controller produces the wheels.
+    Rotation is judged on measured angular speed rather than on the wheel differential,
+    because the differential a policy can request depends on the action parser. A
+    geometric controller spends at most a small fraction of the wheel limit on turning,
+    so a command-space threshold calibrated for direct wheel control either cannot fire
+    at all or, once rescaled by that fraction, degenerates into "is the robot aiming a
+    few degrees off". Angular speed carries the same meaning for every parser.
     """
     left = normalized_actions[:, 0]
     right = normalized_actions[:, 1]
-    turn_intensity = np.abs(right - left) / (2.0 * turn_authority)
     drive_intensity = np.abs(right + left) / 2.0
     flags = np.zeros(3, dtype=np.bool_)
+    angular_speed = np.zeros(3, dtype=np.float32)
     offset = 0 if team == 0 else 3
     ball_x, ball_y = float(state[5]), float(state[6])
     for local_slot in range(3):
         base = ROBOT_BASE + (offset + local_slot) * ROBOT_WIDTH
         if not bool(float(state[base + 10])):
             continue
+        angular_speed[local_slot] = abs(float(state[base + 7]))
         speed = math.hypot(float(state[base + 5]), float(state[base + 6]))
         distance = math.hypot(ball_x - float(state[base + 2]), ball_y - float(state[base + 3]))
         flags[local_slot] = (
-            turn_intensity[local_slot] > turn_threshold
+            angular_speed[local_slot] > angular_speed_threshold
             and drive_intensity[local_slot] < drive_threshold
             and speed < speed_threshold
             and distance > ball_distance
         )
-    return flags, np.asarray(turn_intensity, dtype=np.float32)
+    # Proportional above the threshold and saturating at twice it, so the configured
+    # coefficient keeps a bounded per-decision meaning.
+    reference = max(2.0 * angular_speed_threshold, 1e-6)
+    return flags, np.clip(angular_speed / reference, 0.0, 1.0).astype(np.float32)
 
 
 def _attacker_alignment_reward(

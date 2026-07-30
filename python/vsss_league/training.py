@@ -138,7 +138,7 @@ def create_rollout_session(config: MarlConfig, config_json: str, state_json: str
             goal_geometry_discount=config.goal_geometry_discount,
             idle_spin_coefficient=config.idle_spin_coefficient,
             idle_spin_grace_seconds=config.idle_spin_grace_seconds,
-            idle_spin_turn_threshold=config.idle_spin_turn_threshold,
+            idle_spin_angular_speed=config.idle_spin_angular_speed,
             idle_spin_drive_threshold=config.idle_spin_drive_threshold,
             idle_spin_speed_threshold=config.idle_spin_speed_threshold,
             idle_spin_ball_distance=config.idle_spin_ball_distance,

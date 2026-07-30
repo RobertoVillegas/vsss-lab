@@ -91,6 +91,7 @@ LEGACY_NEUTRAL_CONFIG = {
     "idle_spin_coefficient": 0.0,
     "idle_spin_grace_seconds": 0.5,
     "idle_spin_turn_threshold": 0.13,
+    "idle_spin_angular_speed": 1.0,
     "idle_spin_drive_threshold": 0.07,
     "idle_spin_speed_threshold": 0.08,
     "idle_spin_ball_distance": 0.12,

@@ -138,7 +138,14 @@ class MarlConfig:
     goal_geometry_discount: float = 0.99
     idle_spin_coefficient: float = 0.0
     idle_spin_grace_seconds: float = 0.5
+    # Retained so checkpoints written before behavior detection moved to measured
+    # angular speed stay loadable: `_checkpoint_config_compatible` rejects a stored key
+    # that no longer exists. Nothing reads it.
     idle_spin_turn_threshold: float = 0.13
+    # Radians per second. A geometric controller can physically reach about 2 rad/s of
+    # yaw, and direct wheel control about 25, so a threshold below the smaller ceiling
+    # is the only one reachable under every parser.
+    idle_spin_angular_speed: float = 1.0
     idle_spin_drive_threshold: float = 0.07
     idle_spin_speed_threshold: float = 0.08
     idle_spin_ball_distance: float = 0.12
@@ -268,8 +275,8 @@ class MarlConfig:
             raise ValueError("goal_geometry_discount must be in [0, 1]")
         if self.idle_spin_grace_seconds <= 0.0:
             raise ValueError("idle_spin_grace_seconds must be positive")
-        if not 0.0 <= self.idle_spin_turn_threshold <= 1.0:
-            raise ValueError("idle_spin_turn_threshold must be in [0, 1]")
+        if self.idle_spin_angular_speed <= 0.0:
+            raise ValueError("idle_spin_angular_speed must be positive")
         if not 0.0 <= self.idle_spin_drive_threshold <= 1.0:
             raise ValueError("idle_spin_drive_threshold must be in [0, 1]")
         if self.idle_spin_speed_threshold <= 0.0 or self.idle_spin_ball_distance <= 0.0:
