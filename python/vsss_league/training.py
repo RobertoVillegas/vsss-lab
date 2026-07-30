@@ -18,6 +18,7 @@ from vsss_train.ablations import (
 )
 from vsss_train.config import MarlConfig
 from vsss_train.marl import (
+    ParametricPrimitiveRoleActor,
     PrimitiveRoleActor,
     TeamBatch,
     build_team_observation,
@@ -32,7 +33,7 @@ from vsss_train.marl_ppo import (
     TrajectoryMetadata,
     sample_bounded_action,
 )
-from vsss_train.primitives import SoccerPrimitiveSet
+from vsss_train.primitives import ParametricPrimitiveSet, SoccerPrimitiveSet
 from vsss_train.scenarios import Scenario, ScenarioCurriculum, load_suite
 from vsss_train.semantic_scenarios import (
     SemanticScenario,
@@ -276,6 +277,25 @@ def collect_self_play_trajectory(
                     action_index
                 )
                 action_indices.append(action_index)
+            elif isinstance(learner.actor, ParametricPrimitiveRoleActor):
+                skill_logits, parameter_mean, parameter_log_std = learner.actor(policy_observation)
+                categorical = Categorical(logits=skill_logits)
+                parameter_distribution = Normal(
+                    parameter_mean,
+                    parameter_log_std.exp(),
+                )
+                action_index = categorical.sample()  # type: ignore[no-untyped-call]
+                parameters, parameter_log_probability = sample_bounded_action(
+                    parameter_distribution
+                )
+                action = ParametricPrimitiveSet.encode(action_index, parameters)
+                log_probability = (
+                    categorical.log_prob(  # type: ignore[no-untyped-call]
+                        action_index
+                    )
+                    + parameter_log_probability
+                )
+                action_indices.append(action_index)
             elif isinstance(learner.actor, RecurrentSharedActor):
                 if recurrent_state is None:
                     raise AssertionError("recurrent actor requires recurrent state")
@@ -286,7 +306,10 @@ def collect_self_play_trajectory(
                 )
             else:
                 mean, log_std = learner.actor(policy_observation)
-            if not isinstance(learner.actor, (LatticeSharedActor, PrimitiveRoleActor)):
+            if not isinstance(
+                learner.actor,
+                (LatticeSharedActor, PrimitiveRoleActor, ParametricPrimitiveRoleActor),
+            ):
                 distribution = Normal(mean, log_std.exp())
                 action, log_probability = sample_bounded_action(distribution)
             value = learner.critic(policy_observation)
@@ -628,17 +651,52 @@ def train_iteration(
 
 
 def _policy_stats(trajectory: TeamTrajectory, action_parser: str) -> dict[str, object] | None:
-    if action_parser != "primitive" or "action_index" not in trajectory.data.keys():
+    if action_parser not in ("primitive", "parametric_primitive") or (
+        "action_index" not in trajectory.data.keys()
+    ):
         return None
     indices = trajectory.data["action_index"].detach().cpu().reshape(-1)
-    counts = torch.bincount(indices, minlength=SoccerPrimitiveSet.action_count)
+    action_count = (
+        ParametricPrimitiveSet.action_count
+        if action_parser == "parametric_primitive"
+        else SoccerPrimitiveSet.action_count
+    )
+    counts = torch.bincount(indices, minlength=action_count)
     total = max(1, int(counts.sum()))
+    direction_change_mean_degrees: float | None = None
+    direction_change_p95_degrees: float | None = None
+    if action_parser == "parametric_primitive" and len(trajectory.data) > 1:
+        vectors = trajectory.data["action"][..., 1:3]
+        normalized = torch.nn.functional.normalize(vectors, dim=-1)
+        dots = (normalized[1:] * normalized[:-1]).sum(dim=-1).clamp(-1.0, 1.0)
+        moving = (trajectory.data["action_index"][1:] != 0) & (
+            trajectory.data["action_index"][:-1] != 0
+        )
+        changes = torch.rad2deg(torch.acos(dots[moving]))
+        if changes.numel():
+            direction_change_mean_degrees = float(changes.mean())
+            direction_change_p95_degrees = float(torch.quantile(changes, 0.95))
     return {
-        "action_parser": "primitive",
+        "action_parser": action_parser,
         "action_counts": [int(value) for value in counts.tolist()],
         "stop_fraction": int(counts[0]) / total,
-        "navigate_fraction": int(counts[1:9].sum()) / total,
-        "strike_fraction": int(counts[9:17].sum()) / total,
+        "navigate_fraction": (
+            int(counts[1]) / total
+            if action_parser == "parametric_primitive"
+            else int(counts[1:9].sum()) / total
+        ),
+        "strike_fraction": (
+            int(counts[2]) / total
+            if action_parser == "parametric_primitive"
+            else int(counts[9:17].sum()) / total
+        ),
+        "mean_intensity": (
+            float(((trajectory.data["action"][..., 3] + 1.0) * 0.5).mean())
+            if action_parser == "parametric_primitive"
+            else None
+        ),
+        "direction_change_mean_degrees": direction_change_mean_degrees,
+        "direction_change_p95_degrees": direction_change_p95_degrees,
     }
 
 

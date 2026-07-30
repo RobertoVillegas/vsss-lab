@@ -508,6 +508,12 @@ def _run(arguments: argparse.Namespace) -> None:
                 if config.action_parser == "primitive"
                 else {"kind": "gaussian", "actor_log_std": actor_log_std}
             )
+            if config.action_parser == "parametric_primitive":
+                exploration = {
+                    "kind": "hybrid",
+                    "actor_log_std": actor_log_std,
+                    "entropy": result.losses["entropy"],
+                }
             metric_record = {
                 **asdict(result),
                 "environment_steps": total_frames,

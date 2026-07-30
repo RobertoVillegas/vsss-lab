@@ -22,6 +22,7 @@ from vsss_train.ablations import (
     SymmetricWheelLattice,
 )
 from vsss_train.marl import (
+    ParametricPrimitiveRoleActor,
     PrimitiveRoleActor,
     RoleSharedActor,
     SharedActor,
@@ -33,6 +34,7 @@ from vsss_train.ppo import seed_everything
 from vsss_train.primitives import (
     SoccerPrimitiveSet,
     nearest_canonical_direction,
+    parametric_primitive_wheel_actions,
     primitive_wheel_actions,
 )
 from vsss_train.roles import DynamicRoleAssigner, RoleAssignment, assign_roles
@@ -150,7 +152,7 @@ class MarlMatchEnv:
         self.defensive_activation_x = defensive_activation_x
         self.draw_penalty = draw_penalty
         self.stagnation_penalty = stagnation_penalty
-        if action_parser not in ("continuous", "lattice", "primitive"):
+        if action_parser not in ("continuous", "lattice", "primitive", "parametric_primitive"):
             raise ValueError("unsupported action parser")
         self.action_parser = action_parser
         self._decision_period = float(self._config["timestep"]) * action_repeat
@@ -204,6 +206,12 @@ class MarlMatchEnv:
                 team=0,
                 tokens=normalized_blue,
             )
+        elif self.action_parser == "parametric_primitive":
+            normalized_blue = parametric_primitive_wheel_actions(
+                self.state,
+                team=0,
+                tokens=normalized_blue,
+            )
         action_delta = normalized_blue - self._previous_blue_actions
         actions = np.zeros((1, 6, 2), dtype=np.float32)
         actions[0, :3] = normalized_blue * self._max_wheel_speed
@@ -216,6 +224,12 @@ class MarlMatchEnv:
                 normalized_opponent = np.clip(opponent_actions, -1.0, 1.0)
                 if self.action_parser == "primitive":
                     normalized_opponent = primitive_wheel_actions(
+                        self.state,
+                        team=1,
+                        tokens=normalized_opponent,
+                    )
+                elif self.action_parser == "parametric_primitive":
+                    normalized_opponent = parametric_primitive_wheel_actions(
                         self.state,
                         team=1,
                         tokens=normalized_opponent,
@@ -425,7 +439,7 @@ class VectorMarlMatchEnv:
         self.defensive_activation_x = defensive_activation_x
         self.draw_penalty = draw_penalty
         self.stagnation_penalty = stagnation_penalty
-        if action_parser not in ("continuous", "lattice", "primitive"):
+        if action_parser not in ("continuous", "lattice", "primitive", "parametric_primitive"):
             raise ValueError("unsupported action parser")
         self.action_parser = action_parser
         self.stagnation_limit = max(1, round(stagnation_seconds / self._decision_period))
@@ -526,7 +540,22 @@ class VectorMarlMatchEnv:
         NDArray[np.int64],
         NDArray[np.bool_],
     ]:
-        normalized_blue = np.clip(blue_actions, -1.0, 1.0, out=self._normalized_blue_actions)
+        if self.action_parser == "parametric_primitive":
+            primitive_tokens = np.clip(blue_actions, -1.0, 1.0)
+            normalized_blue = self._normalized_blue_actions
+            for world, team in enumerate(self.controlled_teams):
+                normalized_blue[world] = parametric_primitive_wheel_actions(
+                    self.states[world],
+                    team=int(team),
+                    tokens=primitive_tokens[world],
+                )
+        else:
+            normalized_blue = np.clip(
+                blue_actions,
+                -1.0,
+                1.0,
+                out=self._normalized_blue_actions,
+            )
         if self.action_parser == "primitive":
             for world, team in enumerate(self.controlled_teams):
                 normalized_blue[world] = primitive_wheel_actions(
@@ -564,6 +593,12 @@ class VectorMarlMatchEnv:
                         tokens=normalized_opponents[world],
                     )
                     if self.action_parser == "primitive"
+                    else parametric_primitive_wheel_actions(
+                        self.states[world],
+                        team=opponent_team,
+                        tokens=normalized_opponents[world],
+                    )
+                    if self.action_parser == "parametric_primitive"
                     else normalized_opponents[world]
                 )
                 actions[world, opponent_slice] = parsed_opponent * self._max_wheel_speed
@@ -1228,6 +1263,7 @@ def distill_dynamic_teacher(
     actor: SharedActor
     | RoleSharedActor
     | PrimitiveRoleActor
+    | ParametricPrimitiveRoleActor
     | RecurrentSharedActor
     | EntityAttentionActor
     | LatticeSharedActor,
@@ -1252,17 +1288,23 @@ def distill_dynamic_teacher(
     observations: list[TeamBatch] = []
     actions: list[torch.Tensor] = []
     primitive_indices: list[torch.Tensor] = []
+    parametric_skills: list[torch.Tensor] = []
+    parametric_parameters: list[torch.Tensor] = []
     for sample_seed in range(seed, seed + samples):
         observations.append(env.reset(sample_seed))
         actions.append(torch.from_numpy(teacher.actions(env.state).copy()))
         roles = teacher.assign(env.state)
         labels: list[int] = []
+        skill_labels: list[int] = []
+        parameter_labels: list[tuple[float, float, float]] = []
         ball = (float(env.state[5]), float(env.state[6]))
         for local_slot, role in enumerate(roles):
             pose = robot_pose(env.state, local_slot)
             if role == "pressor":
-                direction = nearest_canonical_direction((0.75 - ball[0], -ball[1]), 0)
+                vector = (0.75 - ball[0], -ball[1])
+                direction = nearest_canonical_direction(vector, 0)
                 labels.append(1 + SoccerPrimitiveSet.directions + direction)
+                skill_labels.append(2)
             else:
                 target = (
                     (-0.68, float(np.clip(ball[1], -0.18, 0.18)))
@@ -1274,19 +1316,45 @@ def distill_dynamic_teacher(
                     0,
                 )
                 labels.append(1 + direction)
+                vector = (target[0] - pose[0], target[1] - pose[1])
+                skill_labels.append(1)
+            angle = math.atan2(vector[1], vector[0])
+            # The deterministic teacher already modulates its normalized wheel
+            # command from geometry. Distill full primitive authority here;
+            # multiplying by the teacher wheel magnitude a second time makes
+            # the learned controller artificially slow.
+            parameter_labels.append((math.cos(angle), math.sin(angle), 1.0))
         primitive_indices.append(torch.tensor(labels, dtype=torch.int64))
+        parametric_skills.append(torch.tensor(skill_labels, dtype=torch.int64))
+        parametric_parameters.append(torch.tensor(parameter_labels, dtype=torch.float32))
     batch = stack_team_batches(observations)
     device = next(actor.parameters()).device
     batch = batch.to(device)
     targets = torch.stack(actions).to(device)
     primitive_targets = torch.stack(primitive_indices).to(device)
+    parametric_skill_targets = torch.stack(parametric_skills).to(device)
+    parametric_parameter_targets = torch.stack(parametric_parameters).to(device)
     optimizer = torch.optim.Adam(actor.parameters(), lr=1e-3)
     loss = torch.zeros(())
     generator = torch.Generator().manual_seed(seed)
     for _ in range(epochs):
         for indices in torch.randperm(samples, generator=generator).split(256):  # type: ignore[no-untyped-call]
             indices = indices.to(device)
-            mean, _ = actor(batch.select_batch(indices))
+            selected = batch.select_batch(indices)
+            if isinstance(actor, ParametricPrimitiveRoleActor):
+                skill_logits, parameter_mean, _ = actor(selected)
+                skill_loss = torch.nn.functional.cross_entropy(
+                    skill_logits.reshape(-1, skill_logits.shape[-1]),
+                    parametric_skill_targets[indices].reshape(-1),
+                )
+                parameter_loss = (
+                    (torch.tanh(parameter_mean) - parametric_parameter_targets[indices])
+                    .square()
+                    .mean()
+                )
+                loss = skill_loss + parameter_loss
+            else:
+                mean, _ = actor(selected)
             if isinstance(actor, PrimitiveRoleActor):
                 loss = torch.nn.functional.cross_entropy(
                     mean.reshape(-1, mean.shape[-1]),
@@ -1304,7 +1372,7 @@ def distill_dynamic_teacher(
                     mean.reshape(-1, mean.shape[-1]),
                     lattice_labels.reshape(-1),
                 )
-            else:
+            elif not isinstance(actor, ParametricPrimitiveRoleActor):
                 loss = (torch.tanh(mean) - targets[indices]).square().mean()
             optimizer.zero_grad(set_to_none=True)
             loss.backward()  # type: ignore[no-untyped-call]

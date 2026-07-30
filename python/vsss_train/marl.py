@@ -10,7 +10,7 @@ import torch
 from numpy.typing import NDArray
 from torch import Tensor, nn
 
-from vsss_train.primitives import SoccerPrimitiveSet
+from vsss_train.primitives import ParametricPrimitiveSet, SoccerPrimitiveSet
 from vsss_train.roles import RoleAssignment, assign_roles, role_features
 
 FloatArray = NDArray[np.float32]
@@ -363,6 +363,46 @@ class PrimitiveRoleActor(RoleSharedActor):
     def deterministic_action(self, observation: TeamBatch) -> Tensor:
         logits, _ = self(observation)
         return SoccerPrimitiveSet.encode(logits.argmax(dim=-1))
+
+
+class ParametricPrimitiveRoleActor(RoleSharedActor):
+    """Role-aware hybrid policy over semantic skills and continuous geometry."""
+
+    def __init__(
+        self,
+        hidden_size: int = 64,
+        *,
+        activation: str = "tanh",
+        layer_norm: bool = False,
+    ) -> None:
+        super().__init__(
+            hidden_size,
+            activation=activation,
+            layer_norm=layer_norm,
+        )
+        self.skill_head = nn.Linear(hidden_size, ParametricPrimitiveSet.action_count)
+        self.parameter_head = nn.Linear(hidden_size, 3)
+        del self.action_head
+        del self.log_std
+        self.log_std = nn.Parameter(torch.full((3,), -0.5))
+
+    def forward(  # type: ignore[override]
+        self,
+        observation: TeamBatch,
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        encoded = self.encode(observation)
+        return (
+            self.skill_head(encoded),
+            self.parameter_head(encoded),
+            self.log_std.expand(*encoded.shape[:-1], 3),
+        )
+
+    def deterministic_action(self, observation: TeamBatch) -> Tensor:
+        logits, parameter_mean, _ = self(observation)
+        return ParametricPrimitiveSet.encode(
+            logits.argmax(dim=-1),
+            torch.tanh(parameter_mean),
+        )
 
 
 class LocalCritic(nn.Module):

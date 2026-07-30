@@ -68,6 +68,58 @@ class SoccerPrimitiveSet:
         return PrimitiveCommand("navigate" if skill_value < 0.5 else "strike", direction)
 
 
+@dataclass(frozen=True)
+class ParametricPrimitiveCommand:
+    """A semantic skill with continuous heading and drive intensity."""
+
+    skill: str
+    direction: float
+    intensity: float
+
+
+class ParametricPrimitiveSet:
+    """Stop, navigate, and strike with continuous geometric parameters."""
+
+    action_count = 3
+    skill_labels = ("stop", "navigate", "strike")
+
+    @classmethod
+    def encode(cls, skill_indices: Tensor, parameters: Tensor) -> Tensor:
+        """Encode categorical skills and bounded direction/intensity parameters."""
+        if skill_indices.dtype not in (torch.int32, torch.int64):
+            raise ValueError("parametric primitive skills must be integer indices")
+        if parameters.shape != (*skill_indices.shape, 3):
+            raise ValueError(
+                "parametric primitive parameters must end in direction x/y and intensity"
+            )
+        if bool(torch.any(skill_indices < 0)) or bool(torch.any(skill_indices >= cls.action_count)):
+            raise ValueError("parametric primitive skill index out of range")
+        skill = skill_indices.to(torch.float32) - 1.0
+        bounded = parameters.clamp(-1.0, 1.0)
+        return torch.cat((skill.unsqueeze(-1), bounded), dim=-1)
+
+    @classmethod
+    def decode(cls, token: FloatArray) -> ParametricPrimitiveCommand:
+        """Decode a bounded transport token into physical controller parameters."""
+        if token.shape != (4,):
+            raise ValueError(
+                "parametric primitive token must contain skill, direction x/y, and intensity"
+            )
+        skill_index = int(np.clip(round(float(token[0]) + 1.0), 0, 2))
+        direction_vector = np.asarray(token[1:3], dtype=np.float64)
+        norm = float(np.linalg.norm(direction_vector))
+        direction = (
+            math.atan2(float(direction_vector[1]), float(direction_vector[0]))
+            if norm > 1e-6
+            else 0.0
+        )
+        return ParametricPrimitiveCommand(
+            cls.skill_labels[skill_index],
+            direction,
+            float(np.clip((token[3] + 1.0) * 0.5, 0.0, 1.0)),
+        )
+
+
 def canonical_direction(index: int, team: int) -> tuple[float, float]:
     """Return one eight-way direction reflected into the team's world frame."""
     if not 0 <= index < SoccerPrimitiveSet.directions:
@@ -132,6 +184,96 @@ def primitive_wheel_actions(
             )
         result[local_slot] = go_to_target(pose, target)
     return result
+
+
+def parametric_primitive_wheel_actions(
+    state: FloatArray,
+    *,
+    team: int,
+    tokens: FloatArray,
+    ball_deceleration: float = 0.8,
+) -> FloatArray:
+    """Execute continuously directed skills with curved, speed-aware arrival."""
+    if tokens.shape != (3, 4):
+        raise ValueError("parametric primitive team actions must have shape (3, 4)")
+    if ball_deceleration <= 0.0:
+        raise ValueError("ball deceleration must be positive")
+    result = np.zeros((3, 2), dtype=np.float32)
+    offset = 0 if team == 0 else 3
+    for local_slot, token in enumerate(tokens):
+        slot = offset + local_slot
+        if not bool(float(state[ROBOT_BASE + slot * ROBOT_WIDTH + 10])):
+            continue
+        command = ParametricPrimitiveSet.decode(token)
+        if command.skill == "stop" or command.intensity <= 1e-4:
+            continue
+        sign = 1.0 if team == 0 else -1.0
+        direction = (sign * math.cos(command.direction), sign * math.sin(command.direction))
+        pose = robot_pose(state, slot)
+        if command.skill == "navigate":
+            target = (pose[0] + 0.4 * direction[0], pose[1] + 0.4 * direction[1])
+            arrival_scale = 1.0
+        else:
+            target = _strike_target(
+                state,
+                pose,
+                direction,
+                ball_deceleration=ball_deceleration,
+            )
+            ball = np.asarray(state[5:7], dtype=np.float64)
+            target_vector = np.asarray(target, dtype=np.float64) - ball
+            arrival_scale = 1.0 if float(np.dot(target_vector, direction)) > 0.0 else 0.72
+        wheels = go_to_target(pose, target)
+        result[local_slot] = wheels * np.float32(command.intensity * arrival_scale)
+    return result
+
+
+def describe_parametric_primitive_actions(
+    state: FloatArray,
+    *,
+    team: int,
+    tokens: FloatArray,
+) -> list[dict[str, object]]:
+    """Describe continuously parameterized intent for replay inspection."""
+    if tokens.shape != (3, 4):
+        raise ValueError("parametric primitive team actions must have shape (3, 4)")
+    offset = 0 if team == 0 else 3
+    descriptions: list[dict[str, object]] = []
+    for local_slot, token in enumerate(tokens):
+        slot = offset + local_slot
+        command = ParametricPrimitiveSet.decode(token)
+        pose = robot_pose(state, slot)
+        sign = 1.0 if team == 0 else -1.0
+        direction = (
+            (sign * math.cos(command.direction), sign * math.sin(command.direction))
+            if command.skill != "stop"
+            else (0.0, 0.0)
+        )
+        ball = (float(state[5]), float(state[6]))
+        if command.skill == "stop":
+            target = (pose[0], pose[1])
+            phase = "stop"
+        elif command.skill == "navigate":
+            target = (pose[0] + 0.4 * direction[0], pose[1] + 0.4 * direction[1])
+            phase = "navigate"
+        else:
+            target = _strike_target(state, pose, direction, ball_deceleration=0.8)
+            exit_dot = (target[0] - ball[0]) * direction[0] + (target[1] - ball[1]) * direction[1]
+            phase = "strike" if exit_dot > 0.0 else "acquire"
+        descriptions.append(
+            {
+                "skill": command.skill,
+                "direction_index": None,
+                "direction": f"{math.degrees(command.direction):+.1f}°",
+                "direction_radians": command.direction,
+                "intensity": command.intensity,
+                "phase": phase,
+                "target": {"x": target[0], "y": target[1]},
+                "exit_direction": {"x": direction[0], "y": direction[1]},
+                "ball_distance": math.hypot(pose[0] - ball[0], pose[1] - ball[1]),
+            }
+        )
+    return descriptions
 
 
 def describe_primitive_actions(

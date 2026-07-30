@@ -17,9 +17,20 @@ from vsss_train.ablations import (
     RecurrentSharedActor,
     RecurrentState,
 )
-from vsss_train.marl import PrimitiveRoleActor, RoleSharedActor, SharedActor, build_team_observation
+from vsss_train.marl import (
+    ParametricPrimitiveRoleActor,
+    PrimitiveRoleActor,
+    RoleSharedActor,
+    SharedActor,
+    build_team_observation,
+)
 from vsss_train.marl_env import MarlMatchEnv, _goal_geometry_metrics
-from vsss_train.primitives import SoccerPrimitiveSet, describe_primitive_actions
+from vsss_train.primitives import (
+    ParametricPrimitiveSet,
+    SoccerPrimitiveSet,
+    describe_parametric_primitive_actions,
+    describe_primitive_actions,
+)
 from vsss_train.roles import assign_roles
 from vsss_vision import (
     BallEstimate,
@@ -38,12 +49,14 @@ def run_policy_replay(
     blue: SharedActor
     | RoleSharedActor
     | PrimitiveRoleActor
+    | ParametricPrimitiveRoleActor
     | RecurrentSharedActor
     | EntityAttentionActor
     | LatticeSharedActor,
     yellow: SharedActor
     | RoleSharedActor
     | PrimitiveRoleActor
+    | ParametricPrimitiveRoleActor
     | RecurrentSharedActor
     | EntityAttentionActor
     | LatticeSharedActor
@@ -145,6 +158,25 @@ def run_policy_replay(
                     policy_intents[slot] = {**execution, **blue_policy_intents[slot]}
                 if yellow_action is not None:
                     yellow_execution = describe_primitive_actions(
+                        environment.state,
+                        team=1,
+                        tokens=yellow_action,
+                    )
+                    for slot, execution in enumerate(yellow_execution):
+                        policy_intents[slot + 3] = {
+                            **execution,
+                            **yellow_policy_intents[slot],
+                        }
+            elif action_parser == "parametric_primitive":
+                blue_execution = describe_parametric_primitive_actions(
+                    environment.state,
+                    team=0,
+                    tokens=blue_action,
+                )
+                for slot, execution in enumerate(blue_execution):
+                    policy_intents[slot] = {**execution, **blue_policy_intents[slot]}
+                if yellow_action is not None:
+                    yellow_execution = describe_parametric_primitive_actions(
                         environment.state,
                         team=1,
                         tokens=yellow_action,
@@ -332,6 +364,7 @@ def _initial_recurrent(
     actor: SharedActor
     | RoleSharedActor
     | PrimitiveRoleActor
+    | ParametricPrimitiveRoleActor
     | RecurrentSharedActor
     | EntityAttentionActor
     | LatticeSharedActor,
@@ -346,6 +379,7 @@ def _policy_action(
     actor: SharedActor
     | RoleSharedActor
     | PrimitiveRoleActor
+    | ParametricPrimitiveRoleActor
     | RecurrentSharedActor
     | EntityAttentionActor
     | LatticeSharedActor,
@@ -382,6 +416,37 @@ def _policy_action(
                 }
             )
         return SoccerPrimitiveSet.encode(indices).cpu().numpy(), None, intents
+    if isinstance(actor, ParametricPrimitiveRoleActor):
+        skill_logits, parameter_mean, _ = actor(observation)
+        probabilities = torch.softmax(skill_logits, dim=-1)
+        indices = probabilities.argmax(dim=-1)
+        parameters = torch.tanh(parameter_mean)
+        intents = []
+        for agent, index in enumerate(indices.tolist()):
+            top_probabilities, top_indices = probabilities[agent].topk(3)
+            intents.append(
+                {
+                    "action_index": index,
+                    "confidence": float(probabilities[agent, index]),
+                    "top_actions": [
+                        {
+                            "action_index": candidate,
+                            "label": ParametricPrimitiveSet.skill_labels[candidate].upper(),
+                            "probability": float(probability),
+                        }
+                        for candidate, probability in zip(
+                            top_indices.tolist(),
+                            top_probabilities.tolist(),
+                            strict=True,
+                        )
+                    ],
+                }
+            )
+        return (
+            ParametricPrimitiveSet.encode(indices, parameters).cpu().numpy(),
+            None,
+            intents,
+        )
     if isinstance(actor, RecurrentSharedActor):
         if recurrent is None:
             raise AssertionError("recurrent actor requires state")

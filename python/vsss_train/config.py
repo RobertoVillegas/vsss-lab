@@ -82,7 +82,9 @@ class MarlConfig:
     schema_version: int = 1
     algorithm: Literal["ippo", "mappo"] = "mappo"
     policy_architecture: Literal["mlp", "gru", "attention", "role_mlp"] = "mlp"
-    action_parser: Literal["continuous", "lattice", "primitive"] = "continuous"
+    action_parser: Literal["continuous", "lattice", "primitive", "parametric_primitive"] = (
+        "continuous"
+    )
     adaptive_curriculum: bool = False
     semantic_curriculum: bool = False
     semantic_phased_curriculum: bool = False
@@ -164,13 +166,23 @@ class MarlConfig:
             raise ValueError("algorithm must be ippo or mappo")
         if self.policy_architecture not in ("mlp", "gru", "attention", "role_mlp"):
             raise ValueError("policy_architecture must be mlp, gru, attention, or role_mlp")
-        if self.action_parser not in ("continuous", "lattice", "primitive"):
-            raise ValueError("action_parser must be continuous, lattice, or primitive")
+        if self.action_parser not in (
+            "continuous",
+            "lattice",
+            "primitive",
+            "parametric_primitive",
+        ):
+            raise ValueError(
+                "action_parser must be continuous, lattice, primitive, or parametric_primitive"
+            )
         if self.network_activation not in ("tanh", "relu"):
             raise ValueError("network_activation must be tanh or relu")
         if self.action_parser == "lattice" and self.policy_architecture != "mlp":
             raise ValueError("lattice ablation currently requires the MLP architecture")
-        if self.action_parser == "primitive" and self.policy_architecture != "role_mlp":
+        if (
+            self.action_parser in ("primitive", "parametric_primitive")
+            and self.policy_architecture != "role_mlp"
+        ):
             raise ValueError("primitive actions require the role_mlp architecture")
         if self.adaptive_curriculum and not self.scenario_suite:
             raise ValueError("adaptive_curriculum requires scenario_suite")

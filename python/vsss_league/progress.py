@@ -232,6 +232,18 @@ class TrainingDashboard:
                 ),
                 "",
             )
+        if latest is not None and latest.policy_stats is not None:
+            policy = latest.policy_stats
+            if policy.get("action_parser") == "parametric_primitive":
+                table.add_row(
+                    "control intensity · heading Δ mean/p95",
+                    (
+                        f"{_number(policy.get('mean_intensity')):.1%} · "
+                        f"{_number(policy.get('direction_change_mean_degrees')):.1f}°/"
+                        f"{_number(policy.get('direction_change_p95_degrees')):.1f}°"
+                    ),
+                    "",
+                )
         if latest is not None and latest.curriculum is not None:
             outcomes = latest.curriculum.get("outcomes")
             if isinstance(outcomes, dict):
@@ -303,3 +315,7 @@ class TrainingDashboard:
 
 def _mean(values: deque[float]) -> float:
     return sum(values) / len(values)
+
+
+def _number(value: object) -> float:
+    return float(value) if isinstance(value, (int, float)) else 0.0

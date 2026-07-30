@@ -23,6 +23,7 @@ from vsss_train.config import MarlConfig
 from vsss_train.marl import (
     CentralizedCritic,
     LocalCritic,
+    ParametricPrimitiveRoleActor,
     PrimitiveRoleActor,
     RoleSharedActor,
     SharedActor,
@@ -36,6 +37,7 @@ PolicyActor = (
     SharedActor
     | RoleSharedActor
     | PrimitiveRoleActor
+    | ParametricPrimitiveRoleActor
     | RecurrentSharedActor
     | EntityAttentionActor
     | LatticeSharedActor
@@ -271,6 +273,32 @@ class MarlLearner:
                         distribution_discrete.entropy(),  # type: ignore[no-untyped-call]
                         sample_active,
                     )
+                elif isinstance(self.actor, ParametricPrimitiveRoleActor):
+                    skill_logits, parameter_mean, parameter_log_std = self.actor(sample_observation)
+                    skill_distribution = Categorical(logits=skill_logits)
+                    parameter_distribution = Normal(
+                        parameter_mean,
+                        parameter_log_std.exp(),
+                    )
+                    log_probability = (
+                        skill_distribution.log_prob(  # type: ignore[no-untyped-call]
+                            sample["action_index"]
+                        )
+                        + bounded_action_log_prob(
+                            parameter_distribution,
+                            sample["action"][..., 1:],
+                        )
+                    )
+                    ratio = (log_probability - sample["sample_log_prob"]).exp()
+                    entropy_action = torch.tanh(parameter_distribution.rsample())
+                    parameter_entropy = -bounded_action_log_prob(
+                        parameter_distribution,
+                        entropy_action,
+                    )
+                    entropy = _masked_mean(
+                        skill_distribution.entropy() + parameter_entropy,  # type: ignore[no-untyped-call]
+                        sample_active,
+                    )
                 elif isinstance(self.actor, RecurrentSharedActor):
                     mean, log_std, _ = self.actor.forward_with_state(
                         sample_observation,
@@ -278,7 +306,10 @@ class MarlLearner:
                     )
                 else:
                     mean, log_std = self.actor(sample_observation)
-                if not isinstance(self.actor, (LatticeSharedActor, PrimitiveRoleActor)):
+                if not isinstance(
+                    self.actor,
+                    (LatticeSharedActor, PrimitiveRoleActor, ParametricPrimitiveRoleActor),
+                ):
                     distribution = Normal(mean, log_std.exp())
                     log_probability = bounded_action_log_prob(distribution, sample["action"])
                     ratio = (log_probability - sample["sample_log_prob"]).exp()
@@ -334,8 +365,13 @@ class MarlLearner:
                 totals["clip_fraction"] += float(clip_fraction.detach())
                 steps += 1
         result = {name: value / steps for name, value in totals.items()}
-        result["mean_abs_action"] = float(data["action"].abs().mean())
-        result["action_saturation"] = float((data["action"].abs() > 0.95).float().mean())
+        metric_action = (
+            data["action"][..., 1:]
+            if self.config.action_parser == "parametric_primitive"
+            else data["action"]
+        )
+        result["mean_abs_action"] = float(metric_action.abs().mean())
+        result["action_saturation"] = float((metric_action.abs() > 0.95).float().mean())
         self.policy_version += 1
         return result
 
@@ -486,6 +522,12 @@ def _build_actor(config: MarlConfig) -> PolicyActor:
         return LatticeSharedActor(config.hidden_size)
     if config.action_parser == "primitive":
         return PrimitiveRoleActor(
+            config.hidden_size,
+            activation=config.network_activation,
+            layer_norm=config.layer_norm,
+        )
+    if config.action_parser == "parametric_primitive":
+        return ParametricPrimitiveRoleActor(
             config.hidden_size,
             activation=config.network_activation,
             layer_norm=config.layer_norm,

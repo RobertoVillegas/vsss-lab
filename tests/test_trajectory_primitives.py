@@ -11,9 +11,11 @@ import pytest
 import torch
 from vsss_train.marl_env import MarlMatchEnv
 from vsss_train.primitives import (
+    ParametricPrimitiveSet,
     SoccerPrimitiveSet,
     canonical_direction,
     nearest_canonical_direction,
+    parametric_primitive_wheel_actions,
 )
 from vsss_train.trajectory_diagnostics import analyze_trajectory_replay
 
@@ -62,6 +64,50 @@ def test_primitive_action_table_matches_golden_contract() -> None:
         }
         for action in contract["actions"]
     ]
+
+
+def test_parametric_primitives_preserve_continuous_heading_and_intensity() -> None:
+    skills = torch.tensor([0, 1, 2])
+    parameters = torch.tensor(
+        [
+            [1.0, 0.0, -1.0],
+            [math.cos(math.pi / 8), math.sin(math.pi / 8), 0.0],
+            [math.cos(-3 * math.pi / 8), math.sin(-3 * math.pi / 8), 1.0],
+        ]
+    )
+    tokens = ParametricPrimitiveSet.encode(skills, parameters).numpy()
+    decoded = [ParametricPrimitiveSet.decode(token) for token in tokens]
+    assert [command.skill for command in decoded] == ["stop", "navigate", "strike"]
+    assert decoded[1].direction == pytest.approx(math.pi / 8)
+    assert decoded[2].direction == pytest.approx(-3 * math.pi / 8)
+    assert decoded[0].intensity == pytest.approx(0.0)
+    assert decoded[1].intensity == pytest.approx(0.5)
+    assert decoded[2].intensity == pytest.approx(1.0)
+
+
+def test_parametric_navigation_has_smooth_noncanonical_wheel_command() -> None:
+    snapshot = copy.deepcopy(json.loads(STATE))
+    snapshot["robots"][0]["enabled"] = True
+    snapshot["robots"][0]["pose"].update(x=0.0, y=0.0, theta=0.0)
+    environment = MarlMatchEnv(CONFIG, STATE, stage=7, horizon=2)
+    environment.reset_state(snapshot)
+    token = ParametricPrimitiveSet.encode(
+        torch.tensor([1, 0, 0]),
+        torch.tensor(
+            [
+                [math.cos(math.pi / 8), math.sin(math.pi / 8), 0.0],
+                [1.0, 0.0, -1.0],
+                [1.0, 0.0, -1.0],
+            ]
+        ),
+    ).numpy()
+    wheels = parametric_primitive_wheel_actions(
+        environment.state,
+        team=0,
+        tokens=token,
+    )
+    assert 0.0 < wheels[0, 0] < wheels[0, 1] < 1.0
+    assert wheels[0].mean() < 0.5
 
 
 def test_mappo_ippo_primitive_configs_are_paired() -> None:
