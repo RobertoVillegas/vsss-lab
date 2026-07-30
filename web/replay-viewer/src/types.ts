@@ -44,8 +44,18 @@ export interface TrainingMetric {
     iterations_per_second?: number;
   };
   exploration?: {
+    kind?: "gaussian" | "categorical";
     actor_log_std?: number[];
+    entropy?: number;
+    normalized_entropy?: number;
   };
+  policy_stats?: {
+    action_parser: "primitive";
+    action_counts: number[];
+    stop_fraction: number;
+    navigate_fraction: number;
+    strike_fraction: number;
+  } | null;
   curriculum?: {
     schema_version?: number;
     levels?: Record<string, Record<string, number>>;
@@ -55,6 +65,14 @@ export interface TrainingMetric {
       failure?: number;
       unresolved?: number;
     };
+    phase?: string;
+    phase_index?: number;
+    phase_gate_streak?: number;
+    training_families?: string[];
+    allocation?: Record<string, number>;
+    allocation_by_family?: Record<string, number>;
+    allocation_by_roster?: Record<string, number>;
+    observed_full_match_fraction?: number;
     trials?: SemanticTrial[];
   };
 }
@@ -144,6 +162,7 @@ export interface ReplayHeader {
   ticks: number;
   policies: { blue: string; yellow: string };
   semantic_context?: TrainingMetric["curriculum"];
+  action_parser?: "continuous" | "lattice" | "primitive";
   config: {
     control_period: number;
     max_wheel_speed: number;
@@ -157,9 +176,11 @@ export interface ReplayHeader {
 export interface ReplayFrame {
   type: "tick";
   index: number;
+  episode?: number;
   events: number;
   rewards: number[];
   actions: number[][];
+  policy_intents?: (PolicyIntent | null)[];
   roles?: ("attacker" | "support" | "coverage")[];
   role_changes?: boolean[];
   coverage_uncovered?: { blue: boolean; yellow: boolean };
@@ -199,6 +220,23 @@ export interface ReplayFrame {
       model_id: string;
     } | null;
   };
+}
+
+export interface PolicyIntent {
+  action_index: number;
+  skill: "stop" | "navigate" | "strike";
+  direction_index: number | null;
+  direction: string | null;
+  confidence: number;
+  phase: "stop" | "navigate" | "acquire" | "strike";
+  target: { x: number; y: number };
+  exit_direction: { x: number; y: number };
+  ball_distance: number;
+  top_actions: {
+    action_index: number;
+    label: string;
+    probability: number;
+  }[];
 }
 
 export interface Replay {

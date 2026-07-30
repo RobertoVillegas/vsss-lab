@@ -11,10 +11,11 @@ interface Props {
     estimated: boolean;
     predicted: boolean;
   };
+  selectedActor: number;
 }
 
 export const FieldCanvas = forwardRef<HTMLCanvasElement, Props>(function FieldCanvas(
-  { header, frame, layers },
+  { header, frame, layers, selectedActor },
   forwardedRef,
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -204,7 +205,7 @@ export const FieldCanvas = forwardRef<HTMLCanvasElement, Props>(function FieldCa
         if (index === 0 || index !== prediction.samples.length - 1) return;
         const [sampleX, sampleY] = point(sample[1], sample[2]);
         context.fillStyle = "rgba(132, 234, 255, 0.9)";
-        context.font = "10px ui-monospace, monospace";
+        context.font = '10px "Geist Mono Variable", "Geist Mono", ui-monospace, monospace';
         context.fillText(`+${sample[0].toFixed(1)}s`, sampleX, sampleY - 8);
       });
     }
@@ -239,7 +240,7 @@ export const FieldCanvas = forwardRef<HTMLCanvasElement, Props>(function FieldCa
       context.fillRect(-5, -5, 10, 10);
       context.restore();
       context.fillStyle = "rgba(244, 255, 250, 0.9)";
-      context.font = "10px ui-monospace, monospace";
+      context.font = '10px "Geist Mono Variable", "Geist Mono", ui-monospace, monospace';
       context.fillText(
         `${interception.team.toUpperCase()} GK +${interception.elapsed.toFixed(2)}s`,
         interceptionX,
@@ -247,9 +248,51 @@ export const FieldCanvas = forwardRef<HTMLCanvasElement, Props>(function FieldCa
       );
     }
 
+    const selectedIntent = frame.policy_intents?.[selectedActor];
+    const selectedRobot = frame.snapshot.robots[selectedActor];
+    if (selectedIntent && selectedRobot) {
+      const [robotX, robotY] = point(selectedRobot.pose.x, selectedRobot.pose.y);
+      const [targetX, targetY] = point(selectedIntent.target.x, selectedIntent.target.y);
+      const [ballX, ballY] = point(frame.snapshot.ball.x, frame.snapshot.ball.y);
+      const exitLength = 0.24 * scale;
+      const exitX = ballX + selectedIntent.exit_direction.x * exitLength;
+      const exitY = ballY - selectedIntent.exit_direction.y * exitLength;
+      context.save();
+      context.setLineDash([6, 5]);
+      context.strokeStyle = selectedIntent.phase === "strike" ? "#ff9d5c" : "#71e1ae";
+      context.lineWidth = 2;
+      context.beginPath();
+      context.moveTo(robotX, robotY);
+      context.lineTo(targetX, targetY);
+      context.stroke();
+      context.setLineDash([]);
+      context.beginPath();
+      context.arc(targetX, targetY, 7, 0, Math.PI * 2);
+      context.fillStyle = "rgba(7, 16, 13, .85)";
+      context.fill();
+      context.stroke();
+      context.beginPath();
+      context.moveTo(ballX, ballY);
+      context.lineTo(exitX, exitY);
+      context.strokeStyle = "#ff9d5c";
+      context.lineWidth = 3;
+      context.stroke();
+      const direction = Math.atan2(exitY - ballY, exitX - ballX);
+      context.translate(exitX, exitY);
+      context.rotate(direction);
+      context.beginPath();
+      context.moveTo(0, 0);
+      context.lineTo(-10, -5);
+      context.lineTo(-10, 5);
+      context.closePath();
+      context.fillStyle = "#ff9d5c";
+      context.fill();
+      context.restore();
+    }
+
     const robotWidth = header.config.robot.length * scale;
     const robotHeight = header.config.robot.width * scale;
-    context.font = "600 11px ui-monospace, monospace";
+    context.font = '600 11px "Geist Mono Variable", "Geist Mono", ui-monospace, monospace';
     context.textAlign = "center";
     for (const robot of layers.truth ? frame.snapshot.robots : []) {
       if (!robot.enabled) continue;
@@ -301,7 +344,7 @@ export const FieldCanvas = forwardRef<HTMLCanvasElement, Props>(function FieldCa
       context.strokeStyle = "#321108";
       context.stroke();
     }
-  }, [frame, header, layers, size]);
+  }, [frame, header, layers, selectedActor, size]);
 
   return <canvas aria-label="Recorded VSSS field" ref={canvasRef} />;
 });

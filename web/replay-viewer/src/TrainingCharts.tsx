@@ -19,6 +19,7 @@ const SKILL_FAMILIES = [
   "clearance",
   "shot",
   "pass_receive",
+  "rotation_recovery",
 ] as const;
 
 type ChartDatum = TrainingMetric & {
@@ -36,6 +37,15 @@ type ChartDatum = TrainingMetric & {
   matches_per_second?: number;
   log_std_left?: number;
   log_std_right?: number;
+  normalized_entropy?: number;
+  stop_fraction?: number;
+  navigate_fraction?: number;
+  strike_fraction?: number;
+  full_match_allocation?: number;
+  frontier_allocation?: number;
+  routine_allocation?: number;
+  failure_allocation?: number;
+  curriculum_phase?: number;
   skill_success?: number;
   skill_failure?: number;
   skill_unresolved?: number;
@@ -69,6 +79,15 @@ export default function TrainingCharts({ metrics }: { metrics: TrainingMetric[] 
       matches_per_second: metric.performance?.matches_per_second,
       log_std_left: metric.exploration?.actor_log_std?.[0],
       log_std_right: metric.exploration?.actor_log_std?.[1],
+      normalized_entropy: metric.exploration?.normalized_entropy,
+      stop_fraction: metric.policy_stats?.stop_fraction,
+      navigate_fraction: metric.policy_stats?.navigate_fraction,
+      strike_fraction: metric.policy_stats?.strike_fraction,
+      full_match_allocation: metric.curriculum?.allocation?.full_match,
+      frontier_allocation: metric.curriculum?.allocation?.frontier,
+      routine_allocation: metric.curriculum?.allocation?.routine,
+      failure_allocation: metric.curriculum?.allocation?.failure,
+      curriculum_phase: metric.curriculum?.phase_index,
       skill_success: metric.curriculum?.outcomes?.success,
       skill_failure: metric.curriculum?.outcomes?.failure,
       skill_unresolved: metric.curriculum?.outcomes?.unresolved,
@@ -92,6 +111,7 @@ export default function TrainingCharts({ metrics }: { metrics: TrainingMetric[] 
     )),
     [difficultyFilter, familyFilter, metrics, outcomeFilter, teamFilter],
   );
+  const categorical = metrics.some((metric) => metric.exploration?.kind === "categorical");
   if (!data.length) {
     return (
       <div className="empty-state">
@@ -139,10 +159,19 @@ export default function TrainingCharts({ metrics }: { metrics: TrainingMetric[] 
           <Line dataKey="draws" name="draws" stroke="#ffd84a" dot={false} />
           <Line dataKey="stagnations" name="stagnation" stroke="#ff8a62" dot={false} />
         </TrainingChart>
-        <TrainingChart title="EXPLORATION · LOG STD" data={data}>
-          <Line dataKey="log_std_left" name="left wheel" stroke="#71e1ae" dot={false} />
-          <Line dataKey="log_std_right" name="right wheel" stroke="#49a7ff" dot={false} />
-        </TrainingChart>
+        {categorical ? (
+          <TrainingChart title="CATEGORICAL EXPLORATION" data={data}>
+            <Line dataKey="normalized_entropy" name="normalized entropy" stroke="#bd8cff" dot={false} />
+            <Line dataKey="stop_fraction" name="stop" stroke="#82998f" dot={false} />
+            <Line dataKey="navigate_fraction" name="navigate" stroke="#49a7ff" dot={false} />
+            <Line dataKey="strike_fraction" name="strike" stroke="#ff8a62" dot={false} />
+          </TrainingChart>
+        ) : (
+          <TrainingChart title="EXPLORATION · LOG STD" data={data}>
+            <Line dataKey="log_std_left" name="left wheel" stroke="#71e1ae" dot={false} />
+            <Line dataKey="log_std_right" name="right wheel" stroke="#49a7ff" dot={false} />
+          </TrainingChart>
+        )}
         <TrainingChart title="SEMANTIC OUTCOMES" data={data}>
           <Line dataKey="skill_success" name="success" stroke="#71e1ae" dot={false} />
           <Line dataKey="skill_failure" name="failure" stroke="#ff8a62" dot={false} />
@@ -154,10 +183,27 @@ export default function TrainingCharts({ metrics }: { metrics: TrainingMetric[] 
               key={family}
               dataKey={`${family}_success`}
               name={family}
-              stroke={["#71e1ae", "#49a7ff", "#ffd84a", "#ff8a62", "#bd8cff", "#eaf4ef"][index]}
+              stroke={[
+                "#71e1ae",
+                "#49a7ff",
+                "#ffd84a",
+                "#ff8a62",
+                "#bd8cff",
+                "#eaf4ef",
+                "#49d6c8",
+              ][index]}
               dot={false}
             />
           ))}
+        </TrainingChart>
+        <TrainingChart title="CURRICULUM ALLOCATION" data={data}>
+          <Line dataKey="full_match_allocation" name="full match" stroke="#eaf4ef" dot={false} />
+          <Line dataKey="frontier_allocation" name="frontier" stroke="#ff8a62" dot={false} />
+          <Line dataKey="routine_allocation" name="routine" stroke="#49a7ff" dot={false} />
+          <Line dataKey="failure_allocation" name="failure rehearsal" stroke="#ffd84a" dot={false} />
+        </TrainingChart>
+        <TrainingChart title="CURRICULUM PHASE" data={data}>
+          <Line dataKey="curriculum_phase" name="phase index" stroke="#71e1ae" dot={false} />
         </TrainingChart>
       </div>
       <SemanticTrials

@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { exportReplay } from "./exportReplay";
 import type { ExportFormat, ExportProgress } from "./exportReplay";
 import { FieldCanvas } from "./FieldCanvas";
+import { PolicyTimeline } from "./PolicyTimeline";
 import { clampedFrame, frameLabel, parseReplay } from "./replay";
 import type { MetricHistory, Replay, ReplayAnalytics, ReplayIndex } from "./types";
 
@@ -28,15 +29,9 @@ export default function App() {
   const [followLatest, setFollowLatest] = useState(true);
   const [loop, setLoop] = useState(true);
   const [filter, setFilter] = useState("all");
-  const [analyticsEventFilter, setAnalyticsEventFilter] = useState("all");
+  const [selectedActor, setSelectedActor] = useState(0);
   const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
   const [exportError, setExportError] = useState("");
-  const [visionLayers, setVisionLayers] = useState({
-    truth: true,
-    measured: true,
-    estimated: true,
-    predicted: true,
-  });
   const frameRef = useRef(0);
   const fieldCanvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -96,16 +91,6 @@ export default function App() {
     staleTime: Number.POSITIVE_INFINITY,
   });
   const analytics = analyticsQuery.data;
-  const analyticsKinds = useMemo(
-    () => [...new Set(analytics?.events.map((event) => event.kind) ?? [])].sort(),
-    [analytics?.events],
-  );
-  const analyticsEvents = useMemo(
-    () => analytics?.events.filter(
-      (event) => analyticsEventFilter === "all" || event.kind === analyticsEventFilter,
-    ) ?? [],
-    [analytics?.events, analyticsEventFilter],
-  );
   const error = indexQuery.error ?? replayQuery.error;
   const loading = indexQuery.isPending || replayQuery.isFetching;
 
@@ -198,23 +183,8 @@ export default function App() {
   }, [move, replay]);
 
   const frame = replay?.frames[frameIndex];
-  const iteration = index?.replays.find((item) => item.filename === selected)?.iteration;
-  const selectedInfo = index?.replays.find((item) => item.filename === selected);
   const latestReplayIteration = index?.replays.at(-1)?.iteration;
   const latestCheckpoint = index?.checkpoints.at(-1);
-  const reward = useMemo(
-    () => frame?.rewards.reduce((sum, value) => sum + value, 0) ?? 0,
-    [frame],
-  );
-  const vision = frame?.perception;
-  const visibleMarkers = vision?.camera.robots.length ?? 0;
-  const meanAssociationConfidence = visibleMarkers
-    ? (vision?.camera.robots.reduce(
-        (total, robot) => total + robot.association.confidence,
-        0,
-      ) ?? 0) / visibleMarkers
-    : 0;
-
   return (
     <main className={`app-shell ${activeView === "metrics" ? "metrics-mode" : ""}`}>
       <header className="topbar">
@@ -291,155 +261,6 @@ export default function App() {
             <Metric label="Blue" value={frame?.snapshot.score_blue ?? "—"} tone="blue" />
             <Metric label="Yellow" value={frame?.snapshot.score_yellow ?? "—"} tone="yellow" />
           </div>
-
-          <div className="section-rule" />
-          <p className="side-heading">VISION LAYERS</p>
-          {(["truth", "measured", "estimated", "predicted"] as const).map((layer) => (
-            <label className="loop-toggle" key={layer}>
-              <input
-                type="checkbox"
-                checked={visionLayers[layer]}
-                onChange={(event) => {
-                  setVisionLayers((current) => ({ ...current, [layer]: event.target.checked }));
-                }}
-              />
-              {layer.toUpperCase()}
-            </label>
-          ))}
-          <small>
-            Prediction is causal
-            {frame?.perception?.policy_visible ? " and policy-visible" : " observer-only"}
-          </small>
-          <dl className="details">
-            <div>
-              <dt>Ball estimate</dt>
-              <dd>
-                {vision?.ball_estimate
-                  ? vision.ball_estimate.measurement_accepted
-                    ? "ACCEPTED"
-                    : vision.ball_estimate.rejection_reason?.toUpperCase() ?? "REJECTED"
-                  : "UNAVAILABLE"}
-              </dd>
-            </div>
-            <div>
-              <dt>Estimate age</dt>
-              <dd>
-                {vision?.ball_estimate
-                  ? `${((vision.ball_estimate.update_time - vision.ball_estimate.effective_time) * 1000).toFixed(1)}ms`
-                  : "—"}
-              </dd>
-            </div>
-            <div><dt>Visible markers</dt><dd>{visibleMarkers}/6</dd></div>
-            <div>
-              <dt>Association</dt>
-              <dd>{visibleMarkers ? meanAssociationConfidence.toFixed(3) : "—"}</dd>
-            </div>
-            <div>
-              <dt>Ambiguous</dt>
-              <dd>
-                {vision?.camera.robots.filter((robot) => robot.association.ambiguous).length ?? 0}
-              </dd>
-            </div>
-            <div>
-              <dt>GK intercept</dt>
-              <dd>
-                {vision?.goalkeeper_interception
-                  ? `${vision.goalkeeper_interception.team.toUpperCase()} +${vision.goalkeeper_interception.elapsed.toFixed(2)}s`
-                  : "—"}
-              </dd>
-            </div>
-          </dl>
-          <div className="section-rule" />
-          <p className="side-heading">POLICY MATCHUP</p>
-          <Policy team="BLUE" value={replay?.header.policies.blue} />
-          <Policy team="YELLOW" value={replay?.header.policies.yellow} yellow />
-          {replay?.header.semantic_context ? (
-            <>
-              <div className="section-rule" />
-              <p className="side-heading">SEMANTIC CURRICULUM</p>
-              <dl className="details">
-                <div>
-                  <dt>Success / failure</dt>
-                  <dd>
-                    {replay.header.semantic_context.outcomes?.success ?? 0}
-                    {" / "}
-                    {replay.header.semantic_context.outcomes?.failure ?? 0}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Unresolved</dt>
-                  <dd>{replay.header.semantic_context.outcomes?.unresolved ?? 0}</dd>
-                </div>
-                <div>
-                  <dt>Captured trials</dt>
-                  <dd>{replay.header.semantic_context.trials?.length ?? 0}</dd>
-                </div>
-              </dl>
-            </>
-          ) : null}
-          <div className="section-rule" />
-          <dl className="details">
-            <div><dt>Iteration</dt><dd>{iteration ?? "—"}</dd></div>
-            <div><dt>Result</dt><dd>{selectedInfo?.outcome.toUpperCase() ?? "—"} {selectedInfo ? `${selectedInfo.score_blue}–${selectedInfo.score_yellow}` : ""}</dd></div>
-            <div><dt>Frames</dt><dd>{replay?.frames.length.toLocaleString() ?? "—"}</dd></div>
-            <div><dt>Event mask</dt><dd>{frame?.events ?? "—"}</dd></div>
-            <div><dt>Σ reward</dt><dd>{reward.toFixed(4)}</dd></div>
-            <div><dt>Train return</dt><dd>{index?.latest_metric?.return_total.toFixed(3) ?? "—"}</dd></div>
-            <div><dt>Progress</dt><dd>{index?.latest_metric?.progress.toFixed(3) ?? "—"}</dd></div>
-          </dl>
-          <div className="section-rule" />
-          <p className="side-heading">MATCH ANALYTICS · {analytics?.definition_version ?? "LOADING"}</p>
-          <dl className="details">
-            <div><dt>Possession B/Y</dt><dd>{analytics ? `${analytics.teams.blue.possession_seconds.toFixed(1)}s / ${analytics.teams.yellow.possession_seconds.toFixed(1)}s` : "—"}</dd></div>
-            <div><dt>Passes B/Y</dt><dd>{analytics ? `${analytics.teams.blue.passes} / ${analytics.teams.yellow.passes}` : "—"}</dd></div>
-            <div><dt>Shots B/Y</dt><dd>{analytics ? `${analytics.teams.blue.shots} / ${analytics.teams.yellow.shots}` : "—"}</dd></div>
-            <div><dt>Saves B/Y</dt><dd>{analytics ? `${analytics.teams.blue.saves} / ${analytics.teams.yellow.saves}` : "—"}</dd></div>
-            <div><dt>Interceptions B/Y</dt><dd>{analytics ? `${analytics.teams.blue.interceptions} / ${analytics.teams.yellow.interceptions}` : "—"}</dd></div>
-            <div><dt>Own goals B/Y</dt><dd>{analytics ? `${analytics.teams.blue.own_goals} / ${analytics.teams.yellow.own_goals}` : "—"}</dd></div>
-            <div><dt>Forced own goals B/Y</dt><dd>{analytics ? `${analytics.teams.blue.forced_own_goals} / ${analytics.teams.yellow.forced_own_goals}` : "—"}</dd></div>
-            <div><dt>Congestion B/Y</dt><dd>{analytics ? `${analytics.teams.blue.congestion_seconds.toFixed(1)}s / ${analytics.teams.yellow.congestion_seconds.toFixed(1)}s` : "—"}</dd></div>
-          </dl>
-          {analytics ? (
-            <>
-              <label htmlFor="analytics-event-filter">Timeline events</label>
-              <select
-                id="analytics-event-filter"
-                value={analyticsEventFilter}
-                onChange={(event) => setAnalyticsEventFilter(event.target.value)}
-              >
-                <option value="all">All events</option>
-                {analyticsKinds.map((kind) => <option key={kind} value={kind}>{kind}</option>)}
-              </select>
-              <div className="analytics-events">
-                {analyticsEvents.slice(0, 8).map((event, index) => (
-                  <button
-                    key={`${event.time}-${event.kind}-${index}`}
-                    onClick={() => {
-                      if (!replay) return;
-                      const target = replay.frames.findIndex(
-                        (candidate) => candidate.snapshot.simulation_time >= event.time,
-                      );
-                      if (target >= 0) {
-                        setPlaying(false);
-                        setFrameIndex(target);
-                      }
-                    }}
-                  >
-                    <span>{event.time.toFixed(2)}s</span>
-                    <strong>{event.kind.toUpperCase()}</strong>
-                    <small>{event.team.toUpperCase()} {event.robot_id ?? ""}</small>
-                  </button>
-                ))}
-              </div>
-              <BallHeatmap cells={analytics.ball_heatmap} />
-              <button
-                className="export-button"
-                onClick={() => exportAnalyticsCsv(analytics)}
-              >
-                EXPORT TEAM + EVENT CSV
-              </button>
-            </>
-          ) : null}
         </aside>
 
         <section className={`stage ${activeView === "metrics" ? "metrics-stage" : ""}`}>
@@ -453,7 +274,8 @@ export default function App() {
               ref={fieldCanvasRef}
               header={replay.header}
               frame={frame}
-              layers={visionLayers}
+              layers={{ truth: true, measured: false, estimated: false, predicted: true }}
+              selectedActor={selectedActor}
             />
           ) : null}
           {activeView === "metrics" ? (
@@ -470,6 +292,9 @@ export default function App() {
           robots={frame?.snapshot.robots}
           roles={frame?.roles}
           roleChanges={frame?.role_changes}
+          intents={frame?.policy_intents}
+          selectedActor={selectedActor}
+          onSelectActor={setSelectedActor}
           maxWheelSpeed={replay?.header.config.max_wheel_speed ?? 1}
           wheelRadius={replay?.header.config.wheel?.radius ?? 0.025}
           axleTrack={replay?.header.config.wheel?.axle_track ?? 0.06}
@@ -477,6 +302,18 @@ export default function App() {
       </section>
 
       {activeView === "replay" ? <footer className="transport">
+        {replay ? (
+          <PolicyTimeline
+            replay={replay}
+            events={analytics?.events ?? []}
+            selectedActor={selectedActor}
+            onSelectActor={setSelectedActor}
+            onSeek={(target) => {
+              setPlaying(false);
+              setFrameIndex(target);
+            }}
+          />
+        ) : null}
         <div className="timeline-row">
           <span>{frameLabel(frameIndex, replay?.frames.length ?? 0)}</span>
           <input
@@ -553,50 +390,8 @@ function Metric({ label, value, tone = "" }: { label: string; value: string | nu
   return <div className={`metric ${tone}`}><span>{label}</span><strong>{value}</strong></div>;
 }
 
-function Policy({ team, value, yellow = false }: { team: string; value?: string; yellow?: boolean }) {
-  return <div className="policy"><span className={yellow ? "dot yellow" : "dot"} /><div><small>{team}</small><strong>{value ?? "—"}</strong></div></div>;
-}
-
 function Control({ label, icon, onClick }: { label: string; icon: string; onClick: () => void }) {
   return <button className="control-button" aria-label={label} onClick={onClick}>{icon}</button>;
-}
-
-function BallHeatmap({ cells }: { cells: number[][] }) {
-  const maximum = Math.max(1, ...cells.flat());
-  return (
-    <div className="heatmap" aria-label="Ball-position heatmap">
-      {cells.flatMap((row, y) => row.map((value, x) => (
-        <i
-          key={`${x}-${y}`}
-          title={`${value} samples`}
-          style={{ opacity: 0.08 + 0.92 * value / maximum }}
-        />
-      )))}
-    </div>
-  );
-}
-
-function exportAnalyticsCsv(analytics: ReplayAnalytics) {
-  const quote = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
-  const lines = [
-    "record_type,team,time,kind,robot_id,possession_seconds,passes,shots,saves,interceptions,congestion_seconds",
-    ...(["blue", "yellow"] as const).map((team) => {
-      const stats = analytics.teams[team];
-      return [
-        "team", team, "", "", "", stats.possession_seconds, stats.passes,
-        stats.shots, stats.saves, stats.interceptions, stats.congestion_seconds,
-      ].map(quote).join(",");
-    }),
-    ...analytics.events.map((event) => [
-      "event", event.team, event.time, event.kind, event.robot_id, "", "", "", "", "", "",
-    ].map(quote).join(",")),
-  ];
-  const url = URL.createObjectURL(new Blob([`${lines.join("\n")}\n`], { type: "text/csv" }));
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = "vsss-replay-analytics.csv";
-  anchor.click();
-  URL.revokeObjectURL(url);
 }
 
 async function nextPaint(): Promise<void> {
@@ -609,6 +404,9 @@ function ActorTelemetry({
   robots,
   roles,
   roleChanges,
+  intents,
+  selectedActor,
+  onSelectActor,
   maxWheelSpeed,
   wheelRadius,
   axleTrack,
@@ -617,6 +415,9 @@ function ActorTelemetry({
   robots?: Replay["frames"][number]["snapshot"]["robots"];
   roles?: Replay["frames"][number]["roles"];
   roleChanges?: Replay["frames"][number]["role_changes"];
+  intents?: Replay["frames"][number]["policy_intents"];
+  selectedActor: number;
+  onSelectActor: (index: number) => void;
   maxWheelSpeed: number;
   wheelRadius: number;
   axleTrack: number;
@@ -633,26 +434,59 @@ function ActorTelemetry({
           const linear = wheelRadius * (left + right) / 2;
           const angular = wheelRadius * (right - left) / axleTrack;
           const intensity = Math.min(1, Math.max(Math.abs(left), Math.abs(right)) / maxWheelSpeed);
+          const intent = intents?.[index];
+          const selected = selectedActor === index;
           const direction = Math.abs(linear) < 0.03 && Math.abs(angular) > 0.2
             ? angular > 0 ? "TURN LEFT" : "TURN RIGHT"
             : linear > 0.03 ? "FORWARD"
             : linear < -0.03 ? "REVERSE"
             : "IDLE";
           return (
-            <article className="actor-card" key={index}>
+            <button
+              className={`actor-card ${selected ? "selected" : ""}`}
+              key={index}
+              onClick={() => onSelectActor(index)}
+              aria-expanded={selected}
+            >
               <div className="actor-title">
                 <span className={index >= 3 ? "dot yellow" : "dot"} />
                 <strong>{index >= 3 ? "Y" : "B"}{index % 3}</strong>
                 <em>{roles?.[index]?.toUpperCase() ?? direction}{roleChanges?.[index] ? " ↻" : ""}</em>
               </div>
+              <div className="primitive-summary">
+                <strong>
+                  {intent
+                    ? intent.skill === "stop"
+                      ? "STOP"
+                      : `${intent.skill.toUpperCase()} · ${intent.direction}`
+                    : direction}
+                </strong>
+                <span>{intent ? `${(intent.confidence * 100).toFixed(1)}%` : "LEGACY"}</span>
+              </div>
               <div className="throttle"><i style={{ width: `${intensity * 100}%` }} /></div>
-              <dl>
+              <dl className={selected ? "expanded" : ""}>
+                {selected && intent ? (
+                  <>
+                    <div><dt>PHASE</dt><dd>{intent.phase.toUpperCase()}</dd></div>
+                    <div><dt>BALL DIST</dt><dd>{intent.ball_distance.toFixed(3)} m</dd></div>
+                    <div><dt>TARGET</dt><dd>{intent.target.x.toFixed(2)}, {intent.target.y.toFixed(2)}</dd></div>
+                  </>
+                ) : null}
                 <div><dt>CMD L/R</dt><dd>{commandLeft.toFixed(1)} / {commandRight.toFixed(1)}</dd></div>
                 <div><dt>APPLIED</dt><dd>{left.toFixed(1)} / {right.toFixed(1)} rad/s</dd></div>
                 <div><dt>LINEAR</dt><dd>{linear.toFixed(2)} m/s</dd></div>
                 <div><dt>TURN</dt><dd>{angular.toFixed(2)} rad/s</dd></div>
               </dl>
-            </article>
+              {selected && intent ? (
+                <div className="top-actions">
+                  {intent.top_actions.map((candidate) => (
+                    <span key={candidate.action_index}>
+                      {candidate.label} {(candidate.probability * 100).toFixed(1)}%
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+            </button>
           );
         })}
       </div>
