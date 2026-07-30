@@ -1,4 +1,8 @@
-"""Run matched-budget MLP/GRU policy ablations under partial observability."""
+"""Run matched-budget MLP/GRU policy ablations under partial observability.
+
+DEPRECATED: M14 is closed and this study is pinned to its configuration; it does
+not evaluate the M24.2 parametric action space. See docs/tooling-status.md.
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,8 @@
-"""Compare fixed-reward uniform and adaptive curricula on paired seeds."""
+"""Compare fixed-reward uniform and adaptive curricula on paired seeds.
+
+DEPRECATED: M14 is closed and this study is pinned to its configuration; it does
+not evaluate the M24.2 parametric action space. See docs/tooling-status.md.
+"""
 
 from __future__ import annotations
 

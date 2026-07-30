@@ -78,25 +78,31 @@ m6-smoke:
 benchmark-marl iterations="2000":
   uv run --group train python -m tools.benchmark_marl --iterations {{iterations}}
 
+# [deprecated] profiles a continuous M13 policy; see docs/tooling-status.md
 profile-m14 steps="200" output="reports/m14/profile.json":
   uv run --group train python -m tools.profile_m14 --steps {{steps}} --output "{{output}}"
 
+# [deprecated] closed M14 study; see docs/tooling-status.md
 m14-study trials="2" output="experiments/reports/m14-study" device="auto":
   mise run train-env
   uv run --group train python -m tools.m14_study --trials {{trials}} --output-dir "{{output}}" --device "{{device}}"
 
+# [deprecated] closed M14 study; see docs/tooling-status.md
 m14-curriculum-ablation output="experiments/reports/m14-curriculum.json" device="auto" seeds="3":
   mise run train-env
   uv run --group train python -m tools.m14_curriculum_ablation --output "{{output}}" --device "{{device}}" --seeds {{seeds}}
 
+# [deprecated] closed M14 study; see docs/tooling-status.md
 m14-policy-ablation output="experiments/reports/m14-policy.json" device="auto" seeds="3":
   mise run train-env
   uv run --group train python -m tools.m14_policy_ablation --output "{{output}}" --device "{{device}}" --seeds {{seeds}}
 
+# [deprecated] closed M14 study; see docs/tooling-status.md
 m14-action-ablation output="experiments/reports/m14-action.json" device="auto" seeds="3":
   mise run train-env
   uv run --group train python -m tools.m14_action_ablation --output "{{output}}" --device "{{device}}" --seeds {{seeds}}
 
+# [deprecated] closed M14 study; see docs/tooling-status.md
 m14-teacher-ablation output="experiments/reports/m14-teacher.json" device="auto" seeds="3":
   mise run train-env
   uv run --group train python -m tools.m14_teacher_ablation --output "{{output}}" --device "{{device}}" --seeds {{seeds}}
@@ -113,6 +119,7 @@ m15-evaluate checkpoint output="experiments/reports/m15/semantic-policy.json" se
   mise run train-env
   uv run --group train python -m tools.evaluate_m15 --config "{{config}}" --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --output "{{output}}" --control policy --checkpoint "{{checkpoint}}" --seeds {{seeds}}
 
+# [deprecated] closed M15 study; see docs/tooling-status.md
 m15-ablation output="experiments/reports/m15/ablation.json" device="auto" seeds="2" iterations="3":
   mise run train-env
   uv run --group train python -m tools.m15_ablation --output "{{output}}" --device "{{device}}" --seeds {{seeds}} --iterations {{iterations}}
@@ -121,6 +128,7 @@ m15-benchmark output="experiments/reports/m15/throughput.json" worlds="64" itera
   mise run train-env
   uv run --group train python -m tools.benchmark_m15 --output "{{output}}" --worlds {{worlds}} --iterations {{iterations}}
 
+# [deprecated] closed M18 study; see docs/tooling-status.md
 m18-ppo-ablation output="experiments/reports/m18/ppo-ablation.json" device="auto" seeds="2" iterations="3" worlds="64" rollout_steps="64":
   mise run train-env
   uv run --group train python -m tools.m18_ppo_ablation --output "{{output}}" --device "{{device}}" --seeds {{seeds}} --iterations {{iterations}} --worlds {{worlds}} --rollout-steps {{rollout_steps}}

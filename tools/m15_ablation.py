@@ -1,4 +1,8 @@
-"""Matched-compute M15 curriculum and reward ablation."""
+"""Matched-compute M15 curriculum and reward ablation.
+
+DEPRECATED: M15 is closed and this study is pinned to its configuration; it does
+not evaluate the M24.2 parametric action space. See docs/tooling-status.md.
+"""
 
 from __future__ import annotations
 

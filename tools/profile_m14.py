@@ -1,4 +1,9 @@
-"""Profile the vector rollout boundary before considering alternate physics."""
+"""Profile the vector rollout boundary before considering alternate physics.
+
+DEPRECATED: this profiler builds a continuous `SharedActor` directly and defaults
+to the M13 configuration, so it cannot profile the M24.2 policy. See
+docs/tooling-status.md.
+"""
 
 from __future__ import annotations
 

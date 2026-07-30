@@ -1,4 +1,8 @@
-"""Compare continuous and symmetric-lattice wheels at matched control frequency."""
+"""Compare continuous and symmetric-lattice wheels at matched control frequency.
+
+DEPRECATED: M14 is closed and this study is pinned to its configuration; it does
+not evaluate the M24.2 parametric action space. See docs/tooling-status.md.
+"""
 
 from __future__ import annotations
 
