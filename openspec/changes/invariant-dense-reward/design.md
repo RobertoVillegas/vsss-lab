@@ -16,28 +16,36 @@ preference-neutral by construction: it changes how fast credit propagates, never
 the policy prefers. Reading it as "the attacking reward" is a mistake this design
 explicitly does not make.
 
-## Contact attribution
+## Contact impulse: sign it, keep the edge
 
 The current term is `max(0, attack_sign · Δv_x)` gated on a team-level contact edge.
-Three properties compound: the edge trigger pays only on entry, so sustained control
-earns nothing; only the horizontal component counts, so a lateral pass earns nothing;
-and the non-negative clamp means noise integrates upward and nothing can be
-penalized. Together they make envelope oscillation profitable.
+The clamp is the defect: velocity noise at the moment of re-entry is positive half the
+time, so a robot hovering at the envelope boundary re-triggers the edge and collects
+only the favorable half. Signed, those impulses cancel.
 
-Signing the term and attributing it to the controlled robot's contribution removes
-the farm without adding a new incentive: moving the ball toward the goal earns, moving
-it away costs the same magnitude, and re-entering the envelope is no longer an event
-in itself. The lateral component is left out of scope here — a pass is a semantic drill
-with its own outcome predicate, and encoding pass value in the dense term would
-reintroduce shaping by the back door.
+The edge itself is not a defect and stays. Paying on every contact step would make the
+term a rate reward for ball advancement, which is precisely what M20 removed; the fix
+must not reintroduce it through the back door. This is a revision of this change's own
+first draft, which proposed removing the edge.
 
-## Terminal scale
+Per-robot attribution was also dropped. The state exposes team contact, not contact
+ownership, so attributing the impulse to one robot would require new plumbing for no
+additional protection — the sign already removes the farm.
 
-Time is currently divided by the horizon, so its whole-episode budget is a twentieth
-of the draw penalty, while stagnation is twice the draw. The three are put on one
-scale so that the intended ordering — a goal beats a contested draw beats a stalemate
-beats stagnation — is the ordering by return. The scale is chosen so the sum of dense
-terms over an episode cannot exceed the gap between adjacent terminal outcomes.
+The lateral component stays out of scope: a pass is a semantic drill with its own
+outcome predicate, and encoding pass value densely would be new shaping.
+
+## Terminal scale: left alone, deliberately
+
+Time is divided by the horizon, so its whole-episode budget is a twentieth of the draw
+penalty, while stagnation costs twice a draw. The audit read that as incoherent, but
+the incoherence it described depended on the contact farm outweighing the draw penalty.
+With the impulse signed, dense accumulation is approximately zero and the terminal
+ordering — a goal, then a draw, then stagnation — already expresses the intent.
+
+Retuning is therefore not part of this change. The open question is whether the time
+cost is strong enough to prefer a fast goal, and that needs a run under the corrected
+terms before anyone picks a number.
 
 ## Validation
 

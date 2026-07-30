@@ -1,6 +1,6 @@
 # ADR 0015: Invariant and non-farmable dense reward
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-07-30
 
 ## Context
@@ -45,16 +45,33 @@ a cheaper alternative to competing.
 Restore the invariance and remove the farm, without adding new shaping.
 
 Treat the potential as zero at a terminal state, so the shaping term is provably
-policy-invariant and cannot pay for how an episode ends. Make the useful-contact
-term signed with respect to the attacking direction and evaluate it on the
-controlled robot's contribution rather than on a team-level contact edge, so
-moving the ball the wrong way costs what moving it the right way earns and
-re-entering the envelope is not itself an event. Express the episode time cost and
-the draw and stagnation terminals on one scale, so a stalemate is not the cheapest
-available outcome.
+policy-invariant and cannot pay for how an episode ends.
+
+Keep the useful-contact term on the contact edge and make it signed with respect to
+the attacking direction. The edge is what keeps it an impulse: paying on every
+contact step would turn it into a rate reward for ball advancement, which is exactly
+the term M20 removed. The sign is what closes the farm — a robot flickering at the
+envelope boundary re-enters on velocity noise, and signed impulses cancel where
+positively clamped ones accumulate.
+
+Do not retune the terminal or time coefficients. With the potential zeroed and the
+contact term unbiased, the dense terms integrate to approximately zero and the
+existing terminal ordering already expresses the intent. Changing a coefficient
+without evidence that the ordering is wrong would be tuning disguised as a fix; the
+question is left open until a run reports returns under the corrected terms.
 
 Goals, semantic outcomes, and the geometry potential remain authoritative. No
 field zone is hard-coded, and no term rewards a pose.
+
+## Revisions made during implementation
+
+The first draft of this decision proposed removing the contact edge and attributing
+the impulse per robot, and putting time, draw, and stagnation on one scale. Both were
+narrowed. Removing the edge would have reintroduced dense ball-advancement shaping,
+contradicting the M20 decision this ADR exists to uphold; per-robot attribution needs
+contact ownership the state does not currently expose, and signing the team-level
+impulse already removes the farm. The coefficient rescale was dropped as unjustified
+without evidence.
 
 ## Alternatives considered
 

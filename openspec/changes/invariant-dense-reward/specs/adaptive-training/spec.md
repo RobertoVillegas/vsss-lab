@@ -16,29 +16,24 @@ adding or removing the shaping term cannot change which policy is optimal.
 - **WHEN** the shaping coefficient changes
 - **THEN** their ordering by return does not change
 
-### Requirement: Contact reward attributable and signed
+### Requirement: Signed contact impulse
 
-Useful-contact reward SHALL be signed with respect to the attacking direction and
-SHALL be attributed to the contribution of the controlled robot, rather than
-triggered by a team-level contact edge.
+Useful-contact reward SHALL remain an impulse taken on the contact edge, so it
+cannot become a rate reward for ball advancement, and SHALL carry the sign of the
+ball's velocity change with respect to the attacking direction.
 
 #### Scenario: Contact envelope oscillation
 
-- **WHEN** a robot repeatedly leaves and re-enters the contact envelope without
-  advancing the ball
-- **THEN** it accumulates no positive return
+- **WHEN** a robot repeatedly leaves and re-enters the contact envelope on velocity
+  noise, without advancing the ball
+- **THEN** those impulses sum to zero rather than accumulating
 
 #### Scenario: Ball moved the wrong way
 
-- **WHEN** a controlled robot moves the ball against its attacking direction
+- **WHEN** contact moves the ball against the attacking direction
 - **THEN** the cost equals what the same magnitude toward the goal would earn
 
-### Requirement: Coherent terminal pressure
+#### Scenario: Sustained contact is not a rate
 
-Episode time cost, the draw terminal, and the stagnation terminal SHALL be
-expressed on one scale, so no stalemate is the cheapest available outcome.
-
-#### Scenario: Stalemate versus contest
-
-- **WHEN** an episode avoids the stagnation terminal without attempting a goal
-- **THEN** its return does not exceed that of a comparable contested episode
+- **WHEN** contact persists across consecutive decisions
+- **THEN** no further impulse is paid until contact is re-established

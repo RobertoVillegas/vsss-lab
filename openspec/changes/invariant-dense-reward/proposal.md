@@ -44,18 +44,24 @@ Non-goals:
 
 - treat the geometry potential as zero at a terminal state, making the shaping term
   exactly policy-invariant;
-- make the useful-contact term signed with respect to the attacking direction and
-  attribute it to the controlled robot's contribution rather than to a team-level
-  contact edge;
-- express the episode time cost and the draw and stagnation terminals on one scale,
-  so a stalemate is not the cheapest outcome available.
+- keep the useful-contact term on the contact edge, so it stays an impulse rather
+  than a rate, and give it the sign of the ball's velocity change.
+
+## What deliberately does not change
+
+Removing the contact edge would pay on every contact step, which is a dense reward
+for ball advancement — the term M20 removed. The edge stays.
+
+The terminal and time coefficients are not retuned. With the potential zeroed and
+the impulse unbiased, the dense terms integrate to approximately zero, so the
+existing terminal ordering carries the intent. Rescaling without evidence that the
+ordering is wrong would be tuning presented as a correction.
 
 ## Success criteria
 
 - adding or removing the shaping term cannot change which policy is optimal, and a
   test demonstrates the terminal transition no longer pays for final geometry;
-- oscillating at the contact envelope earns no positive return;
+- impulses collected by oscillating at the contact envelope sum to zero;
 - moving the ball away from the attacking direction costs what moving it toward
   costs, at equal magnitude;
-- the ordering of episode outcomes by return matches the ordering the terminals
-  intend.
+- sustained contact pays no impulse until contact is re-established.

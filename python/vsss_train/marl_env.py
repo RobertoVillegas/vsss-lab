@@ -302,7 +302,13 @@ class MarlMatchEnv:
             self._goal_grace_remaining is None and self._stagnation_steps >= self.stagnation_limit
         )
         draw = self.steps >= self.horizon and not goal_complete and not stagnated
-        goal_geometry_potential = _goal_geometry_potential(self.state, self._config, 0)
+        # Potential shaping is only policy-invariant when a terminal state carries no
+        # potential; otherwise the last transition pays for how the episode ended.
+        goal_geometry_potential = (
+            0.0
+            if goal_complete or stagnated or draw
+            else _goal_geometry_potential(self.state, self._config, 0)
+        )
         reward = TeamReward(
             ball_progress=self.progress_coefficient
             * (2.0 * (self._closest - closest) + (ball_x - self._ball_x)),
@@ -771,13 +777,19 @@ class VectorMarlMatchEnv:
             ],
             dtype=np.float32,
         )
-        goal_geometry_potential = np.asarray(
-            [
-                _goal_geometry_potential(state, self._config, int(team))
-                for state, team in zip(self.states, self.controlled_teams, strict=True)
-            ],
-            dtype=np.float32,
-        )
+        # Potential shaping is only policy-invariant when a terminal state carries no
+        # potential; otherwise the last transition pays for how the episode ended.
+        goal_geometry_potential = np.where(
+            goal_complete | stagnated | draw,
+            0.0,
+            np.asarray(
+                [
+                    _goal_geometry_potential(state, self._config, int(team))
+                    for state, team in zip(self.states, self.controlled_teams, strict=True)
+                ],
+                dtype=np.float32,
+            ),
+        ).astype(np.float32)
         idle_spin_penalty = np.zeros(self.num_envs, dtype=np.float32)
         for world, (state, team) in enumerate(zip(self.states, self.controlled_teams, strict=True)):
             flags, turn_intensity = _idle_spin_flags(
@@ -979,11 +991,18 @@ def _useful_touch_impulse(
     contact: bool,
     previous_contact: bool,
 ) -> float:
-    """Measure new contact's positive ball-velocity delta toward the enemy goal."""
+    """Measure new contact's signed ball-velocity delta toward the enemy goal.
+
+    The contact edge keeps this an impulse rather than a rate, so contact cannot become
+    the dense ball-advancement reward M20 deliberately removed. Keeping the sign is what
+    stops the trigger from being farmed: a robot flickering at the envelope boundary
+    re-enters on velocity noise, which integrates to zero when signed and accumulates
+    when clamped to the positive side.
+    """
     if not contact or previous_contact:
         return 0.0
     attack_sign = 1.0 if team == 0 else -1.0
-    return max(0.0, attack_sign * (ball_vx - previous_ball_vx))
+    return attack_sign * (ball_vx - previous_ball_vx)
 
 
 def _closest_team_distance(state: FloatArray, team: int = 0) -> float:

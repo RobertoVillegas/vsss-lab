@@ -207,8 +207,19 @@ def test_team_ball_contact_requires_enabled_robot_inside_envelope() -> None:
 def test_useful_touch_impulse_is_directional_and_cannot_farm_overlap() -> None:
     assert _useful_touch_impulse(0.8, 0.1, 0, True, False) == pytest.approx(0.7)
     assert _useful_touch_impulse(0.8, 0.1, 0, True, True) == 0.0
-    assert _useful_touch_impulse(-0.8, 0.1, 0, True, False) == 0.0
     assert _useful_touch_impulse(-0.8, -0.1, 1, True, False) == pytest.approx(0.7)
+
+
+def test_useful_touch_impulse_costs_the_wrong_way_as_much_as_it_pays() -> None:
+    forward = _useful_touch_impulse(0.8, 0.1, 0, True, False)
+    backward = _useful_touch_impulse(-0.7, 0.0, 0, True, False)
+    assert backward == pytest.approx(-forward)
+    # An envelope flicker re-enters contact on velocity noise. Signed, those impulses
+    # cancel; clamped to the positive side they accumulated into free return.
+    noise = (0.03, -0.02, 0.05, -0.06, 0.01, -0.01)
+    flicker = [_useful_touch_impulse(delta, 0.0, 0, True, False) for delta in (*noise, -sum(noise))]
+    assert sum(flicker) == pytest.approx(0.0)
+    assert all(value != 0.0 for value in flicker)
 
 
 def test_goal_geometry_favors_a_controllable_line_through_goal_aperture() -> None:
@@ -262,6 +273,27 @@ def test_idle_spin_detection_exempts_orientation_and_ball_control() -> None:
 
     assert flags.tolist() == [True, False, False]
     assert intensity.tolist() == pytest.approx([0.8, 0.2, 0.8])
+
+
+def test_terminal_state_carries_no_shaping_potential() -> None:
+    environment = MarlMatchEnv(
+        CONFIG,
+        STATE,
+        stage=7,
+        horizon=1,
+        action_repeat=1,
+        goal_geometry_coefficient=0.5,
+        goal_geometry_discount=0.99,
+    )
+    environment.reset(3)
+    entry = _goal_geometry_potential(environment.state, json.loads(CONFIG), 0)
+
+    _, reward, done, _ = environment.step(np.zeros((3, 2), dtype=np.float32))
+
+    # The horizon ends this episode, so shaping may only remove the entry potential.
+    assert done
+    assert entry > 0.0
+    assert reward.goal_geometry == pytest.approx(-0.5 * entry, abs=2e-3)
 
 
 def test_idle_spin_detection_reaches_wheels_a_skill_parser_can_produce() -> None:
