@@ -33,6 +33,7 @@ from vsss_train.marl_env import (
     _useful_touch_impulse,
     distill_dynamic_teacher,
     evaluate_against_random,
+    team_action_width,
 )
 from vsss_train.marl_ppo import (
     TRAJECTORY_SCHEMA,
@@ -630,6 +631,33 @@ def test_distilled_shared_policy_is_finite_under_physical_action_scaling() -> No
     assert np.isfinite(loss)
     assert np.isfinite(result.policy_progress)
     assert np.isfinite(result.random_progress)
+
+
+def test_environment_rejects_actions_that_do_not_match_its_action_parser() -> None:
+    assert team_action_width("continuous") == 2
+    assert team_action_width("primitive") == 2
+    assert team_action_width("parametric_primitive") == 4
+    environment = MarlMatchEnv(
+        CONFIG,
+        STATE,
+        stage=7,
+        horizon=8,
+        action_repeat=1,
+        action_parser="parametric_primitive",
+    )
+    environment.reset(5)
+
+    with pytest.raises(ValueError, match=r"controlled team actions must have shape \(3, 4\)"):
+        environment.step(np.zeros((3, 2), dtype=np.float32))
+    with pytest.raises(ValueError, match=r"opponent team actions must have shape \(3, 4\)"):
+        environment.step(
+            np.zeros((3, 4), dtype=np.float32),
+            np.zeros((3, 2), dtype=np.float32),
+        )
+
+    _, _, _, info = environment.step(np.zeros((3, 4), dtype=np.float32))
+
+    assert "actions" in info
 
 
 def test_normalized_actions_scale_to_physical_wheel_velocity() -> None:

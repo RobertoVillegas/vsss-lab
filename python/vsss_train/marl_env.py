@@ -52,6 +52,15 @@ def team_action_width(action_parser: str) -> int:
     return 4 if action_parser == "parametric_primitive" else 2
 
 
+def check_team_actions(actions: FloatArray, expected: tuple[int, ...], role: str) -> None:
+    """Reject transport tokens that do not match the parser the environment was built with."""
+    if actions.shape != expected:
+        raise ValueError(
+            f"{role} actions must have shape {expected} for this action parser, "
+            f"received {actions.shape}"
+        )
+
+
 @dataclass(frozen=True)
 class TeamReward:
     ball_progress: float
@@ -207,6 +216,10 @@ class MarlMatchEnv:
         blue_actions: FloatArray,
         opponent_actions: FloatArray | None = None,
     ) -> tuple[TeamBatch, TeamReward, bool, dict[str, Any]]:
+        expected = (3, team_action_width(self.action_parser))
+        check_team_actions(blue_actions, expected, "controlled team")
+        if opponent_actions is not None:
+            check_team_actions(opponent_actions, expected, "opponent team")
         normalized_blue = np.clip(blue_actions, -1.0, 1.0)
         if self.action_parser == "primitive":
             normalized_blue = primitive_wheel_actions(
@@ -548,6 +561,10 @@ class VectorMarlMatchEnv:
         NDArray[np.int64],
         NDArray[np.bool_],
     ]:
+        expected = (self.num_envs, 3, team_action_width(self.action_parser))
+        check_team_actions(blue_actions, expected, "controlled team")
+        if opponent_actions is not None:
+            check_team_actions(opponent_actions, expected, "opponent team")
         if self.action_parser == "parametric_primitive":
             primitive_tokens = np.clip(blue_actions, -1.0, 1.0)
             normalized_blue = self._normalized_blue_actions
@@ -1402,14 +1419,21 @@ def evaluate_against_random(
     horizon: int,
     action_repeat: int = 4,
     required_margin: float = 0.05,
+    action_parser: str = "continuous",
 ) -> MarlEvaluation:
     policy_scores: list[float] = []
     random_scores: list[float] = []
     actor.eval()
     device = next(actor.parameters()).device
+    action_width = team_action_width(action_parser)
     for seed in seeds:
         policy_env = MarlMatchEnv(
-            config_json, state_json, stage=stage, horizon=horizon, action_repeat=action_repeat
+            config_json,
+            state_json,
+            stage=stage,
+            horizon=horizon,
+            action_repeat=action_repeat,
+            action_parser=action_parser,
         )
         observation = policy_env.reset(seed)
         policy_env.mark_progress_origin()
@@ -1421,14 +1445,21 @@ def evaluate_against_random(
         policy_scores.append(policy_env.progress_score())
 
         random_env = MarlMatchEnv(
-            config_json, state_json, stage=stage, horizon=horizon, action_repeat=action_repeat
+            config_json,
+            state_json,
+            stage=stage,
+            horizon=horizon,
+            action_repeat=action_repeat,
+            action_parser=action_parser,
         )
         random_env.reset(seed)
         random_env.mark_progress_origin()
         rng = np.random.default_rng(seed)
         done = False
         while not done:
-            _, _, done, _ = random_env.step(rng.uniform(-1.0, 1.0, (3, 2)).astype(np.float32))
+            _, _, done, _ = random_env.step(
+                rng.uniform(-1.0, 1.0, (3, action_width)).astype(np.float32)
+            )
         random_scores.append(random_env.progress_score())
     policy_progress = float(np.mean(policy_scores))
     random_progress = float(np.mean(random_scores))

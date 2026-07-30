@@ -54,6 +54,7 @@ def main() -> None:
         horizon=config.horizon,
         action_repeat=config.action_repeat,
         required_margin=arguments.margin,
+        action_parser=config.action_parser,
     )
     print(json.dumps(asdict(result), sort_keys=True))
     raise SystemExit(0 if result.passed else 1)

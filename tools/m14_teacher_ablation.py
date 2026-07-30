@@ -108,6 +108,7 @@ def main() -> None:
                 policy_version=learner.policy_version,
                 seeds=(seed + 1_300_000,),
                 ticks=60,
+                action_parser=learner.config.action_parser,
             )
             results[arm].append(
                 (

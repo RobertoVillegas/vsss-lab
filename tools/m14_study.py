@@ -91,6 +91,7 @@ def main() -> None:
                 policy_version=learner.policy_version,
                 seeds=(seed + 500_000,),
                 ticks=HORIZONS[fidelity],
+                action_parser=learner.config.action_parser,
             )
             terminal_scores.append((scorecard.wins + 0.5 * scorecard.draws) / scorecard.matches)
             coordination.append(saturation / ITERATIONS[fidelity])

@@ -117,6 +117,7 @@ def main() -> None:
         opponent="directional-shared@425",
         seeds=paired_seeds,
         ticks=300,
+        action_parser=config.action_parser,
     )
     versus_history = evaluate_policy_pair_scorecard(
         cast(SharedActor, learner.actor),
@@ -127,6 +128,7 @@ def main() -> None:
         opponent="directional-shared@1450",
         seeds=paired_seeds,
         ticks=300,
+        action_parser=config.action_parser,
     )
     payload = {
         "schema_version": 1,

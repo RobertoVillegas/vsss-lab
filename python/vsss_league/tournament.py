@@ -257,15 +257,26 @@ def evaluate_policy_pair_scorecard(
     opponent: str,
     seeds: tuple[int, ...],
     ticks: int,
+    action_parser: str = "continuous",
 ) -> PolicyPairScorecard:
-    """Evaluate two policies on paired colors without heavyweight replays."""
+    """Evaluate two policies of one lineage on paired colors without heavyweight replays.
+
+    Both policies drive the same parser, so a pairing across action spaces is rejected
+    by the environment instead of being reinterpreted as wheel commands.
+    """
     outcomes: list[str] = []
     goals_for = goals_against = 0
     candidate_device = next(candidate_actor.parameters()).device
     opponent_device = next(opponent_actor.parameters()).device
     for seed in seeds:
         for candidate_team in (0, 1):
-            environment = MarlMatchEnv(config_json, state_json, stage=8, horizon=ticks)
+            environment = MarlMatchEnv(
+                config_json,
+                state_json,
+                stage=8,
+                horizon=ticks,
+                action_parser=action_parser,
+            )
             environment.reset(seed)
             blue_score = yellow_score = 0
             done = False
