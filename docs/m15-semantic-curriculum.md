@@ -76,8 +76,9 @@ just m15-evaluate /path/to/checkpoint.pt \
 ```
 
 Reports contain every trial, Wilson confidence intervals, time-to-resolution,
-and resolved drills/s. Promotion also requires paired full matches against
-frozen M14, heuristic, and historical policies. Training return cannot
+and resolved drills/s. Promotion also requires the semantic behavior gate and
+paired full matches against heuristic play. Comparisons with earlier policies
+stay inside the candidate's own action-space lineage. Training return cannot
 authorize a large run.
 
 ## Operational training

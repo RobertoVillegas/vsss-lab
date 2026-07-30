@@ -17,10 +17,11 @@ from vsss_league.tournament import (
     TournamentReport,
     evaluate_candidate_vs_heuristic,
     evaluate_checkpoint_scorecard,
+    evaluate_policy_pair_scorecard,
 )
 from vsss_league.training import IterationResult, create_rollout_session, train_iteration
 from vsss_train.config import MarlConfig
-from vsss_train.marl import PrimitiveRoleActor, SharedActor
+from vsss_train.marl import ParametricPrimitiveRoleActor, PrimitiveRoleActor, SharedActor
 from vsss_train.marl_ppo import MarlLearner
 
 ROOT = Path(__file__).parents[1]
@@ -239,6 +240,37 @@ def test_checkpoint_scorecard_uses_terminal_outcomes_without_replays(tmp_path: P
     assert scorecard.wins + scorecard.draws + scorecard.losses == scorecard.matches
     assert scorecard.checkpoint == str(checkpoint.resolve())
     assert tuple(tmp_path.iterdir()) == (checkpoint,)
+
+
+def test_policy_pair_scorecard_scores_one_lineage_and_rejects_mixed_action_spaces() -> None:
+    candidate = ParametricPrimitiveRoleActor(8)
+    incumbent = ParametricPrimitiveRoleActor(8)
+    scorecard = evaluate_policy_pair_scorecard(
+        candidate,
+        incumbent,
+        CONFIG,
+        STATE,
+        candidate="parametric@2",
+        opponent="parametric@1",
+        seeds=(17,),
+        ticks=2,
+        action_parser="parametric_primitive",
+    )
+    assert scorecard.matches == 2
+    assert scorecard.wins + scorecard.draws + scorecard.losses == scorecard.matches
+
+    with pytest.raises(ValueError, match=r"actions must have shape \(3, 4\)"):
+        evaluate_policy_pair_scorecard(
+            candidate,
+            SharedActor(8),
+            CONFIG,
+            STATE,
+            candidate="parametric@2",
+            opponent="continuous@1",
+            seeds=(17,),
+            ticks=2,
+            action_parser="parametric_primitive",
+        )
 
 
 def test_tensorboard_telemetry_records_training_and_exploration(tmp_path: Path) -> None:

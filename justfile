@@ -121,10 +121,6 @@ m15-benchmark output="experiments/reports/m15/throughput.json" worlds="64" itera
   mise run train-env
   uv run --group train python -m tools.benchmark_m15 --output "{{output}}" --worlds {{worlds}} --iterations {{iterations}}
 
-m15-candidate-probe output_dir="experiments/reports/m15/candidate" iterations="50" device="auto":
-  mise run train-env
-  uv run --group train python -m tools.m15_candidate_probe --output-dir "{{output_dir}}" --iterations {{iterations}} --device "{{device}}"
-
 m18-ppo-ablation output="experiments/reports/m18/ppo-ablation.json" device="auto" seeds="2" iterations="3" worlds="64" rollout_steps="64":
   mise run train-env
   uv run --group train python -m tools.m18_ppo_ablation --output "{{output}}" --device "{{device}}" --seeds {{seeds}} --iterations {{iterations}} --worlds {{worlds}} --rollout-steps {{rollout_steps}}

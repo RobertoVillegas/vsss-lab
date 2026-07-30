@@ -9,19 +9,10 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from vsss_train.ablations import (
-    EntityAttentionActor,
-    LatticeSharedActor,
-    RecurrentSharedActor,
-    RecurrentState,
-)
-from vsss_train.marl import (
-    PrimitiveRoleActor,
-    RoleSharedActor,
-    SharedActor,
-    build_team_observation,
-)
+from vsss_train.ablations import RecurrentSharedActor, RecurrentState
+from vsss_train.marl import build_team_observation
 from vsss_train.marl_env import MarlMatchEnv
+from vsss_train.marl_ppo import PolicyActor
 
 from vsss_league.ratings import elo_update
 from vsss_league.replay import run_policy_replay
@@ -85,12 +76,7 @@ class PolicyPairScorecard:
 
 
 def evaluate_checkpoint_scorecard(
-    actor: SharedActor
-    | RoleSharedActor
-    | PrimitiveRoleActor
-    | RecurrentSharedActor
-    | EntityAttentionActor
-    | LatticeSharedActor,
+    actor: PolicyActor,
     config_json: str,
     state_json: str,
     *,
@@ -167,12 +153,7 @@ def evaluate_checkpoint_scorecard(
 
 
 def evaluate_candidate_vs_heuristic(
-    actor: SharedActor
-    | RoleSharedActor
-    | PrimitiveRoleActor
-    | RecurrentSharedActor
-    | EntityAttentionActor
-    | LatticeSharedActor,
+    actor: PolicyActor,
     config_json: str,
     state_json: str,
     *,
@@ -248,8 +229,8 @@ def evaluate_candidate_vs_heuristic(
 
 
 def evaluate_policy_pair_scorecard(
-    candidate_actor: SharedActor,
-    opponent_actor: SharedActor,
+    candidate_actor: PolicyActor,
+    opponent_actor: PolicyActor,
     config_json: str,
     state_json: str,
     *,
