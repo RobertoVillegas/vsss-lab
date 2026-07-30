@@ -525,6 +525,12 @@ function ActorTelemetry({
                 {selected && intent ? (
                   <>
                     <div><dt>PHASE</dt><dd>{intent.phase.toUpperCase()}</dd></div>
+                    {intent.intensity !== undefined ? (
+                      <div>
+                        <dt>REQUEST</dt>
+                        <dd>{(intent.intensity * 100).toFixed(1)}%</dd>
+                      </div>
+                    ) : null}
                     <div><dt>BALL DIST</dt><dd>{intent.ball_distance.toFixed(3)} m</dd></div>
                     <div><dt>TARGET</dt><dd>{intent.target.x.toFixed(2)}, {intent.target.y.toFixed(2)}</dd></div>
                   </>

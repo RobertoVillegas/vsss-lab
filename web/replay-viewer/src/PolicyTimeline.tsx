@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import type { Replay, ReplayAnalytics } from "./types";
+import type { PolicyIntent, Replay, ReplayAnalytics } from "./types";
 
 interface Props {
   replay: Replay;
@@ -192,11 +192,7 @@ function buildSegments(replay: Replay, actor: number): Segment[] {
   const result: Segment[] = [];
   replay.frames.forEach((frame, index) => {
     const intent = frame.policy_intents?.[actor];
-    const label = intent
-      ? intent.skill === "stop"
-        ? "STOP"
-        : `${intent.skill === "navigate" ? "NAV" : "STR"}-${intent.direction}`
-      : "WHEEL";
+    const label = intentLabel(intent);
     const skill = intent?.skill ?? "legacy";
     const current = result.at(-1);
     if (current?.label === label) current.end = index;
@@ -209,17 +205,20 @@ function buildSegments(replay: Replay, actor: number): Segment[] {
     const end = Math.min(replay.frames.length - 1, start + bucketSize - 1);
     const middle = Math.floor((start + end) / 2);
     const intent = replay.frames[middle]?.policy_intents?.[actor];
-    const label = intent
-      ? intent.skill === "stop"
-        ? "STOP"
-        : `${intent.skill === "navigate" ? "NAV" : "STR"}-${intent.direction}`
-      : "WHEEL";
+    const label = intentLabel(intent);
     const skill = intent?.skill ?? "legacy";
     const current = compressed.at(-1);
     if (current?.label === label) current.end = end;
     else compressed.push({ start, end, label, skill });
   }
   return compressed;
+}
+
+function intentLabel(intent: PolicyIntent | null | undefined) {
+  if (!intent) return "WHEEL";
+  if (intent.skill === "stop") return "STOP";
+  const skill = intent.skill === "navigate" ? "NAV" : "STR";
+  return intent.direction_index === null ? skill : `${skill}-${intent.direction}`;
 }
 
 function nearestFrame(replay: Replay, time: number): number {

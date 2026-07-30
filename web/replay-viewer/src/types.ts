@@ -44,17 +44,20 @@ export interface TrainingMetric {
     iterations_per_second?: number;
   };
   exploration?: {
-    kind?: "gaussian" | "categorical";
+    kind?: "gaussian" | "categorical" | "hybrid";
     actor_log_std?: number[];
     entropy?: number;
     normalized_entropy?: number;
   };
   policy_stats?: {
-    action_parser: "primitive";
+    action_parser: "primitive" | "parametric_primitive";
     action_counts: number[];
     stop_fraction: number;
     navigate_fraction: number;
     strike_fraction: number;
+    mean_intensity?: number | null;
+    direction_change_mean_degrees?: number | null;
+    direction_change_p95_degrees?: number | null;
   } | null;
   curriculum?: {
     schema_version?: number;
@@ -162,7 +165,7 @@ export interface ReplayHeader {
   ticks: number;
   policies: { blue: string; yellow: string };
   semantic_context?: TrainingMetric["curriculum"];
-  action_parser?: "continuous" | "lattice" | "primitive";
+  action_parser?: "continuous" | "lattice" | "primitive" | "parametric_primitive";
   config: {
     control_period: number;
     max_wheel_speed: number;
@@ -227,6 +230,8 @@ export interface PolicyIntent {
   skill: "stop" | "navigate" | "strike";
   direction_index: number | null;
   direction: string | null;
+  direction_radians?: number;
+  intensity?: number;
   confidence: number;
   phase: "stop" | "navigate" | "acquire" | "strike";
   target: { x: number; y: number };

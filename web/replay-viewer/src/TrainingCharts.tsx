@@ -37,10 +37,14 @@ type ChartDatum = TrainingMetric & {
   matches_per_second?: number;
   log_std_left?: number;
   log_std_right?: number;
+  log_std_intensity?: number;
   normalized_entropy?: number;
   stop_fraction?: number;
   navigate_fraction?: number;
   strike_fraction?: number;
+  mean_intensity?: number | null;
+  direction_change_mean_degrees?: number | null;
+  direction_change_p95_degrees?: number | null;
   full_match_allocation?: number;
   frontier_allocation?: number;
   routine_allocation?: number;
@@ -79,10 +83,14 @@ export default function TrainingCharts({ metrics }: { metrics: TrainingMetric[] 
       matches_per_second: metric.performance?.matches_per_second,
       log_std_left: metric.exploration?.actor_log_std?.[0],
       log_std_right: metric.exploration?.actor_log_std?.[1],
+      log_std_intensity: metric.exploration?.actor_log_std?.[2],
       normalized_entropy: metric.exploration?.normalized_entropy,
       stop_fraction: metric.policy_stats?.stop_fraction,
       navigate_fraction: metric.policy_stats?.navigate_fraction,
       strike_fraction: metric.policy_stats?.strike_fraction,
+      mean_intensity: metric.policy_stats?.mean_intensity,
+      direction_change_mean_degrees: metric.policy_stats?.direction_change_mean_degrees,
+      direction_change_p95_degrees: metric.policy_stats?.direction_change_p95_degrees,
       full_match_allocation: metric.curriculum?.allocation?.full_match,
       frontier_allocation: metric.curriculum?.allocation?.frontier,
       routine_allocation: metric.curriculum?.allocation?.routine,
@@ -112,6 +120,7 @@ export default function TrainingCharts({ metrics }: { metrics: TrainingMetric[] 
     [difficultyFilter, familyFilter, metrics, outcomeFilter, teamFilter],
   );
   const categorical = metrics.some((metric) => metric.exploration?.kind === "categorical");
+  const hybrid = metrics.some((metric) => metric.exploration?.kind === "hybrid");
   if (!data.length) {
     return (
       <div className="empty-state">
@@ -165,6 +174,12 @@ export default function TrainingCharts({ metrics }: { metrics: TrainingMetric[] 
             <Line dataKey="stop_fraction" name="stop" stroke="#82998f" dot={false} />
             <Line dataKey="navigate_fraction" name="navigate" stroke="#49a7ff" dot={false} />
             <Line dataKey="strike_fraction" name="strike" stroke="#ff8a62" dot={false} />
+          </TrainingChart>
+        ) : hybrid ? (
+          <TrainingChart title="PARAMETRIC CONTROL" data={data}>
+            <Line dataKey="mean_intensity" name="mean intensity" stroke="#71e1ae" dot={false} />
+            <Line dataKey="direction_change_mean_degrees" name="mean Δ heading °" stroke="#49a7ff" dot={false} />
+            <Line dataKey="direction_change_p95_degrees" name="p95 Δ heading °" stroke="#ff8a62" dot={false} />
           </TrainingChart>
         ) : (
           <TrainingChart title="EXPLORATION · LOG STD" data={data}>
