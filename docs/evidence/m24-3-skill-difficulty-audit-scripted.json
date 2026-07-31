@@ -1,0 +1,129 @@
+{
+  "attempts_per_cell": 12,
+  "easiest_band_floor": 0.5,
+  "families": {
+    "approach": {
+      "easiest": 1.0,
+      "hardest": 1.0,
+      "invalid_levels": [],
+      "live_bands": 7,
+      "rates": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "verdict": "no-gradient"
+    },
+    "clearance": {
+      "easiest": 0.6666666666666666,
+      "hardest": 0.0,
+      "invalid_levels": [],
+      "live_bands": 1,
+      "rates": [
+        0.6666666666666666,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "verdict": "cliff"
+    },
+    "interception": {
+      "easiest": 1.0,
+      "hardest": 0.0,
+      "invalid_levels": [],
+      "live_bands": 1,
+      "rates": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "verdict": "cliff"
+    },
+    "pass_receive": {
+      "easiest": 0.0,
+      "hardest": 0.0,
+      "invalid_levels": [],
+      "live_bands": 0,
+      "rates": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "verdict": "no-gradient"
+    },
+    "rotation_recovery": {
+      "easiest": 0.0,
+      "hardest": 0.5,
+      "invalid_levels": [],
+      "live_bands": 4,
+      "rates": [
+        0.0,
+        0.0,
+        0.0,
+        0.5,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "verdict": "inverted"
+    },
+    "save_deflection": {
+      "easiest": 1.0,
+      "hardest": 0.0,
+      "invalid_levels": [
+        1.0
+      ],
+      "live_bands": 1,
+      "rates": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "verdict": "invalid-generation"
+    },
+    "shot": {
+      "easiest": 0.08333333333333333,
+      "hardest": 0.0,
+      "invalid_levels": [],
+      "live_bands": 3,
+      "rates": [
+        0.08333333333333333,
+        0.5,
+        0.16666666666666666,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "verdict": "beyond-reference"
+    }
+  },
+  "ladder": [
+    0.0,
+    0.15,
+    0.3,
+    0.45,
+    0.6,
+    0.8,
+    1.0
+  ]
+}
