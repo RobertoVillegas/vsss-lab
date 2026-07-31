@@ -23,6 +23,7 @@ from vsss_train.marl_ppo import MarlLearner
 from vsss_train.semantic_evaluation import IdleSpinThresholds, evaluate_semantic_skills
 from vsss_train.semantic_scenarios import (
     DIFFICULTY_AXES,
+    FAMILY_AXES,
     SKILL_FAMILIES,
     SemanticScenario,
     SkillDifficulty,
@@ -100,7 +101,7 @@ def audit(
     state = json.loads(state_text)
     cells: list[Cell] = []
     for family in SKILL_FAMILIES:
-        for axis in DIFFICULTY_AXES:
+        for axis in FAMILY_AXES.get(family, DIFFICULTY_AXES):
             for level in LADDER:
                 try:
                     batch = scenarios_for(family, axis, level, state, config, seeds=seeds)
@@ -152,7 +153,7 @@ def verdicts(cells: list[Cell]) -> dict[str, dict[str, dict[str, object]]]:
     result: dict[str, dict[str, dict[str, object]]] = {}
     for family in SKILL_FAMILIES:
         per_axis: dict[str, dict[str, object]] = {}
-        for axis in DIFFICULTY_AXES:
+        for axis in FAMILY_AXES.get(family, DIFFICULTY_AXES):
             row = [cell for cell in cells if cell.family == family and cell.axis == axis]
             rates = [cell.rate for cell in row]
             invalid = [cell.level for cell in row if cell.invalid]

@@ -33,6 +33,19 @@ DIFFICULTY_AXES = (
     "target_width",
     "opponent_pressure",
 )
+# Which axes a family actually responds to. Measured with tools/audit_skill_difficulty:
+# an axis absent here was inert for that family under both a scripted and a trained probe,
+# so advancing it only made the curriculum believe it was exploring a dimension that does
+# not exist. Declaring the map keeps the difficulty space honest.
+FAMILY_AXES: dict[str, tuple[str, ...]] = {
+    "approach": ("spawn_distance",),
+    "interception": ("ball_speed",),
+    "save_deflection": ("ball_speed",),
+    "clearance": ("spawn_distance", "ball_speed"),
+    "shot": ("spawn_distance", "ball_speed"),
+    "pass_receive": ("ball_angle", "target_width"),
+    "rotation_recovery": ("spawn_distance",),
+}
 SKILL_FAMILIES: tuple[SkillFamily, ...] = (
     "approach",
     "interception",
@@ -327,7 +340,10 @@ class SemanticSkillCurriculum:
         previous = sum(values[: self.window]) / self.window
         current = sum(values[self.window :]) / self.window
         learning_progress = current - previous
-        axis = DIFFICULTY_AXES[self.updates[family] % len(DIFFICULTY_AXES)]
+        # Only advance an axis this family responds to, so difficulty tracks the demand
+        # instead of drifting into a dimension that changes nothing.
+        active = FAMILY_AXES.get(family, DIFFICULTY_AXES)
+        axis = active[self.updates[family] % len(active)]
         if current >= 0.70 and learning_progress >= -0.05:
             self.levels[family][axis] = min(1.0, self.levels[family][axis] + 0.05)
         elif current < 0.35 and learning_progress <= 0.0:
@@ -599,10 +615,13 @@ def compile_skill_scenario(
         # incoming challenger: all three responsibilities must turn over.
         # The rotation this scores is the support travelling back into coverage, and that
         # journey was a fixed 0.7 m at every difficulty. It is now the axis.
+        # Success needs a three-way role turnover, so the easy end starts the support
+        # already deeper than the relay: the permutation nearly holds and only the touch is
+        # missing. The hard end strands it beyond the play, which is the full rotation.
         _park_robot(
             support,
             attack_sign,
-            _lerp(-0.06, 0.40, difficulty.spawn_distance),
+            _lerp(-0.52, 0.40, difficulty.spawn_distance),
             -lane_sign * 0.24,
             math.pi,
         )
@@ -620,7 +639,16 @@ def compile_skill_scenario(
             _lerp(0.42, 0.02, difficulty.spawn_distance),
             lane * (0.30 if loose_finish else 0.45),
         )
-        _set_ball(state, attack_sign, *ball, speed=speed * 0.18, heading=0.0)
+        # The loose ball used to roll toward the goal, so a faster ball arrived closer to
+        # scoring on its own and the speed axis made the family easier. It now drifts across
+        # the shooting line, which is what makes a finish harder.
+        _set_ball(
+            state,
+            attack_sign,
+            *ball,
+            speed=_lerp(0.0, 0.42, difficulty.ball_speed),
+            heading=lane_sign * math.pi / 2,
+        )
         _place_behind(
             primary,
             attack_sign,
@@ -664,11 +692,14 @@ def compile_skill_scenario(
             0.55,
             difficulty.ball_angle,
         )
+        # A pass that never arrives cannot be received at any difficulty, and the shared
+        # ramp started at 0.08 m/s. The floor now always reaches the receiver, and the
+        # demand lives in the launch deviation and the reception speed limit.
         _set_ball(
             state,
             attack_sign,
             *ball_position,
-            speed=speed * 0.65,
+            speed=_lerp(0.62, 1.05, difficulty.ball_speed),
             heading=launch_heading,
         )
         _park_robot(passer, attack_sign, *passer_position, heading)
