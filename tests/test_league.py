@@ -618,3 +618,24 @@ def test_reward_terms_sum_to_the_reported_return_per_decision() -> None:
     assert total == pytest.approx(result.return_total * decisions / 3.0, rel=0.05, abs=0.05)
     # Accounting is scoped to one rollout, so a second iteration cannot double count.
     assert session.environment.reward_decisions == 0
+
+
+def test_paired_scorecard_is_balanced_for_a_policy_against_itself() -> None:
+    """Paired colors must not favour a side, or an incumbent comparison reads its own bias."""
+    actor = ParametricPrimitiveRoleActor(8)
+
+    scorecard = evaluate_policy_pair_scorecard(
+        actor,
+        actor,
+        CONFIG,
+        STATE,
+        candidate="self@1",
+        opponent="self@1",
+        seeds=(17, 19, 23),
+        ticks=4,
+        action_parser="parametric_primitive",
+    )
+
+    assert scorecard.matches == 6
+    assert scorecard.wins == scorecard.losses
+    assert scorecard.goals_for == scorecard.goals_against

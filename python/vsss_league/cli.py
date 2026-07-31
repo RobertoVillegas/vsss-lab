@@ -28,6 +28,7 @@ from vsss_league.telemetry import TrainingTelemetry
 from vsss_league.tournament import (
     evaluate_candidate_vs_heuristic,
     evaluate_checkpoint_scorecard,
+    evaluate_policy_pair_scorecard,
 )
 from vsss_league.training import (
     IterationResult,
@@ -403,6 +404,40 @@ def _run(arguments: argparse.Namespace) -> None:
                     and all(bool(gate["passed"]) for gate in promotion_gates.values())
                 )
                 gates_passed = sum(bool(gate["passed"]) for gate in promotion_gates.values())
+                # The adaptive-training spec asks for a paired terminal bound against the
+                # promoted baseline, and nothing measured it. During a run the promoted
+                # entry is the distilled bootstrap, so this answers a question no metric
+                # answered: is the trained policy better than its own starting point? It is
+                # recorded rather than gated until a run shows what it reads.
+                incumbent_evaluation: dict[str, object] | None = None
+                incumbent = registry.current_main()
+                candidate_key = f"{config.policy_id}@{result.policy_version}"
+                if incumbent.checkpoint is not None and incumbent.key != candidate_key:
+                    incumbent_actor = opponent_cache.get(incumbent.key)
+                    if incumbent_actor is None:
+                        incumbent_actor, _ = load_policy_actor(
+                            Path(incumbent.checkpoint),
+                            config,
+                            learner.device,
+                        )
+                        opponent_cache[incumbent.key] = incumbent_actor
+                    pair = evaluate_policy_pair_scorecard(
+                        learner.actor,
+                        incumbent_actor,
+                        config_json,
+                        state_json,
+                        candidate=candidate_key,
+                        opponent=incumbent.key,
+                        seeds=holdout_seeds[:3],
+                        ticks=config.horizon,
+                        action_parser=config.action_parser,
+                    )
+                    incumbent_evaluation = {
+                        **asdict(pair),
+                        "win_rate": pair.wins / pair.matches,
+                        "draw_rate": pair.draws / pair.matches,
+                        "beats_incumbent": pair.wins > pair.losses,
+                    }
                 phase_before = rollout_session.semantic_curriculum.phase_name
                 phase_advanced = rollout_session.semantic_curriculum.observe_holdout_rates(
                     family_rates,
@@ -431,6 +466,7 @@ def _run(arguments: argparse.Namespace) -> None:
                         "draw_rate": draw_rate,
                     },
                     "promotion_gates_passed": gates_passed,
+                    "incumbent_evaluation": incumbent_evaluation,
                     "promotion_gates": promotion_gates,
                     "curriculum_phase": phase_before,
                     "curriculum_phase_index": rollout_session.semantic_curriculum.phase_index
