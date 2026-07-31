@@ -73,6 +73,7 @@ class IterationResult:
     episode_kinds: dict[str, int] = field(default_factory=dict)
     goal_events: dict[str, int] = field(default_factory=dict)
     policy_stats: dict[str, object] | None = None
+    reward_terms: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -662,6 +663,15 @@ def train_iteration(
     )
     losses = learner.optimize(trajectory)
     policy_stats = _policy_stats(trajectory, learner.config.action_parser)
+    # Mean contribution of each reward term per agent-decision, so a policy's incentives
+    # can be read instead of inferred from the total.
+    accounted = session or create_rollout_session(learner.config, config_json, state_json)
+    environment = accounted.environment
+    decisions = max(1, environment.reward_decisions)
+    reward_terms = {
+        name: total / decisions for name, total in sorted(environment.reward_terms.items())
+    }
+    environment.reset_reward_terms()
     if checkpoint is not None:
         learner.save(checkpoint)
     return IterationResult(
@@ -686,6 +696,7 @@ def train_iteration(
         episode_kinds=episode_kinds,
         goal_events=goal_events,
         policy_stats=policy_stats,
+        reward_terms=reward_terms,
     )
 
 

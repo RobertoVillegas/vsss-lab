@@ -524,6 +524,8 @@ class VectorMarlMatchEnv:
         self._ally_contact_streaks = np.zeros((num_envs, 3), dtype=np.int64)
         self._opponent_contact_streaks = np.zeros((num_envs, 9), dtype=np.int64)
         self.ally_contact_steps = np.zeros(num_envs, dtype=np.int64)
+        self.reward_terms: dict[str, float] = {}
+        self.reward_decisions = 0
         self.opponent_contact_steps = np.zeros(num_envs, dtype=np.int64)
         self.ally_deadlocks = np.zeros(num_envs, dtype=np.int64)
         self.opponent_deadlocks = np.zeros(num_envs, dtype=np.int64)
@@ -537,6 +539,11 @@ class VectorMarlMatchEnv:
         self.role_switches = np.zeros(num_envs, dtype=np.int64)
         self.uncovered_steps = np.zeros(num_envs, dtype=np.int64)
         self.role_decisions = np.zeros(num_envs, dtype=np.int64)
+
+    def reset_reward_terms(self) -> None:
+        """Scope reward accounting to one rollout so contributions stay comparable."""
+        self.reward_terms = {}
+        self.reward_decisions = 0
 
     def set_controlled_team(self, world: int, team: int) -> None:
         if team not in (0, 1):
@@ -840,57 +847,93 @@ class VectorMarlMatchEnv:
             (events & 2) != 0,
             (events & 1) != 0,
         )
-        rewards = (
-            self.progress_coefficient
-            * (2.0 * (self._closest - closest) + attack_sign * (ball_x - self._ball_x))
-            + self.ball_direction_coefficient
-            * np.asarray(
-                [
-                    _ball_direction_reward(
-                        state,
-                        self._config,
-                        self.movement_speed_threshold,
-                        int(team),
-                    )
-                    for state, team in zip(self.states, self.controlled_teams, strict=True)
-                ],
+        # Named terms summed in their original order, so the total is bit-identical to the
+        # single expression this replaces while each contribution stays accountable. Only
+        # the total was ever recorded, which made it impossible to say which term a policy
+        # was actually optimizing.
+        terms: dict[str, FloatArray] = {
+            "progress": (
+                self.progress_coefficient
+                * (2.0 * (self._closest - closest) + attack_sign * (ball_x - self._ball_x))
+            ).astype(np.float32),
+            "ball_direction": (
+                self.ball_direction_coefficient
+                * np.asarray(
+                    [
+                        _ball_direction_reward(
+                            state,
+                            self._config,
+                            self.movement_speed_threshold,
+                            int(team),
+                        )
+                        for state, team in zip(self.states, self.controlled_teams, strict=True)
+                    ],
+                    dtype=np.float32,
+                )
+                / self.horizon
+            ).astype(np.float32),
+            "useful_touch": (
+                self.useful_touch_impulse_coefficient * np.tanh(useful_touch_impulse)
+            ).astype(np.float32),
+            "goal_geometry": (
+                self.goal_geometry_coefficient
+                * (
+                    self.goal_geometry_discount * goal_geometry_potential
+                    - self._goal_geometry_potential
+                )
+            ).astype(np.float32),
+            "idle_spin": (-self.idle_spin_coefficient * idle_spin_penalty).astype(np.float32),
+            "attacker_alignment": (
+                self.attacker_alignment_coefficient
+                * np.asarray(
+                    [
+                        _attacker_alignment_reward(
+                            state,
+                            self.movement_speed_threshold,
+                            int(team),
+                        )
+                        for state, team in zip(self.states, self.controlled_teams, strict=True)
+                    ],
+                    dtype=np.float32,
+                )
+                / self.horizon
+            ).astype(np.float32),
+            "time": np.full(
+                self.num_envs,
+                -self.time_penalty_coefficient / self.horizon,
                 dtype=np.float32,
-            )
-            / self.horizon
-            + self.useful_touch_impulse_coefficient * np.tanh(useful_touch_impulse)
-            + self.goal_geometry_coefficient
-            * (
-                self.goal_geometry_discount * goal_geometry_potential
-                - self._goal_geometry_potential
-            )
-            - self.idle_spin_coefficient * idle_spin_penalty
-            + self.attacker_alignment_coefficient
-            * np.asarray(
-                [
-                    _attacker_alignment_reward(
-                        state,
-                        self.movement_speed_threshold,
-                        int(team),
-                    )
-                    for state, team in zip(self.states, self.controlled_teams, strict=True)
-                ],
-                dtype=np.float32,
-            )
-            / self.horizon
-            - self.time_penalty_coefficient / self.horizon
-            + self.goal_coefficient * scored
-            - self.goal_coefficient * conceded
-            - self.action_delta_coefficient * np.square(action_delta).mean(axis=(1, 2))
-            - self.wheel_effort_coefficient * np.square(normalized_blue).mean(axis=(1, 2))
-            - self.teammate_congestion_coefficient * congestion
-            - self.ally_deadlock_coefficient * ally_deadlock_penalty
-            - self.opponent_deadlock_coefficient * opponent_deadlock_penalty
-            + self.defensive_coverage_coefficient
-            * threat
-            * (self._defensive_distance - defensive_distance)
-            - self.draw_penalty * draw
-            - self.stagnation_penalty * stagnated
-        ).astype(np.float32)
+            ),
+            "goal_scored": (self.goal_coefficient * scored).astype(np.float32),
+            "goal_conceded": (-self.goal_coefficient * conceded).astype(np.float32),
+            "action_delta": (
+                -self.action_delta_coefficient * np.square(action_delta).mean(axis=(1, 2))
+            ).astype(np.float32),
+            "wheel_effort": (
+                -self.wheel_effort_coefficient * np.square(normalized_blue).mean(axis=(1, 2))
+            ).astype(np.float32),
+            "teammate_congestion": (-self.teammate_congestion_coefficient * congestion).astype(
+                np.float32
+            ),
+            "ally_deadlock": (-self.ally_deadlock_coefficient * ally_deadlock_penalty).astype(
+                np.float32
+            ),
+            "opponent_deadlock": (
+                -self.opponent_deadlock_coefficient * opponent_deadlock_penalty
+            ).astype(np.float32),
+            "defensive_coverage": (
+                self.defensive_coverage_coefficient
+                * threat
+                * (self._defensive_distance - defensive_distance)
+            ).astype(np.float32),
+            "draw": (-self.draw_penalty * draw).astype(np.float32),
+            "stagnation": (-self.stagnation_penalty * stagnated).astype(np.float32),
+        }
+        rewards = np.zeros(self.num_envs, dtype=np.float32)
+        for name, value in terms.items():
+            rewards = rewards + value
+            self.reward_terms[name] = self.reward_terms.get(name, 0.0) + float(value.sum())
+        self.reward_decisions += self.num_envs
+        rewards = rewards.astype(np.float32)
         np.copyto(self._previous_blue_actions, normalized_blue)
         np.copyto(self._ball_x, ball_x)
         np.copyto(self._previous_ball_positions, ball_positions)

@@ -85,6 +85,11 @@ export default function TrainingCharts({ metrics }: { metrics: TrainingMetric[] 
       log_std_right: metric.exploration?.actor_log_std?.[1],
       log_std_intensity: metric.exploration?.actor_log_std?.[2],
       heading_concentration: metric.exploration?.heading_concentration,
+      reward_goal: (metric.reward_terms?.goal_scored ?? 0) + (metric.reward_terms?.goal_conceded ?? 0),
+      reward_stagnation: metric.reward_terms?.stagnation,
+      reward_idle_spin: metric.reward_terms?.idle_spin,
+      reward_touch: metric.reward_terms?.useful_touch,
+      reward_geometry: metric.reward_terms?.goal_geometry,
       normalized_entropy: metric.exploration?.normalized_entropy,
       stop_fraction: metric.policy_stats?.stop_fraction,
       navigate_fraction: metric.policy_stats?.navigate_fraction,
@@ -166,6 +171,13 @@ export default function TrainingCharts({ metrics }: { metrics: TrainingMetric[] 
         <TrainingChart title="THROUGHPUT" data={data}>
           <Line dataKey="frames_per_second" name="frames/s" stroke="#71e1ae" dot={false} />
           <Line dataKey="matches_per_second" name="matches/s" stroke="#49a7ff" dot={false} />
+        </TrainingChart>
+        <TrainingChart title="REWARD BY TERM · PER DECISION" data={data}>
+          <Line dataKey="reward_goal" name="goal net" stroke="#71e1ae" dot={false} />
+          <Line dataKey="reward_stagnation" name="stagnation" stroke="#ff8a62" dot={false} />
+          <Line dataKey="reward_idle_spin" name="idle spin" stroke="#bd8cff" dot={false} />
+          <Line dataKey="reward_touch" name="useful touch" stroke="#49a7ff" dot={false} />
+          <Line dataKey="reward_geometry" name="geometry" stroke="#ffd84a" dot={false} />
         </TrainingChart>
         <TrainingChart title="TERMINATIONS" data={data}>
           <Line dataKey="goals" name="goals" stroke="#71e1ae" dot={false} />

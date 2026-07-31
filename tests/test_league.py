@@ -581,3 +581,40 @@ def test_semantic_checkpoint_ranking_rejects_behavior_collapse() -> None:
     }
 
     assert _semantic_candidate_score(healthy) > _semantic_candidate_score(spinning)
+
+
+def test_reward_terms_sum_to_the_reported_return_per_decision() -> None:
+    """Only the total was ever recorded, so no one could say which term a policy chased."""
+    config = MarlConfig(
+        device="cpu",
+        num_envs=2,
+        rollout_steps=4,
+        minibatch_size=6,
+        epochs=1,
+        hidden_size=16,
+        stagnation_penalty=1.0,
+        draw_penalty=0.5,
+    )
+    learner = MarlLearner(config)
+    session = create_rollout_session(config, CONFIG, STATE)
+
+    result = train_iteration(
+        learner,
+        None,
+        CONFIG,
+        STATE,
+        iteration=1,
+        seed=7,
+        opponent_id="heuristic-dynamic",
+        checkpoint=None,
+        session=session,
+    )
+
+    assert result.reward_terms
+    assert {"goal_scored", "goal_conceded", "stagnation", "idle_spin"} <= set(result.reward_terms)
+    decisions = config.rollout_steps * config.num_envs
+    total = sum(result.reward_terms.values()) * decisions
+    # The trajectory reward is per agent; the accounting is per world decision.
+    assert total == pytest.approx(result.return_total * decisions / 3.0, rel=0.05, abs=0.05)
+    # Accounting is scoped to one rollout, so a second iteration cannot double count.
+    assert session.environment.reward_decisions == 0

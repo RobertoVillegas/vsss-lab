@@ -50,6 +50,7 @@ export interface TrainingMetric {
     entropy?: number;
     normalized_entropy?: number;
   };
+  reward_terms?: Record<string, number>;
   policy_stats?: {
     action_parser: "primitive" | "parametric_primitive";
     action_counts: number[];
