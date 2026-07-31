@@ -93,3 +93,38 @@ def test_parametric_primitive_evaluation_accepts_wide_policy_and_baseline_action
             "failure",
             "unresolved",
         }
+
+
+def test_clearance_difficulty_moves_the_distance_it_scores() -> None:
+    """The easy end of a drill must be easier at the thing the drill is scored on.
+
+    Clearance succeeds when the ball leaves the defensive third, so its demand is the
+    ball's depth. That depth used to be a coin flip between two deep positions, which left
+    every difficulty level asking for the same displacement and made the family unlearnable
+    from below: the difficulty curriculum could prioritize it forever without ever making
+    it winnable.
+    """
+    depths = []
+    for level in (0.0, 0.25, 0.5, 0.75, 1.0):
+        scenario = compile_skill_scenario(
+            SkillScenarioParameters(
+                schema_version=1,
+                family="clearance",
+                seed=101,
+                controlled_team="blue",
+                difficulty=SkillDifficulty(level, level, level, level, level),
+                horizon=240,
+                holdout=True,
+            ),
+            STATE,
+            CONFIG,
+        )
+        ball = scenario.scenario.state["ball"]
+        assert isinstance(ball, dict)
+        depths.append(abs(float(ball["x"])))
+
+    assert depths == sorted(depths)
+    # The easy end must ask for materially less displacement than the hard end.
+    assert depths[0] < depths[-1] - 0.2
+    # And it must still be a clearance: the ball starts inside the defensive third.
+    assert depths[0] > 0.10

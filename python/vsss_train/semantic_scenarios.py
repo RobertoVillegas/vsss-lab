@@ -25,7 +25,7 @@ SkillFamily = Literal[
 ControlledTeam = Literal["blue", "yellow"]
 Roster = Literal["1v0", "1v1", "2v1", "2v2", "3v2", "3v3"]
 
-GENERATOR_REVISION = "m17"
+GENERATOR_REVISION = "m24.3"
 DIFFICULTY_AXES = (
     "ball_speed",
     "ball_angle",
@@ -533,7 +533,15 @@ def compile_skill_scenario(
         initial_threat = True
     elif family == "clearance":
         emergency = generator.random() < 0.55
-        ball = (-0.62 if emergency else -0.48, lane * (0.35 if emergency else 0.55))
+        # A clearance is scored on the ball leaving the defensive third, so the ball's
+        # depth *is* the demand. It used to be a coin flip between two deep positions,
+        # which left the easy end of every difficulty axis asking for the same 0.38 m of
+        # displacement as the hard end. Lowering difficulty could then never make the
+        # drill learnable, which is the one thing the difficulty curriculum exists to do.
+        ball = (
+            -_lerp(0.20, 0.62, difficulty.spawn_distance),
+            lane * (0.35 if emergency else 0.55),
+        )
         heading = math.pi + lane_sign * _lerp(0.0, 0.22, difficulty.ball_angle)
         _set_ball(state, attack_sign, *ball, speed=speed * 0.45, heading=heading)
         clearance_x = ball[0] - _lerp(0.08, 0.14, difficulty.spawn_distance)
