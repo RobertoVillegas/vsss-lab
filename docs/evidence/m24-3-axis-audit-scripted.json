@@ -1,0 +1,414 @@
+{
+  "attempts_per_cell": 8,
+  "baseline": 0.1,
+  "easiest_band_floor": 0.5,
+  "families": {
+    "approach": {
+      "ball_angle": {
+        "invalid_levels": [],
+        "rates": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "verdict": "no-gradient"
+      },
+      "ball_speed": {
+        "invalid_levels": [],
+        "rates": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "verdict": "no-gradient"
+      },
+      "opponent_pressure": {
+        "invalid_levels": [],
+        "rates": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "verdict": "no-gradient"
+      },
+      "spawn_distance": {
+        "invalid_levels": [],
+        "rates": [
+          1.0,
+          1.0,
+          1.0,
+          0.0,
+          0.0
+        ],
+        "verdict": "ramp"
+      },
+      "target_width": {
+        "invalid_levels": [],
+        "rates": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "verdict": "no-gradient"
+      }
+    },
+    "clearance": {
+      "ball_angle": {
+        "invalid_levels": [],
+        "rates": [
+          0.0,
+          0.75,
+          0.75,
+          0.25,
+          0.75
+        ],
+        "verdict": "inverted"
+      },
+      "ball_speed": {
+        "invalid_levels": [],
+        "rates": [
+          0.75,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "verdict": "cliff"
+      },
+      "opponent_pressure": {
+        "invalid_levels": [],
+        "rates": [
+          0.0,
+          0.0,
+          0.25,
+          0.25,
+          0.0
+        ],
+        "verdict": "beyond-reference"
+      },
+      "spawn_distance": {
+        "invalid_levels": [],
+        "rates": [
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "verdict": "cliff"
+      },
+      "target_width": {
+        "invalid_levels": [],
+        "rates": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "verdict": "no-gradient"
+      }
+    },
+    "interception": {
+      "ball_angle": {
+        "invalid_levels": [],
+        "rates": [
+          1.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "verdict": "cliff"
+      },
+      "ball_speed": {
+        "invalid_levels": [],
+        "rates": [
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "verdict": "cliff"
+      },
+      "opponent_pressure": {
+        "invalid_levels": [],
+        "rates": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "verdict": "no-gradient"
+      },
+      "spawn_distance": {
+        "invalid_levels": [],
+        "rates": [
+          1.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "verdict": "cliff"
+      },
+      "target_width": {
+        "invalid_levels": [],
+        "rates": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "verdict": "no-gradient"
+      }
+    },
+    "pass_receive": {
+      "ball_angle": {
+        "invalid_levels": [],
+        "rates": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "verdict": "no-gradient"
+      },
+      "ball_speed": {
+        "invalid_levels": [],
+        "rates": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "verdict": "inverted"
+      },
+      "opponent_pressure": {
+        "invalid_levels": [],
+        "rates": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "verdict": "no-gradient"
+      },
+      "spawn_distance": {
+        "invalid_levels": [],
+        "rates": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "verdict": "no-gradient"
+      },
+      "target_width": {
+        "invalid_levels": [],
+        "rates": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "verdict": "no-gradient"
+      }
+    },
+    "rotation_recovery": {
+      "ball_angle": {
+        "invalid_levels": [],
+        "rates": [
+          0.0,
+          0.25,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "verdict": "beyond-reference"
+      },
+      "ball_speed": {
+        "invalid_levels": [],
+        "rates": [
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "verdict": "beyond-reference"
+      },
+      "opponent_pressure": {
+        "invalid_levels": [],
+        "rates": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "verdict": "no-gradient"
+      },
+      "spawn_distance": {
+        "invalid_levels": [],
+        "rates": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "verdict": "no-gradient"
+      },
+      "target_width": {
+        "invalid_levels": [],
+        "rates": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "verdict": "no-gradient"
+      }
+    },
+    "save_deflection": {
+      "ball_angle": {
+        "invalid_levels": [],
+        "rates": [
+          1.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "verdict": "cliff"
+      },
+      "ball_speed": {
+        "invalid_levels": [],
+        "rates": [
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "verdict": "cliff"
+      },
+      "opponent_pressure": {
+        "invalid_levels": [],
+        "rates": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "verdict": "no-gradient"
+      },
+      "spawn_distance": {
+        "invalid_levels": [],
+        "rates": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "verdict": "no-gradient"
+      },
+      "target_width": {
+        "invalid_levels": [],
+        "rates": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "verdict": "no-gradient"
+      }
+    },
+    "shot": {
+      "ball_angle": {
+        "invalid_levels": [],
+        "rates": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "verdict": "no-gradient"
+      },
+      "ball_speed": {
+        "invalid_levels": [],
+        "rates": [
+          0.0,
+          0.0,
+          1.0,
+          0.25,
+          0.0
+        ],
+        "verdict": "beyond-reference"
+      },
+      "opponent_pressure": {
+        "invalid_levels": [],
+        "rates": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "verdict": "no-gradient"
+      },
+      "spawn_distance": {
+        "invalid_levels": [],
+        "rates": [
+          0.75,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "verdict": "cliff"
+      },
+      "target_width": {
+        "invalid_levels": [],
+        "rates": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "verdict": "no-gradient"
+      }
+    }
+  },
+  "ladder": [
+    0.0,
+    0.25,
+    0.5,
+    0.75,
+    1.0
+  ],
+  "probe": "scripted heuristic"
+}

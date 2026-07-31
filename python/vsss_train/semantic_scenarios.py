@@ -25,7 +25,7 @@ SkillFamily = Literal[
 ControlledTeam = Literal["blue", "yellow"]
 Roster = Literal["1v0", "1v1", "2v1", "2v2", "3v2", "3v3"]
 
-GENERATOR_REVISION = "m24.3"
+GENERATOR_REVISION = "m24.3-ladders"
 DIFFICULTY_AXES = (
     "ball_speed",
     "ball_angle",
@@ -502,20 +502,44 @@ def compile_skill_scenario(
     if family == "approach":
         ball = (-0.05, lane)
         _set_ball(state, attack_sign, *ball, speed=0.0, heading=0.0)
+        # A fixed 0.13-0.34 m reach was solved at every level by every controller, so the
+        # axis carried no information. Reaching the ball is the demand: it now spans an
+        # easy step to most of a half.
         _place_behind(
             primary,
             attack_sign,
             ball,
-            spawn_distance,
-            heading_error=0.22,
+            _lerp(0.12, 0.62, difficulty.spawn_distance),
+            heading_error=_lerp(0.05, 1.10, difficulty.ball_angle),
             generator=generator,
         )
         _park_robot(support, attack_sign, -0.52, -lane_sign * 0.32, 0.0)
     elif family in ("interception", "save_deflection"):
         ball = (-0.28 if family == "interception" else -0.46, lane)
-        heading = math.pi + lane_sign * _lerp(0.02, 0.32, difficulty.ball_angle)
-        _set_ball(state, attack_sign, *ball, speed=speed, heading=heading)
+        if family == "save_deflection":
+            # A fixed angular deflection eventually points the ball away from the goal, and
+            # the validator then rejects the scenario for not being a save at all. Aiming at
+            # a point inside the goal mouth keeps every band goal-bound by construction and
+            # still lets difficulty walk the shot toward the post.
+            goal_half_width = float(config["field"]["goal_width"]) / 2
+            aim_y = lane_sign * _lerp(0.0, 0.70, difficulty.ball_angle) * goal_half_width
+            heading = math.atan2(aim_y - lane, own_goal_x * attack_sign - ball[0])
+        else:
+            heading = math.pi + lane_sign * _lerp(0.02, 0.32, difficulty.ball_angle)
+        # The shared speed ramp reached 1.05 m/s, which no controller can intercept from
+        # behind, so every band above the middle was dead. This one spans reachable to
+        # marginal instead of reachable to impossible.
+        _set_ball(
+            state,
+            attack_sign,
+            *ball,
+            speed=_lerp(0.10, 0.58, difficulty.ball_speed),
+            heading=heading,
+        )
         intercept_x = ball[0] - _lerp(0.10, 0.24, difficulty.spawn_distance)
+        # save_deflection starts deeper, so without this the hardest band parks a robot
+        # outside the field and the scenario cannot be compiled at all.
+        intercept_x = max(-0.69, intercept_x)
         intercept_y = lane + lane_sign * _lerp(
             0.11,
             0.22,
@@ -543,7 +567,7 @@ def compile_skill_scenario(
             lane * (0.35 if emergency else 0.55),
         )
         heading = math.pi + lane_sign * _lerp(0.0, 0.22, difficulty.ball_angle)
-        _set_ball(state, attack_sign, *ball, speed=speed * 0.45, heading=heading)
+        _set_ball(state, attack_sign, *ball, speed=speed * 0.28, heading=heading)
         clearance_x = ball[0] - _lerp(0.08, 0.14, difficulty.spawn_distance)
         clearance_x = max(-0.69, clearance_x)
         clearance_y = ball[1] + lane_sign * _lerp(
@@ -573,14 +597,29 @@ def compile_skill_scenario(
         # The previous attacker begins beyond the play and must rotate through
         # coverage. The former coverage player advances into support behind the
         # incoming challenger: all three responsibilities must turn over.
-        _park_robot(support, attack_sign, 0.34, -lane_sign * 0.24, math.pi)
+        # The rotation this scores is the support travelling back into coverage, and that
+        # journey was a fixed 0.7 m at every difficulty. It is now the axis.
+        _park_robot(
+            support,
+            attack_sign,
+            _lerp(-0.06, 0.40, difficulty.spawn_distance),
+            -lane_sign * 0.24,
+            math.pi,
+        )
         _park_robot(reserve, attack_sign, -0.38, lane_sign * 0.30, 0.0)
         support_id = str(support["id"])
         relay_id = str(reserve["id"])
         initial_threat = True
     elif family == "shot":
         loose_finish = generator.random() < 0.50
-        ball = (0.42 if loose_finish else 0.28, lane * (0.30 if loose_finish else 0.45))
+        # Both finishes sat within a third of a metre of the goal, so difficulty cost
+        # nothing. Range is the demand: a tap-in at the easy end, a long strike at the hard.
+        # Easy is a short range, not point blank: the defenders are parked in front of the
+        # goal, and a ball placed on top of them cannot be compiled at all.
+        ball = (
+            _lerp(0.42, 0.02, difficulty.spawn_distance),
+            lane * (0.30 if loose_finish else 0.45),
+        )
         _set_ball(state, attack_sign, *ball, speed=speed * 0.18, heading=0.0)
         _place_behind(
             primary,
@@ -617,9 +656,12 @@ def compile_skill_scenario(
             passer_position[0] + contact_offset * math.cos(heading),
             passer_position[1] + contact_offset * math.sin(heading),
         )
+        # The launch was deflected 0.45 to 1.00 rad off the receiver even at difficulty
+        # zero, so the ball never arrived and no controller ever completed a pass. The
+        # deviation now starts at a true pass and grows into a mis-hit.
         launch_heading = heading + lane_sign * _lerp(
-            0.45,
-            1.00,
+            0.0,
+            0.55,
             difficulty.ball_angle,
         )
         _set_ball(

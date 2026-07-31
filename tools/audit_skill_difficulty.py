@@ -22,6 +22,7 @@ from vsss_train.config import load_marl_config
 from vsss_train.marl_ppo import MarlLearner
 from vsss_train.semantic_evaluation import IdleSpinThresholds, evaluate_semantic_skills
 from vsss_train.semantic_scenarios import (
+    DIFFICULTY_AXES,
     SKILL_FAMILIES,
     SemanticScenario,
     SkillDifficulty,
@@ -29,7 +30,11 @@ from vsss_train.semantic_scenarios import (
     compile_skill_scenario,
 )
 
-LADDER = (0.0, 0.15, 0.3, 0.45, 0.6, 0.8, 1.0)
+LADDER = (0.0, 0.25, 0.5, 0.75, 1.0)
+# Axes are declared independent, and the curriculum samples them independently, so a
+# compound sweep that raises all five at once misrepresents what a policy ever faces.
+# Each axis is swept alone with the rest held at an easy baseline.
+BASELINE = 0.1
 # A reference controller that cannot clear half of the easiest band leaves the difficulty
 # curriculum no rung to stand on.
 EASIEST_BAND_FLOOR = 0.5
@@ -38,6 +43,7 @@ EASIEST_BAND_FLOOR = 0.5
 @dataclass(frozen=True)
 class Cell:
     family: str
+    axis: str
     level: float
     attempts: int
     successes: int
@@ -48,8 +54,15 @@ class Cell:
         return self.successes / self.attempts if self.attempts else 0.0
 
 
+def difficulty_for(axis: str, level: float) -> SkillDifficulty:
+    return SkillDifficulty(
+        **{name: level if name == axis else BASELINE for name in DIFFICULTY_AXES}
+    )
+
+
 def scenarios_for(
     family: str,
+    axis: str,
     level: float,
     state: dict[str, object],
     config: dict[str, object],
@@ -63,7 +76,7 @@ def scenarios_for(
                 family=family,  # type: ignore[arg-type]
                 seed=601 + index * 37,
                 controlled_team=team,  # type: ignore[arg-type]
-                difficulty=SkillDifficulty(level, level, level, level, level),
+                difficulty=difficulty_for(axis, level),
                 horizon=240,
                 holdout=True,
             ),
@@ -87,32 +100,33 @@ def audit(
     state = json.loads(state_text)
     cells: list[Cell] = []
     for family in SKILL_FAMILIES:
-        for level in LADDER:
-            try:
-                batch = scenarios_for(family, level, state, config, seeds=seeds)
-            except ValueError as error:
-                # A declared difficulty that cannot be compiled is a generator defect, not
-                # a policy result, and the spec requires zero invalid states.
-                cells.append(Cell(family, level, 0, 0, invalid=str(error)))
-                continue
-            report = evaluate_semantic_skills(
-                learner.actor if learner is not None else None,
-                batch,
-                config_text,
-                state_text,
-                control="policy" if learner is not None else probe,  # type: ignore[arg-type]
-                device=learner.device if learner is not None else "cpu",
-                action_parser=(
-                    learner.config.action_parser if learner is not None else "continuous"
-                ),
-                idle_spin=IdleSpinThresholds(
-                    angular_speed=(
-                        learner.config.idle_spin_angular_speed if learner is not None else 1.0
-                    )
-                ),
-            )
-            successes = sum(trial.status == "success" for trial in report.trials)
-            cells.append(Cell(family, level, len(report.trials), successes))
+        for axis in DIFFICULTY_AXES:
+            for level in LADDER:
+                try:
+                    batch = scenarios_for(family, axis, level, state, config, seeds=seeds)
+                except ValueError as error:
+                    # A declared difficulty that cannot be compiled is a generator defect,
+                    # not a policy result, and the spec requires zero invalid states.
+                    cells.append(Cell(family, axis, level, 0, 0, invalid=str(error)))
+                    continue
+                report = evaluate_semantic_skills(
+                    learner.actor if learner is not None else None,
+                    batch,
+                    config_text,
+                    state_text,
+                    control="policy" if learner is not None else probe,  # type: ignore[arg-type]
+                    device=learner.device if learner is not None else "cpu",
+                    action_parser=(
+                        learner.config.action_parser if learner is not None else "continuous"
+                    ),
+                    idle_spin=IdleSpinThresholds(
+                        angular_speed=(
+                            learner.config.idle_spin_angular_speed if learner is not None else 1.0
+                        )
+                    ),
+                )
+                successes = sum(trial.status == "success" for trial in report.trials)
+                cells.append(Cell(family, axis, level, len(report.trials), successes))
     return cells
 
 
@@ -134,20 +148,20 @@ def classify(rates: list[float], invalid: list[float]) -> str:
     return "ramp"
 
 
-def verdicts(cells: list[Cell]) -> dict[str, dict[str, object]]:
-    result: dict[str, dict[str, object]] = {}
+def verdicts(cells: list[Cell]) -> dict[str, dict[str, dict[str, object]]]:
+    result: dict[str, dict[str, dict[str, object]]] = {}
     for family in SKILL_FAMILIES:
-        row = [cell for cell in cells if cell.family == family]
-        rates = [cell.rate for cell in row]
-        invalid = [cell.level for cell in row if cell.invalid]
-        result[family] = {
-            "rates": rates,
-            "easiest": rates[0],
-            "hardest": rates[-1],
-            "live_bands": sum(1 for rate in rates if rate > 0.0),
-            "invalid_levels": invalid,
-            "verdict": classify(rates, invalid),
-        }
+        per_axis: dict[str, dict[str, object]] = {}
+        for axis in DIFFICULTY_AXES:
+            row = [cell for cell in cells if cell.family == family and cell.axis == axis]
+            rates = [cell.rate for cell in row]
+            invalid = [cell.level for cell in row if cell.invalid]
+            per_axis[axis] = {
+                "rates": rates,
+                "invalid_levels": invalid,
+                "verdict": classify(rates, invalid),
+            }
+        result[family] = per_axis
     return result
 
 
@@ -182,32 +196,37 @@ def main() -> None:
     )
     summary = verdicts(cells)
 
-    header = "family".ljust(19) + "".join(f"{level:>7.2f}" for level in LADDER) + "   verdict"
-    print(header)
-    print("-" * len(header))
-    for family, entry in summary.items():
-        rates = entry["rates"]
-        assert isinstance(rates, list)
-        invalid_levels = entry["invalid_levels"]
-        assert isinstance(invalid_levels, list)
-        row = family.ljust(19) + "".join(
-            "    n/a" if level in invalid_levels else f"{rate:>7.2f}"
-            for level, rate in zip(LADDER, rates, strict=True)
-        )
-        print(f"{row}   {entry['verdict']}")
+    print("family / axis".ljust(34) + "".join(f"{level:>7.2f}" for level in LADDER) + "   verdict")
+    print("-" * 84)
+    for family, axes in summary.items():
+        print(family)
+        for axis, entry in axes.items():
+            rates = entry["rates"]
+            invalid_levels = entry["invalid_levels"]
+            assert isinstance(rates, list) and isinstance(invalid_levels, list)
+            cells_text = "".join(
+                "    n/a" if level in invalid_levels else f"{rate:>7.2f}"
+                for level, rate in zip(LADDER, rates, strict=True)
+            )
+            print("  " + axis.ljust(32) + cells_text + f"   {entry['verdict']}")
     print()
     probe_name = (
         f"trained policy {arguments.checkpoint.name}"
         if arguments.checkpoint is not None
         else f"scripted {arguments.probe}"
     )
-    print(f"probe: {probe_name}, {arguments.seeds * 2} attempts per cell")
-    print(f"easiest band must reach {EASIEST_BAND_FLOOR:.2f}; difficulty must cost at least 0.20")
-    print("ramp = usable ladder | cliff = solvable then impossible | no-gradient = axes do")
-    print("nothing | inverted = harder is easier | beyond-reference = the scripted control")
-    print("cannot perform this skill, so the ladder is untested rather than proven broken")
-    usable = [f for f, e in summary.items() if e["verdict"] == "ramp"]
-    print(f"families with a usable ladder: {', '.join(usable) if usable else 'none'}")
+    print(f"probe: {probe_name}, {arguments.seeds * 2} attempts per cell,")
+    print(f"one axis swept at a time with the others held at {BASELINE:.2f}")
+    print("ramp = usable | cliff = solvable then impossible | no-gradient = the axis does")
+    print("nothing | inverted = harder is easier | beyond-reference = the probe cannot")
+    print("perform this skill, so the ladder is untested rather than proven broken")
+    unusable = [
+        f"{family}.{axis}"
+        for family, axes in summary.items()
+        for axis, entry in axes.items()
+        if entry["verdict"] in ("invalid-generation", "inverted")
+    ]
+    print(f"axes that are invalid or inverted: {', '.join(unusable) if unusable else 'none'}")
     if arguments.output:
         arguments.output.parent.mkdir(parents=True, exist_ok=True)
         arguments.output.write_text(
@@ -217,6 +236,7 @@ def main() -> None:
                     "easiest_band_floor": EASIEST_BAND_FLOOR,
                     "attempts_per_cell": arguments.seeds * 2,
                     "probe": probe_name,
+                    "baseline": BASELINE,
                     "families": summary,
                 },
                 indent=2,
