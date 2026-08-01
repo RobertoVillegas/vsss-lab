@@ -550,6 +550,10 @@ class VectorMarlMatchEnv:
         self.controlled_teams = np.zeros(num_envs, dtype=np.int64)
         self._role_assigners = [DynamicRoleAssigner() for _ in range(num_envs)]
         self.role_assignments: list[RoleAssignment | None] = [None] * num_envs
+        # The role features behind those assignments, kept so an observation can be rebuilt
+        # without assigning again. Re-assigning would advance the hysteresis a second time for
+        # the same state, which is a different assignment, not a cheaper one.
+        self._role_features = np.zeros((num_envs, 3 * ROLE_FEATURE_WIDTH), dtype=np.float32)
         self.role_switches = np.zeros(num_envs, dtype=np.int64)
         self.uncovered_steps = np.zeros(num_envs, dtype=np.int64)
         self.role_decisions = np.zeros(num_envs, dtype=np.int64)
@@ -604,7 +608,8 @@ class VectorMarlMatchEnv:
         # The hysteresis now lives in the native simulator, so restarting it there is what an
         # episode boundary means. Resetting a Python assigner instead would leave the two
         # histories to diverge silently, which no shape or value check would catch.
-        _, changed, uncovered, cost, names = self._native.restart_roles(world, team)
+        features, changed, uncovered, cost, names = self._native.restart_roles(world, team)
+        self._role_features[world] = features[0]
         assignment = RoleAssignment(
             cast("tuple[Role, Role, Role]", tuple(names[0])),
             cast("tuple[bool, bool, bool]", tuple(bool(flag) for flag in changed[0])),
@@ -613,6 +618,17 @@ class VectorMarlMatchEnv:
         )
         self.role_assignments[world] = assignment
         return build_team_observation(self.states[world], team=team, role_assignment=assignment)
+
+    def current_observations(self) -> TeamBatch:
+        """Rebuild every world's observation from the assignments already in force.
+
+        A caller that has reset some worlds needs the whole batch again, and the worlds it did
+        not touch have not moved, so their assignments still stand. Rebuilding is therefore an
+        observation build and nothing else.
+        """
+        return _native_observations(
+            self._native, self.controlled_teams, self._role_features, self._config
+        )
 
     def _native_team_scalars(self) -> NDArray[np.float64]:
         """Return the ball-touch flag, the closest distance, the congestion and post distance."""
@@ -950,9 +966,10 @@ class VectorMarlMatchEnv:
         self.last_terminal_reasons[draw] = "draw"
         self.last_terminal_reasons[stagnated] = "stagnation"
         self.last_terminal_reasons[goal_complete] = "goal"
-        observations, native_assignments = _native_team_features(
+        observations, native_assignments, role_features = _native_team_features(
             self._native, self.controlled_teams, self._config, hysteretic=True
         )
+        np.copyto(self._role_features, role_features)
         assignments: list[RoleAssignment | None] = list(native_assignments)
         self.role_assignments = assignments
         self.role_switches += np.asarray(
@@ -1279,8 +1296,34 @@ def _free_ball_snapshot(snapshot: dict[str, Any], clearance: float, field_length
 #: explicitly, so the value has to be named somewhere the two agree on.
 CIRCULAR_BALL_DECELERATION = 0.8
 
+#: Tactical role features per agent: three one-hot, a change flag, a coverage flag.
+ROLE_FEATURE_WIDTH = 5
+
 #: Shapes the native observation groups are folded back into, per world.
 _GROUP_SHAPES = ((3, 8), (3, 7), (3, 4), (3, 9), (3, 2, 6), (3, 3, 6))
+
+
+def _native_observations(
+    simulator: BatchSimulator,
+    teams: NDArray[np.int64],
+    role_features: NDArray[np.float32],
+    config: dict[str, Any],
+) -> TeamBatch:
+    """Build every world's observation from role features that are already in force."""
+    groups = simulator.observations(
+        teams,
+        role_features,
+        float(config["field"]["length"]),
+        float(config["field"]["width"]),
+        float(config["match_duration"]),
+    )
+    worlds = len(teams)
+    return TeamBatch(
+        *(
+            torch.from_numpy(np.ascontiguousarray(group)).reshape(worlds, *shape)
+            for group, shape in zip(groups, _GROUP_SHAPES, strict=True)
+        )
+    )
 
 
 def _native_team_features(
@@ -1289,7 +1332,7 @@ def _native_team_features(
     config: dict[str, Any],
     *,
     hysteretic: bool,
-) -> tuple[TeamBatch, list[RoleAssignment]]:
+) -> tuple[TeamBatch, list[RoleAssignment], NDArray[np.float32]]:
     """Assign roles and build every world's observation without a Python loop over worlds.
 
     The two are computed together because the observation consumes the role features, and
@@ -1297,21 +1340,9 @@ def _native_team_features(
     `RoleAssignment` objects are still returned: single-world callers rebuild an observation
     from them, and they are cheap next to the permutation search they no longer perform.
     """
-    worlds = len(teams)
     features, changed, uncovered, cost, names = simulator.team_roles(teams, hysteretic)
-    groups = simulator.observations(
-        teams,
-        features,
-        float(config["field"]["length"]),
-        float(config["field"]["width"]),
-        float(config["match_duration"]),
-    )
-    observations = TeamBatch(
-        *(
-            torch.from_numpy(np.ascontiguousarray(group)).reshape(worlds, *shape)
-            for group, shape in zip(groups, _GROUP_SHAPES, strict=True)
-        )
-    )
+    observations = _native_observations(simulator, teams, features, config)
+    worlds = len(teams)
     assignments = [
         RoleAssignment(
             cast("tuple[Role, Role, Role]", tuple(names[world])),
@@ -1321,7 +1352,7 @@ def _native_team_features(
         )
         for world in range(worlds)
     ]
-    return observations, assignments
+    return observations, assignments, features
 
 
 def _goal_geometry_metrics(

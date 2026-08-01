@@ -74,6 +74,48 @@ tests instead, which force the conditions deliberately — the contact test wide
 distance to one metre so streaks reach the deadlock branch, and the idle-spin test asserts that
 flags actually fired rather than comparing all-false against all-false.
 
+## A cost that only appears at scale
+
+Measuring throughput against world count found a defect the per-decision profile could not.
+`collect_self_play_trajectory` rebuilt every world's observation in Python whenever *any* world
+reset:
+
+```python
+if reset_occurred:
+    next_observation = stack_team_batches([
+        build_team_observation(state, ...) for world, state in enumerate(environment.states)
+    ])
+```
+
+Resets are rare — 0.2 per cent of world-decisions — but with 512 worlds the chance that *some*
+world resets is not. It fired on 95 of 256 decisions and cost a quarter of the iteration: the
+price of one reset was a full-batch rebuild. At 64 worlds it fires less often and costs eight
+times less per firing, which is why it was invisible until the batch grew.
+
+Replaced by a native rebuild over the assignments already in force. Rebuilding must not
+re-assign: the untouched worlds have not moved, and running the hysteretic assigner a second
+time on the same state gives a different assignment, not a cheaper one.
+
+Throughput by configuration, before and after, measured under contention with a live run so
+both columns are lower bounds:
+
+| worlds × steps | before | after | |
+| --- | --- | --- | --- |
+| 64 × 256 | 3 202 | 4 038 | +26% |
+| 128 × 256 | 5 422 | 6 116 | +13% |
+| 256 × 256 | 6 622 | 8 708 | +32% |
+| 512 × 256 | 7 731 | 11 107 | +44% |
+| 512 × 128 | 8 922 | 10 968 | +23% |
+
+Scaling worlds is sublinear — eight times the worlds buys 2.75 times the throughput — because
+what remains is per decision rather than per world: 256 sequential policy forwards, 256 rounds
+of von Mises sampling, 256 distribution constructions.
+
+One incidental result: 512 × 256 now beats 512 × 128. The shorter rollout was only ahead because
+it triggered the reset rebuild less often. That matters because 128 steps at 50 Hz is 2.56
+seconds of experience against a two-second credit horizon, so GAE would truncate inside the
+horizon — the faster-looking option was also the riskier one, and it is no longer faster.
+
 ## What is worth doing next
 
 The largest single item is von Mises rejection sampling, which the circular heading

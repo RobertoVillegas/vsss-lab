@@ -9,6 +9,7 @@ set below the smallest margin any comparison downstream depends on.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -16,7 +17,9 @@ import pytest
 import torch
 from vsss_baselines import DynamicTeamController
 from vsss_env._native import BatchSimulator
-from vsss_train.marl import build_team_observation
+from vsss_league.training import create_rollout_session
+from vsss_train.config import load_marl_config
+from vsss_train.marl import TeamBatch, build_team_observation, stack_team_batches
 from vsss_train.marl_env import (
     FREE_BALL_X,
     FREE_BALL_Y,
@@ -32,6 +35,7 @@ from vsss_train.marl_env import (
     _idle_spin_flags,
     _team_touches_ball,
     _teammate_congestion,
+    team_action_width,
 )
 from vsss_train.primitives import circular_primitive_wheel_actions
 from vsss_train.roles import DynamicRoleAssigner, assign_roles, role_features
@@ -509,6 +513,56 @@ def test_native_free_ball_rejects_a_world_that_does_not_exist() -> None:
     simulator = stirred_batch(2)
     with pytest.raises(ValueError, match="world index out of range"):
         simulator.restart_free_ball(2, 0.375, 0.325, 0.2, 0.15, 0.35, 1.5)
+
+
+def test_rebuilt_observations_match_the_python_batch_they_replace() -> None:
+    """One world resetting used to rebuild every world's observation in Python."""
+    config = load_marl_config(ROOT / "experiments/configs/m24-3-mappo-circular.toml")
+    config = replace(config, num_envs=12)
+    session = create_rollout_session(config, CONFIG, STATE)
+    environment = session.environment
+    for world in range(environment.num_envs):
+        environment.reset(world, 500 + world)
+
+    def python_batch() -> TeamBatch:
+        return stack_team_batches(
+            [
+                build_team_observation(
+                    state,
+                    team=int(environment.controlled_teams[world]),
+                    role_assignment=environment.role_assignments[world],
+                )
+                for world, state in enumerate(environment.states)
+            ]
+        )
+
+    def compare() -> None:
+        want, got = python_batch(), environment.current_observations()
+        for name in TeamBatch._fields:
+            np.testing.assert_allclose(
+                getattr(got, name).numpy(),
+                getattr(want, name).numpy(),
+                rtol=0.0,
+                atol=TOLERANCE,
+                err_msg=name,
+            )
+
+    compare()  # straight after a reset of every world
+
+    generator = np.random.default_rng(73)
+    width = team_action_width(config.action_parser)
+    for step in range(12):
+        environment.step(
+            generator.uniform(-1.0, 1.0, (environment.num_envs, 3, width)).astype(np.float32),
+            None,
+        )
+        compare()  # after a decision, with the hysteretic assignments in force
+        if step % 3 == 0:
+            # Resetting some worlds is the case the replaced code existed for: the untouched
+            # worlds keep the assignments they already had, and only the reset ones change.
+            for world in (1, 4, 9):
+                environment.reset(world, 900 + step * 16 + world)
+            compare()
 
 
 def test_native_observations_feed_the_actor_unchanged() -> None:

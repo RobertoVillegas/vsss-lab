@@ -197,24 +197,14 @@ def collect_self_play_trajectory(
         opponent = opponent.to(learner.device)
     session = session or create_rollout_session(learner.config, config_json, state_json)
     environment = session.environment
-    if session.initialized:
-        observations_by_world = [
-            build_team_observation(state, team=int(environment.controlled_teams[world]))
-            if environment.role_assignments[world] is None
-            else build_team_observation(
-                state,
-                team=int(environment.controlled_teams[world]),
-                role_assignment=environment.role_assignments[world],
-            )
-            for world, state in enumerate(environment.states)
-        ]
-    else:
-        observations_by_world = []
+    if not session.initialized:
         for world in range(learner.config.num_envs):
-            observations_by_world.append(_reset_world(session, world, seed + world))
+            _reset_world(session, world, seed + world)
         session.initialized = True
+    # Either way the batch is rebuilt natively from the assignments in force, rather than by
+    # stacking one Python-built observation per world.
     environment.mark_progress_origin()
-    observation = stack_team_batches(observations_by_world).to(learner.device)
+    observation = environment.current_observations().to(learner.device)
     initial_snapshot = environment.snapshot(0)
     observations: list[TeamBatch] = []
     actions: list[torch.Tensor] = []
@@ -520,16 +510,12 @@ def collect_self_play_trajectory(
                 )
                 reset_occurred = True
         if reset_occurred:
-            next_observation = stack_team_batches(
-                [
-                    build_team_observation(
-                        state,
-                        team=int(environment.controlled_teams[world]),
-                        role_assignment=environment.role_assignments[world],
-                    )
-                    for world, state in enumerate(environment.states)
-                ]
-            )
+            # One world resetting used to rebuild every world's observation in Python. At 64
+            # worlds that is invisible; at 512 it fired on 95 of 256 decisions and cost a
+            # quarter of the iteration, because the price of one reset was a full-batch
+            # rebuild. The worlds that did not reset have not moved, so this is an observation
+            # build over assignments that already stand.
+            next_observation = environment.current_observations()
         if recurrent_state is not None or opponent_recurrent_state is not None:
             done_mask = torch.as_tensor(step_done, dtype=torch.bool, device=learner.device)
         if recurrent_state is not None:
