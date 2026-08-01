@@ -451,6 +451,41 @@ def _run(arguments: argparse.Namespace) -> None:
                     family_rates,
                     behavior_eligible=behavior_gate_passed,
                 )
+                # Losing to an older self is invisible in every other metric: the heuristic
+                # scorecard cannot show it and the incumbent bound only watches the promoted
+                # entry. A run that regresses and recovers reads as noise without this.
+                history_evaluation: dict[str, object] | None = None
+                past = [
+                    entry
+                    for entry in registry.entries
+                    if entry.checkpoint is not None and entry.training_iteration <= iteration - 100
+                ]
+                if past:
+                    older = max(past, key=lambda entry: entry.training_iteration)
+                    older_actor = opponent_cache.get(older.key)
+                    if older_actor is None:
+                        older_actor, _ = load_policy_actor(
+                            Path(older.checkpoint),  # type: ignore[arg-type]
+                            config,
+                            learner.device,
+                        )
+                        opponent_cache[older.key] = older_actor
+                    against_past = evaluate_policy_pair_scorecard(
+                        learner.actor,
+                        older_actor,
+                        config_json,
+                        state_json,
+                        candidate=candidate_key,
+                        opponent=older.key,
+                        seeds=holdout_seeds[:3],
+                        ticks=config.horizon,
+                        action_parser=config.action_parser,
+                    )
+                    history_evaluation = {
+                        **asdict(against_past),
+                        "opponent_iteration": older.training_iteration,
+                        "beats_past_self": against_past.wins > against_past.losses,
+                    }
                 semantic_evaluation = {
                     "iteration": iteration,
                     "checkpoint": str(checkpoint.resolve()),
@@ -483,6 +518,7 @@ def _run(arguments: argparse.Namespace) -> None:
                     },
                     "promotion_gates_passed": gates_passed,
                     "incumbent_evaluation": incumbent_evaluation,
+                    "history_evaluation": history_evaluation,
                     "promotion_gates": promotion_gates,
                     "curriculum_phase": phase_before,
                     "curriculum_phase_index": rollout_session.semantic_curriculum.phase_index

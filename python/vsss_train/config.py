@@ -117,6 +117,11 @@ class MarlConfig:
     gae_lambda: float = 0.95
     clip_epsilon: float = 0.2
     entropy_coefficient: float = 1e-3
+    # Entropy regularization is an exploration device, but on a bounded parameter it also
+    # imposes a behavioural prior: the maximum-entropy point of a tanh-bounded Gaussian is
+    # a zero mean, which for drive intensity is exactly half authority. This scales the
+    # bonus on the intensity parameter alone, leaving heading and skill exploration intact.
+    intensity_entropy_scale: float = 1.0
     minimum_log_std: float = -5.0
     maximum_log_std: float = 0.0
     value_coefficient: float = 0.5

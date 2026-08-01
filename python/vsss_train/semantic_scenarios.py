@@ -25,7 +25,7 @@ SkillFamily = Literal[
 ControlledTeam = Literal["blue", "yellow"]
 Roster = Literal["1v0", "1v1", "2v1", "2v2", "3v2", "3v3"]
 
-GENERATOR_REVISION = "m24.3-ladders"
+GENERATOR_REVISION = "m24.3-ladders-2"
 DIFFICULTY_AXES = (
     "ball_speed",
     "ball_angle",
@@ -529,7 +529,9 @@ def compile_skill_scenario(
             primary,
             attack_sign,
             ball,
-            _lerp(0.12, 0.62, difficulty.spawn_distance),
+            # Compressed so the hard end is marginal rather than unreachable: a capable
+            # probe scored zero from level 0.75 upward, which quantized the holdout to a step.
+            _lerp(0.12, 0.48, difficulty.spawn_distance),
             heading_error=_lerp(0.05, 1.10, difficulty.ball_angle),
             generator=generator,
         )
@@ -650,7 +652,7 @@ def compile_skill_scenario(
             state,
             attack_sign,
             *ball,
-            speed=_lerp(0.0, 0.42, difficulty.ball_speed),
+            speed=_lerp(0.0, 0.28, difficulty.ball_speed),
             heading=lane_sign * math.pi / 2,
         )
         _place_behind(
@@ -693,7 +695,7 @@ def compile_skill_scenario(
         # deviation now starts at a true pass and grows into a mis-hit.
         launch_heading = heading + lane_sign * _lerp(
             0.0,
-            0.55,
+            0.26,
             difficulty.ball_angle,
         )
         # A pass that never arrives cannot be received at any difficulty, and the shared
