@@ -197,6 +197,11 @@ def collect_self_play_trajectory(
         opponent = opponent.to(learner.device)
     session = session or create_rollout_session(learner.config, config_json, state_json)
     environment = session.environment
+    timeout_penalty = (
+        learner.config.semantic_terminal_reward
+        if learner.config.semantic_timeout_penalty is None
+        else learner.config.semantic_timeout_penalty
+    )
     if not session.initialized:
         for world in range(learner.config.num_envs):
             _reset_world(session, world, seed + world)
@@ -422,6 +427,12 @@ def collect_self_play_trajectory(
                 step_rewards[world] += learner.config.semantic_terminal_reward
             elif outcome.status is SkillStatus.FAILURE:
                 step_rewards[world] -= learner.config.semantic_terminal_reward
+            elif outcome.status is SkillStatus.UNRESOLVED:
+                # Running out the clock used to be free while attempting and failing cost the
+                # terminal reward, so below a fifty per cent success rate the best move was to
+                # not engage. Charging the timeout removes that; it is the only status besides
+                # the two above, and it means the drill was asked for and not delivered.
+                step_rewards[world] -= timeout_penalty
         returns = [
             total + float(reward) for total, reward in zip(returns, step_rewards, strict=True)
         ]

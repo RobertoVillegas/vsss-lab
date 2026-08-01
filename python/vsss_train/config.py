@@ -95,6 +95,12 @@ class MarlConfig:
     scenario_suite: str = ""
     semantic_full_match_fraction: float = 0.25
     semantic_terminal_reward: float = 2.0
+    # A drill that runs out of time paid nothing, while attempting and failing cost the
+    # terminal reward. Below a fifty per cent success rate that makes abstaining the better
+    # move, and run 0008 found it: failures fell away as unresolved rose to 73 per cent and
+    # the policy stopped going for the ball. `None` means an unresolved drill costs what a
+    # failed one costs, so attempting always weakly dominates not attempting.
+    semantic_timeout_penalty: float | None = None
     semantic_regression_patience: int = 0
     semantic_regression_warmup_evaluations: int = 0
     semantic_phase_patience: int = 2
@@ -224,6 +230,8 @@ class MarlConfig:
             raise ValueError("semantic_full_match_fraction must be in [0, 1]")
         if self.semantic_terminal_reward < 0.0:
             raise ValueError("semantic_terminal_reward must be non-negative")
+        if self.semantic_timeout_penalty is not None and self.semantic_timeout_penalty < 0.0:
+            raise ValueError("semantic_timeout_penalty must be non-negative")
         if self.semantic_regression_patience < 0:
             raise ValueError("semantic_regression_patience must be non-negative")
         if self.semantic_regression_warmup_evaluations < 0:
