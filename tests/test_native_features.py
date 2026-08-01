@@ -18,9 +18,13 @@ from vsss_baselines import DynamicTeamController
 from vsss_env._native import BatchSimulator
 from vsss_train.marl import build_team_observation
 from vsss_train.marl_env import (
+    _closest_team_distance,
     _contact_deadlock_metrics,
+    _defensive_distance,
     _goal_geometry_metrics,
     _idle_spin_flags,
+    _team_touches_ball,
+    _teammate_congestion,
 )
 from vsss_train.primitives import circular_primitive_wheel_actions
 from vsss_train.roles import DynamicRoleAssigner, assign_roles, role_features
@@ -386,6 +390,63 @@ def test_native_scripted_opponent_matches_the_python_reference() -> None:
         for world, (state, team) in enumerate(zip(states, teams, strict=True)):
             want = controllers[int(team)].actions(state)
             np.testing.assert_allclose(actual[world], want, rtol=0.0, atol=TOLERANCE)
+
+
+def test_native_team_scalars_match_their_four_python_references() -> None:
+    """Four separate references answered by one pass, so each is compared to its own."""
+    worlds = 8
+    simulator = stirred_batch(worlds)
+    config = json.loads(CONFIG)
+    generator = np.random.default_rng(67)
+    teams = np.arange(worlds, dtype=np.int64) % 2
+    spacing = 0.30
+    field = (
+        float(config["field"]["length"]),
+        float(config["field"]["goal_width"]),
+        float(config["robot"]["length"]),
+        float(config["robot"]["width"]),
+        float(config["ball"]["radius"]),
+        spacing,
+    )
+
+    def compare(states: np.ndarray) -> int:
+        actual = np.asarray(simulator.team_scalars(teams, field))
+        seen = 0
+        for world, (state, team) in enumerate(zip(states, teams, strict=True)):
+            side = int(team)
+            assert bool(actual[world, 0]) == _team_touches_ball(state, side, config)
+            assert actual[world, 1] == pytest.approx(
+                _closest_team_distance(state, side), abs=TOLERANCE
+            )
+            assert actual[world, 2] == pytest.approx(
+                _teammate_congestion(state, spacing, side), abs=TOLERANCE
+            )
+            assert actual[world, 3] == pytest.approx(
+                _defensive_distance(state, config, side), abs=TOLERANCE
+            )
+            seen += int(_team_touches_ball(state, side, config))
+        return seen
+
+    touches = 0
+    states = np.zeros((worlds, BatchSimulator.state_width()), dtype=np.float32)
+    for _ in range(16):
+        drive = generator.uniform(-1.0, 1.0, (worlds, 6, 2)).astype(np.float32) * 13.0
+        states = np.asarray(simulator.step_repeated(drive, 4))
+        touches += compare(states)
+
+    # Random play never brings a robot within the contact radius, and chasing the ball with the
+    # scripted controller does not either — it pushes the ball away as it arrives. Placing a
+    # robot on the ball and stepping does not work either, because the physics resolves the
+    # overlap during the step. Restoring and reading without stepping is what reaches the
+    # threshold's true branch.
+    placed = json.loads(simulator.snapshots()[0])
+    placed["robots"][0]["pose"]["x"] = placed["ball"]["x"]
+    placed["robots"][0]["pose"]["y"] = placed["ball"]["y"]
+    states[0] = np.asarray(simulator.restore_state(0, json.dumps(placed)))
+    touches += compare(states)
+
+    # The touch flag is a threshold; if it never fired, only its false branch was compared.
+    assert touches > 0
 
 
 def test_native_observations_feed_the_actor_unchanged() -> None:

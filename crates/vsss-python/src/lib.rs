@@ -8,6 +8,7 @@ use vsss_features::baseline::scripted_team_actions;
 use vsss_features::contact::{Contacts, Rules as ContactRules, contact_metrics};
 use vsss_features::geometry::{Geometry, goal_geometry_metrics};
 use vsss_features::roles::{Assignment, HystereticAssigner, Role, assign_roles, role_features};
+use vsss_features::scalars::{Field as ScalarField, team_scalars};
 use vsss_features::spin::{Spin, Thresholds, idle_spin};
 use vsss_features::{Observation, group_widths, team_observation};
 use vsss_physics_api::PhysicsBackend;
@@ -657,6 +658,62 @@ impl BatchSimulator {
             .map(|world| world.iter().map(|pair| pair.to_vec()).collect())
             .collect();
         Ok(PyArray3::from_vec3(py, &nested)?)
+    }
+
+    /// Measure the four per-world scalars in one pass.
+    ///
+    /// Returns a row per world holding the ball-touch flag, the distance to the nearest robot,
+    /// the teammate congestion and the distance to the defensive post, in that order.
+    // PyO3 requires argument types by value in an exported signature.
+    #[allow(clippy::needless_pass_by_value)]
+    fn team_scalars<'py>(
+        &self,
+        py: Python<'py>,
+        teams: PyReadonlyArray1<'py, i64>,
+        field: (f64, f64, f64, f64, f64, f64),
+    ) -> PyResult<Bound<'py, PyArray2<f64>>> {
+        let worlds = self.batch.len();
+        let teams = teams.as_slice()?;
+        if teams.len() != worlds {
+            return Err(PyValueError::new_err(
+                "one team index per world is required",
+            ));
+        }
+        let (length, goal_width, robot_length, robot_width, ball_radius, teammate_spacing) = field;
+        let field = ScalarField {
+            length,
+            goal_width,
+            robot_length,
+            robot_width,
+            ball_radius,
+            teammate_spacing,
+        };
+        let states: Vec<Vec<f32>> = (0..worlds)
+            .map(|index| flatten_state(&self.batch.world(index).snapshot()))
+            .collect();
+        let rows = py
+            .detach(|| -> Result<Vec<Vec<f64>>, String> {
+                states
+                    .iter()
+                    .zip(teams)
+                    .map(|(state, team)| {
+                        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                        let team = *team as u8;
+                        team_scalars(state, team, field)
+                            .map(|found| {
+                                vec![
+                                    f64::from(u8::from(found.touches_ball)),
+                                    found.closest_distance,
+                                    found.congestion,
+                                    found.defensive_distance,
+                                ]
+                            })
+                            .map_err(|error| format!("{error:?}"))
+                    })
+                    .collect()
+            })
+            .map_err(PyValueError::new_err)?;
+        Ok(PyArray2::from_vec2(py, &rows)?)
     }
 
     /// Forget one world's role history, as an episode boundary does.

@@ -614,6 +614,22 @@ class VectorMarlMatchEnv:
         self.role_assignments[world] = assignment
         return build_team_observation(self.states[world], team=team, role_assignment=assignment)
 
+    def _native_team_scalars(self) -> NDArray[np.float64]:
+        """Return the ball-touch flag, the closest distance, the congestion and post distance."""
+        return np.asarray(
+            self._native.team_scalars(
+                self.controlled_teams,
+                (
+                    float(self._config["field"]["length"]),
+                    float(self._config["field"]["goal_width"]),
+                    float(self._config["robot"]["length"]),
+                    float(self._config["robot"]["width"]),
+                    float(self._config["ball"]["radius"]),
+                    self.teammate_spacing,
+                ),
+            )
+        )
+
     def _native_goal_geometry(self) -> NDArray[np.float64]:
         """Describe every world's attacking line, potential first, then its four components."""
         return np.asarray(
@@ -739,20 +755,10 @@ class VectorMarlMatchEnv:
             events |= self.states[:, -1].astype(np.int64)
         self.steps += 1
         ball_x = self.states[:, 5]
-        closest = np.asarray(
-            [
-                _closest_team_distance(state, int(team))
-                for state, team in zip(self.states, self.controlled_teams, strict=True)
-            ],
-            dtype=np.float32,
-        )
-        defensive_distance = np.asarray(
-            [
-                _defensive_distance(state, self._config, int(team))
-                for state, team in zip(self.states, self.controlled_teams, strict=True)
-            ],
-            dtype=np.float32,
-        )
+        # Four scalars over the same six robot rows, so one native pass answers all of them.
+        scalars = self._native_team_scalars()
+        closest = scalars[:, 1].astype(np.float32)
+        defensive_distance = scalars[:, 3].astype(np.float32)
         threat = np.asarray(
             [
                 _defensive_threat(
@@ -770,13 +776,7 @@ class VectorMarlMatchEnv:
         self._stagnation_anchor[moved] = ball_positions[moved]
         self._stagnation_steps[moved] = 0
         self._stagnation_steps[~moved] += 1
-        congestion = np.asarray(
-            [
-                _teammate_congestion(state, self.teammate_spacing, int(team))
-                for state, team in zip(self.states, self.controlled_teams, strict=True)
-            ],
-            dtype=np.float32,
-        )
+        congestion = scalars[:, 2].astype(np.float32)
         ally_streaks, opponent_streaks, contact_summary = self._native.contacts(
             self.controlled_teams,
             self._previous_ball_positions,
@@ -820,13 +820,7 @@ class VectorMarlMatchEnv:
         stagnated = np.zeros(self.num_envs, dtype=np.bool_)
         draw = (self.steps >= self.horizon) & ~goal_complete & ~stagnated
         attack_sign = np.where(self.controlled_teams == 0, 1.0, -1.0)
-        current_ball_contact = np.asarray(
-            [
-                _team_touches_ball(state, int(team), self._config)
-                for state, team in zip(self.states, self.controlled_teams, strict=True)
-            ],
-            dtype=np.bool_,
-        )
+        current_ball_contact = scalars[:, 0].astype(np.bool_)
         useful_touch_impulse = np.asarray(
             [
                 _useful_touch_impulse(

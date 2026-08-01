@@ -9,6 +9,7 @@ pub mod baseline;
 pub mod contact;
 pub mod geometry;
 pub mod roles;
+pub mod scalars;
 pub mod spin;
 
 /// Scalars before the first robot row in a flattened state.
