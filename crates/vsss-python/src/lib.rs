@@ -1,8 +1,9 @@
 //! Native contiguous Python batch API.
 
-use numpy::{PyArray1, PyArray2, PyReadonlyArray3};
+use numpy::{PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2, PyReadonlyArray3};
 use pyo3::{exceptions::PyValueError, prelude::*};
 use vsss_batch::PhysicsBatch;
+use vsss_features::{Observation, group_widths, team_observation};
 use vsss_physics_api::PhysicsBackend;
 use vsss_physics_rapier::RapierBackend;
 use vsss_spec::{AngularVelocity, MatchConfig, MatchState, RobotAction, serialization};
@@ -98,6 +99,79 @@ impl BatchSimulator {
             .detach(|| self.batch.step_repeated(&commands, repeats))
             .map_err(|error| PyValueError::new_err(error.to_string()))?;
         rows_to_numpy(py, &states)
+    }
+
+    /// Build every world's team observation in one call.
+    ///
+    /// The Python path built these with a loop over worlds on each decision, which measured
+    /// at almost all of an environment step while the physics itself measured at one per cent.
+    // PyO3 requires argument types by value in an exported signature.
+    #[allow(clippy::needless_pass_by_value)]
+    fn observations<'py>(
+        &self,
+        py: Python<'py>,
+        teams: PyReadonlyArray1<'py, i64>,
+        roles: PyReadonlyArray2<'py, f32>,
+        field_length: f32,
+        field_width: f32,
+        match_duration: f32,
+    ) -> PyResult<Vec<Bound<'py, PyArray2<f32>>>> {
+        let worlds = self.batch.len();
+        let teams = teams.as_slice()?;
+        let roles = roles.as_slice()?;
+        if teams.len() != worlds {
+            return Err(PyValueError::new_err(
+                "one team index per world is required",
+            ));
+        }
+        let role_stride = vsss_features::TEAM_SIZE * vsss_features::ROLE_WIDTH;
+        if roles.len() != worlds * role_stride {
+            return Err(PyValueError::new_err("one role row per world is required"));
+        }
+        let widths = group_widths();
+        let mut buffers: Vec<Vec<f32>> = widths.iter().map(|w| vec![0.0f32; worlds * w]).collect();
+        let states: Vec<Vec<f32>> = (0..worlds)
+            .map(|index| flatten_state(&self.batch.world(index).snapshot()))
+            .collect();
+        py.detach(|| -> Result<(), String> {
+            let (self_buf, rest) = buffers.split_at_mut(1);
+            let (ball_buf, rest) = rest.split_at_mut(1);
+            let (goal_buf, rest) = rest.split_at_mut(1);
+            let (context_buf, rest) = rest.split_at_mut(1);
+            let (teammate_buf, opponent_buf) = rest.split_at_mut(1);
+            for index in 0..worlds {
+                let mut out = Observation {
+                    self_features: &mut self_buf[0][index * widths[0]..(index + 1) * widths[0]],
+                    ball: &mut ball_buf[0][index * widths[1]..(index + 1) * widths[1]],
+                    goals: &mut goal_buf[0][index * widths[2]..(index + 1) * widths[2]],
+                    context: &mut context_buf[0][index * widths[3]..(index + 1) * widths[3]],
+                    teammates: &mut teammate_buf[0][index * widths[4]..(index + 1) * widths[4]],
+                    opponents: &mut opponent_buf[0][index * widths[5]..(index + 1) * widths[5]],
+                };
+                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                let team = teams[index] as u8;
+                team_observation(
+                    &states[index],
+                    team,
+                    field_length,
+                    field_width,
+                    match_duration,
+                    &roles[index * role_stride..(index + 1) * role_stride],
+                    &mut out,
+                )
+                .map_err(|error| format!("{error:?}"))?;
+            }
+            Ok(())
+        })
+        .map_err(PyValueError::new_err)?;
+        buffers
+            .into_iter()
+            .zip(widths)
+            .map(|(flat, width)| {
+                let rows: Vec<Vec<f32>> = flat.chunks(width).map(<[f32]>::to_vec).collect();
+                Ok(PyArray2::from_vec2(py, &rows)?)
+            })
+            .collect()
     }
 
     fn snapshots(&self) -> PyResult<Vec<String>> {

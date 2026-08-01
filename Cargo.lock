@@ -4262,6 +4262,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "vsss-features"
+version = "0.0.0"
+
+[[package]]
 name = "vsss-match-server"
 version = "0.0.0"
 dependencies = [
@@ -4312,6 +4316,7 @@ dependencies = [
  "numpy",
  "pyo3",
  "vsss-batch",
+ "vsss-features",
  "vsss-physics-api",
  "vsss-physics-rapier",
  "vsss-spec",
