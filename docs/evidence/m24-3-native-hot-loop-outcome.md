@@ -80,7 +80,7 @@ Measuring throughput against world count found a defect the per-decision profile
 `collect_self_play_trajectory` rebuilt every world's observation in Python whenever *any* world
 reset:
 
-```python
+```text
 if reset_occurred:
     next_observation = stack_team_batches([
         build_team_observation(state, ...) for world, state in enumerate(environment.states)
