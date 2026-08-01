@@ -394,6 +394,14 @@ def _run(arguments: argparse.Namespace) -> None:
                 )
                 win_rate = scorecard.wins / scorecard.matches
                 draw_rate = scorecard.draws / scorecard.matches
+                # A paired match here lasts one horizon, which is a tenth of a regulation
+                # half under the LARC rules, so win and draw rates read from it are
+                # dominated by the window rather than by play. Goals per minute is
+                # invariant to the window and is what a scoreline is actually made of.
+                control_period = float(match_config["control_period"])
+                match_minutes = scorecard.matches * config.horizon * control_period / 60.0
+                goals_for_per_minute = scorecard.goals_for / match_minutes
+                goals_against_per_minute = scorecard.goals_against / match_minutes
                 match_gate_passed = (
                     win_rate >= config.semantic_min_match_win_rate
                     and draw_rate <= config.semantic_max_match_draw_rate
@@ -464,6 +472,14 @@ def _run(arguments: argparse.Namespace) -> None:
                         **asdict(scorecard),
                         "win_rate": win_rate,
                         "draw_rate": draw_rate,
+                        "match_minutes": match_minutes,
+                        "goals_for_per_minute": goals_for_per_minute,
+                        "goals_against_per_minute": goals_against_per_minute,
+                        # What the same rate would produce over a regulation half.
+                        "regulation_half_projection": [
+                            goals_for_per_minute * 5.0,
+                            goals_against_per_minute * 5.0,
+                        ],
                     },
                     "promotion_gates_passed": gates_passed,
                     "incumbent_evaluation": incumbent_evaluation,
