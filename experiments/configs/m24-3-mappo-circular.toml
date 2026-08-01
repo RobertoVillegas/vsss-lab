@@ -13,6 +13,12 @@ semantic_regression_patience = 12
 semantic_regression_warmup_evaluations = 16
 semantic_promotion_floors = { pass_receive = 0.15, rotation_recovery = 0.15, clearance = 0.35, interception = 0.35, save_deflection = 0.35 }
 semantic_max_idle_spin_ratio = 0.08
+# Presence of play, not just absence of spinning. Run 0008 collapsed to a third of decisions
+# being stop with zero goals per minute, and passed the spin-only gate on every evaluation.
+# The ceiling sits well above healthy training (0.005 - 0.03 observed) and well below that
+# collapse (0.25 - 0.32); the floor is one goal inside the evaluation window.
+semantic_max_stop_fraction = 0.15
+semantic_min_goals_per_minute = 0.2
 semantic_min_match_win_rate = 0.20
 semantic_max_match_draw_rate = 0.70
 seed = 243

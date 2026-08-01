@@ -102,6 +102,11 @@ class MarlConfig:
     semantic_phase_full_match_floor: float = 0.0
     semantic_promotion_floors: dict[str, float] = field(default_factory=dict)
     semantic_max_idle_spin_ratio: float = 1.0
+    # A gate that only forbids a pathology can be passed by doing nothing. These two require
+    # play to be present: a policy that stops cannot score, and cannot keep its stop fraction
+    # low. Both default to inactive so existing configurations are unchanged.
+    semantic_max_stop_fraction: float = 1.0
+    semantic_min_goals_per_minute: float = 0.0
     semantic_min_match_win_rate: float = 0.0
     semantic_max_match_draw_rate: float = 1.0
     observation_dropout: float = 0.0
@@ -244,6 +249,10 @@ class MarlConfig:
             raise ValueError("semantic promotion floors must be in [0, 1]")
         if not 0.0 <= self.semantic_max_idle_spin_ratio <= 1.0:
             raise ValueError("semantic_max_idle_spin_ratio must be in [0, 1]")
+        if not 0.0 <= self.semantic_max_stop_fraction <= 1.0:
+            raise ValueError("semantic_max_stop_fraction must be in [0, 1]")
+        if self.semantic_min_goals_per_minute < 0.0:
+            raise ValueError("semantic_min_goals_per_minute must not be negative")
         if not 0.0 <= self.semantic_min_match_win_rate <= 1.0:
             raise ValueError("semantic_min_match_win_rate must be in [0, 1]")
         if not 0.0 <= self.semantic_max_match_draw_rate <= 1.0:

@@ -20,6 +20,7 @@ from vsss_train.marl_env import distill_dynamic_teacher
 from vsss_train.marl_ppo import MarlLearner, PolicyActor, load_policy_actor
 from vsss_train.semantic_evaluation import IdleSpinThresholds, evaluate_semantic_skills
 
+from vsss_league.gates import judge_behavior
 from vsss_league.progress import TrainingDashboard
 from vsss_league.promotion import FixtureResult, decide_promotion
 from vsss_league.registry import LeagueRegistry, PolicyEntry
@@ -381,7 +382,6 @@ def _run(arguments: argparse.Namespace) -> None:
                     }
                     for family, floor in config.semantic_promotion_floors.items()
                 }
-                behavior_gate_passed = report.idle_spin_ratio <= config.semantic_max_idle_spin_ratio
                 scorecard = evaluate_checkpoint_scorecard(
                     learner.actor,
                     config_json,
@@ -406,6 +406,16 @@ def _run(arguments: argparse.Namespace) -> None:
                     win_rate >= config.semantic_min_match_win_rate
                     and draw_rate <= config.semantic_max_match_draw_rate
                 )
+                reported_stop = (result.policy_stats or {}).get("stop_fraction", 0.0)
+                behavior = judge_behavior(
+                    idle_spin_ratio=report.idle_spin_ratio,
+                    stop_fraction=(
+                        float(reported_stop) if isinstance(reported_stop, int | float) else 0.0
+                    ),
+                    goals_for_per_minute=goals_for_per_minute,
+                    config=config,
+                )
+                behavior_gate_passed = behavior.passed
                 promotion_eligible = (
                     behavior_gate_passed
                     and match_gate_passed
@@ -496,6 +506,7 @@ def _run(arguments: argparse.Namespace) -> None:
                     "unresolved": unresolved,
                     "promotion_eligible": promotion_eligible,
                     "behavior_gate_passed": behavior_gate_passed,
+                    "behavior_gate": behavior.as_dict(),
                     "match_gate_passed": match_gate_passed,
                     "idle_spin_ratio": report.idle_spin_ratio,
                     "maximum_idle_spin_ratio": config.semantic_max_idle_spin_ratio,
