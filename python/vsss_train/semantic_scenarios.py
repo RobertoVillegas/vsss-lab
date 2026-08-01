@@ -60,7 +60,11 @@ PHASES: tuple[tuple[str, tuple[SkillFamily, ...], dict[SkillFamily, float], floa
     (
         "foundation",
         ("approach", "shot", "interception"),
-        {"approach": 0.75, "shot": 0.70, "interception": 0.35},
+        # Re-baselined against the repaired ladders: a capable probe reaches 0.78 on the
+        # approach holdout bands and 0.68 on shot, so the previous 0.75 and 0.70 sat at or
+        # above what a good policy can score. Giving those axes a real gradient changed what
+        # the numbers refer to. Each floor is now four fifths of the measured reach.
+        {"approach": 0.62, "shot": 0.55, "interception": 0.35},
         0.15,
     ),
     (

@@ -7,6 +7,7 @@ from typing import Any, cast
 
 import pytest
 from vsss_train.semantic_scenarios import (
+    PHASES,
     SKILL_FAMILIES,
     SemanticSkillCurriculum,
     SkillDifficulty,
@@ -181,9 +182,13 @@ def test_phased_curriculum_resets_promotion_streak_and_persists_phase() -> None:
         phased=True,
         phase_patience=2,
     )
-    passing = {"approach": 0.8, "shot": 0.75, "interception": 0.4}
+    # Derived from the phase's own floors, so re-baselining a floor cannot silently turn
+    # the failing case into a passing one and leave the test asserting nothing.
+    floors = PHASES[0][2]
+    passing: dict[str, float] = {str(f): floor + 0.05 for f, floor in floors.items()}
+    failing: dict[str, float] = {**passing, "approach": floors["approach"] - 0.05}
     curriculum.observe_holdout_rates(passing)
-    curriculum.observe_holdout_rates({"approach": 0.7, "shot": 0.75, "interception": 0.4})
+    curriculum.observe_holdout_rates(failing)
     assert curriculum.phase_gate_streak == 0
     curriculum.observe_holdout_rates(passing)
     assert curriculum.observe_holdout_rates(passing)
