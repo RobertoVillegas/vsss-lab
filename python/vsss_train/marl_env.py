@@ -1296,6 +1296,10 @@ def _goal_geometry_metrics(
     team: int = 0,
 ) -> dict[str, float]:
     """Describe a controllable attacking line without declaring field zones good or bad."""
+    # The environment already holds a hysteretic assignment for the same state, and reusing it
+    # here would look like the obvious saving. It would break the shaping: a potential must be a
+    # function of the state alone, and the hysteretic assignment depends on the previous one.
+    # The two disagree on about seven per cent of decisions, so this is not a duplicate call.
     assignment = assign_roles(state, team)
     local_slot = assignment.roles.index("attacker")
     slot = local_slot + (0 if team == 0 else 3)
