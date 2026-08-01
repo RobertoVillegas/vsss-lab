@@ -474,53 +474,59 @@ def _strike_target(
 
     Reachability is judged at the authority the caller will actually execute, so a
     reduced-intensity request cannot select an intercept it can never arrive at.
+
+    Written on scalars: every quantity here is two-dimensional, and numpy's per-call
+    overhead on a two-element array dominated the rollout at forty-six thousand calls per
+    iteration.
     """
-    ball = np.asarray(state[5:7], dtype=np.float64)
-    velocity = np.asarray(state[7:9], dtype=np.float64)
-    robot = np.asarray(pose[:2], dtype=np.float64)
-    exit_direction = np.asarray(direction, dtype=np.float64)
+    ball_x, ball_y = float(state[5]), float(state[6])
+    velocity_x, velocity_y = float(state[7]), float(state[8])
+    robot_x, robot_y = pose[0], pose[1]
+    exit_x, exit_y = direction
     contact_offset = 0.10
-    selected_ball = ball
-    selected_acquisition = ball - contact_offset * exit_direction
+    selected_ball_x, selected_ball_y = ball_x, ball_y
+    selected_x = ball_x - contact_offset * exit_x
+    selected_y = ball_y - contact_offset * exit_y
     scale = max(1e-3, float(authority))
     maximum_robot_speed = 0.62 * scale
     maximum_turn_rate = 5.0 * scale
-    heading = np.asarray((math.cos(pose[2]), math.sin(pose[2])), dtype=np.float64)
+    heading_x, heading_y = math.cos(pose[2]), math.sin(pose[2])
+    speed = math.hypot(velocity_x, velocity_y)
 
-    for elapsed in np.linspace(0.0, 0.6, 7):
-        if elapsed == 0.0:
-            candidate_ball = ball
+    for index in range(7):
+        elapsed = index * 0.1
+        if elapsed == 0.0 or speed <= 1e-8:
+            candidate_x, candidate_y = ball_x, ball_y
         else:
-            speed = float(np.linalg.norm(velocity))
-            if speed <= 1e-8:
-                candidate_ball = ball
-            else:
-                travel = min(speed * elapsed, speed * speed / (2.0 * ball_deceleration))
-                candidate_ball = ball + travel * velocity / speed
-        acquisition = candidate_ball - contact_offset * exit_direction
-        displacement = acquisition - robot
-        distance = float(np.linalg.norm(displacement))
+            travel = min(speed * elapsed, speed * speed / (2.0 * ball_deceleration))
+            candidate_x = ball_x + travel * velocity_x / speed
+            candidate_y = ball_y + travel * velocity_y / speed
+        acquisition_x = candidate_x - contact_offset * exit_x
+        acquisition_y = candidate_y - contact_offset * exit_y
+        displacement_x = acquisition_x - robot_x
+        displacement_y = acquisition_y - robot_y
+        distance = math.hypot(displacement_x, displacement_y)
         if distance <= 1e-8:
             heading_error = 0.0
         else:
-            cosine = float(np.clip(np.dot(heading, displacement / distance), -1.0, 1.0))
-            heading_error = math.acos(cosine)
+            cosine = (heading_x * displacement_x + heading_y * displacement_y) / distance
+            heading_error = math.acos(-1.0 if cosine < -1.0 else (1.0 if cosine > 1.0 else cosine))
         arrival = distance / maximum_robot_speed + heading_error / maximum_turn_rate
-        selected_ball = candidate_ball
-        selected_acquisition = acquisition
+        selected_ball_x, selected_ball_y = candidate_x, candidate_y
+        selected_x, selected_y = acquisition_x, acquisition_y
         if arrival <= elapsed + 0.08:
             break
 
-    acquisition_error = float(np.linalg.norm(selected_acquisition - robot))
-    ball_vector = selected_ball - robot
-    ball_distance = float(np.linalg.norm(ball_vector))
-    aligned = ball_distance > 1e-8 and float(
-        np.dot(ball_vector / ball_distance, exit_direction)
+    acquisition_error = math.hypot(selected_x - robot_x, selected_y - robot_y)
+    ball_vector_x = selected_ball_x - robot_x
+    ball_vector_y = selected_ball_y - robot_y
+    ball_distance = math.hypot(ball_vector_x, ball_vector_y)
+    aligned = ball_distance > 1e-8 and (
+        (ball_vector_x * exit_x + ball_vector_y * exit_y) / ball_distance
     ) >= math.cos(0.60)
     # Differential drive cannot settle on a point with millimetric precision
     # without oscillation. Enter the drive-through phase once the robot is
     # inside a body-scale acquisition envelope and faces the exit half-plane.
     if acquisition_error <= 0.11 and aligned:
-        drive_through = selected_ball + 0.28 * exit_direction
-        return float(drive_through[0]), float(drive_through[1])
-    return float(selected_acquisition[0]), float(selected_acquisition[1])
+        return selected_ball_x + 0.28 * exit_x, selected_ball_y + 0.28 * exit_y
+    return selected_x, selected_y

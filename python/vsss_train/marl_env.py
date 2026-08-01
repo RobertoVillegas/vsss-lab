@@ -697,18 +697,23 @@ class VectorMarlMatchEnv:
             self.states = self._native.step_repeated(actions, self.action_repeat)
             events |= self.states[:, -1].astype(np.int64)
         elif self.stage == 8:
-            for _ in range(self.action_repeat):
-                for world in range(self.num_envs):
-                    if self.controlled_teams[world] == 0:
-                        actions[world, 3:] = (
-                            self._yellow.actions(self.states[world]) * self._max_wheel_speed
-                        )
-                    else:
-                        actions[world, :3] = (
-                            self._blue.actions(self.states[world]) * self._max_wheel_speed
-                        )
-                self.states = self._native.step(actions)
-                events |= self.states[:, -1].astype(np.int64)
+            # The scripted opponent is a controller, not an oracle: it plans once per
+            # decision like everything else on the field. Re-planning every physics substep
+            # ran it at 200 Hz against the learner's 50 Hz, which the configured control
+            # period does not allow, and it cost a quarter of all rollout time.
+            for world in range(self.num_envs):
+                if self.controlled_teams[world] == 0:
+                    actions[world, 3:] = (
+                        self._yellow.actions(self.states[world]) * self._max_wheel_speed
+                    )
+                else:
+                    actions[world, :3] = (
+                        self._blue.actions(self.states[world]) * self._max_wheel_speed
+                    )
+            # The command is constant across the repeat now, so the substeps belong in the
+            # native loop rather than four round trips through Python.
+            self.states = self._native.step_repeated(actions, self.action_repeat)
+            events |= self.states[:, -1].astype(np.int64)
         else:
             self.states = self._native.step_repeated(actions, self.action_repeat)
             events |= self.states[:, -1].astype(np.int64)

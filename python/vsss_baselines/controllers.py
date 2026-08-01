@@ -29,10 +29,11 @@ def go_to_target(pose: tuple[float, float, float], target: tuple[float, float]) 
     error = (atan2(dy, dx) - theta + pi) % (2.0 * pi) - pi
     forward = min(1.0, 2.0 * distance) * max(0.0, cos(error))
     turn = TURN_AUTHORITY * max(-1.0, min(1.0, error / (pi / 2.0)))
-    return np.asarray(
-        [np.clip(forward - turn, -1.0, 1.0), np.clip(forward + turn, -1.0, 1.0)],
-        dtype=np.float32,
-    )
+    # Scalar np.clip goes through numpy's dispatch machinery and dominated the rollout at
+    # 2.9 million calls per three iterations. The builtin form is identical for scalars.
+    left = -1.0 if forward - turn < -1.0 else (1.0 if forward - turn > 1.0 else forward - turn)
+    right = -1.0 if forward + turn < -1.0 else (1.0 if forward + turn > 1.0 else forward + turn)
+    return np.asarray([left, right], dtype=np.float32)
 
 
 def go_to_ball(state: FloatArray, robot_index: int) -> FloatArray:
