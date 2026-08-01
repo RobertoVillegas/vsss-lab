@@ -31,14 +31,12 @@ def probe(config_overrides: dict[str, object], iterations: int, seed: int) -> li
     for iteration in range(iterations):
         if iteration and iteration % 25 == 0:
             recent = history[-25:]
+            strikes = sum(r["strike_fraction"] for r in recent) / len(recent)
+            stopped = sum(r["stop_fraction"] for r in recent) / len(recent)
+            unresolved = sum(r["unresolved_share"] for r in recent) / len(recent)
             print(
-                "    %4d  remates %.3f  stop %.3f  sin resolver %.3f"
-                % (
-                    iteration,
-                    sum(r["strike_fraction"] for r in recent) / len(recent),
-                    sum(r["stop_fraction"] for r in recent) / len(recent),
-                    sum(r["unresolved_share"] for r in recent) / len(recent),
-                ),
+                f"    {iteration:4d}  remates {strikes:.3f}"
+                f"  stop {stopped:.3f}  sin resolver {unresolved:.3f}",
                 flush=True,
             )
         result = train_iteration(
