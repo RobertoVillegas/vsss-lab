@@ -5,6 +5,7 @@
 //! arithmetic is unchanged: this is the same construction, expressed where the loop is cheap.
 
 pub mod actions;
+pub mod geometry;
 pub mod roles;
 
 /// Scalars before the first robot row in a flattened state.

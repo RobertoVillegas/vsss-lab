@@ -16,6 +16,7 @@ import pytest
 import torch
 from vsss_env._native import BatchSimulator
 from vsss_train.marl import build_team_observation
+from vsss_train.marl_env import _goal_geometry_metrics
 from vsss_train.primitives import circular_primitive_wheel_actions
 from vsss_train.roles import DynamicRoleAssigner, assign_roles, role_features
 
@@ -213,6 +214,41 @@ def test_native_wheel_actions_reject_a_malformed_request() -> None:
         simulator.circular_wheel_actions(np.zeros(2, dtype=np.int64), tokens, 0.8)
     with pytest.raises(ValueError, match=r"tokens must have shape"):
         simulator.circular_wheel_actions(np.zeros(4, dtype=np.int64), tokens[:, :, :2], 0.8)
+
+
+def test_native_goal_geometry_matches_the_python_reference_term_by_term() -> None:
+    """The reward records this decomposition by name, so each term is asserted, not the sum."""
+    worlds = 8
+    simulator = stirred_batch(worlds)
+    config = json.loads(CONFIG)
+    generator = np.random.default_rng(13)
+    teams = np.arange(worlds, dtype=np.int64) % 2
+    terms = (
+        "potential",
+        "attacker_alignment",
+        "goal_aperture",
+        "controllable_proximity",
+        "attacking_progress",
+    )
+
+    for _ in range(16):
+        states = np.asarray(
+            simulator.step_repeated(
+                generator.uniform(-1.0, 1.0, (worlds, 6, 2)).astype(np.float32) * 10.0, 4
+            )
+        )
+        actual = np.asarray(
+            simulator.goal_geometry(
+                teams,
+                float(config["field"]["length"]),
+                float(config["field"]["goal_width"]),
+                float(config["ball"]["radius"]),
+            )
+        )
+        for world, (state, team) in enumerate(zip(states, teams, strict=True)):
+            want = _goal_geometry_metrics(state, config, int(team))
+            for index, term in enumerate(terms):
+                assert actual[world, index] == pytest.approx(want[term], abs=TOLERANCE), term
 
 
 def test_native_observations_feed_the_actor_unchanged() -> None:

@@ -37,6 +37,13 @@ class BatchSimulator:
         tokens: NDArray[np.float32],
         ball_deceleration: float,
     ) -> NDArray[np.float32]: ...
+    def goal_geometry(
+        self,
+        teams: NDArray[np.int64],
+        field_length: float,
+        goal_width: float,
+        ball_radius: float,
+    ) -> NDArray[np.float64]: ...
     def restart_roles(
         self, index: int, team: int
     ) -> tuple[

@@ -614,6 +614,17 @@ class VectorMarlMatchEnv:
         self.role_assignments[world] = assignment
         return build_team_observation(self.states[world], team=team, role_assignment=assignment)
 
+    def _native_goal_geometry(self) -> NDArray[np.float64]:
+        """Describe every world's attacking line, potential first, then its four components."""
+        return np.asarray(
+            self._native.goal_geometry(
+                self.controlled_teams,
+                float(self._config["field"]["length"]),
+                float(self._config["field"]["goal_width"]),
+                float(self._config["ball"]["radius"]),
+            )
+        )
+
     def step(
         self,
         blue_actions: FloatArray,
@@ -852,13 +863,7 @@ class VectorMarlMatchEnv:
         goal_geometry_potential = np.where(
             goal_complete | stagnated | draw,
             0.0,
-            np.asarray(
-                [
-                    _goal_geometry_potential(state, self._config, int(team))
-                    for state, team in zip(self.states, self.controlled_teams, strict=True)
-                ],
-                dtype=np.float32,
-            ),
+            self._native_goal_geometry()[:, 0],
         ).astype(np.float32)
         idle_spin_penalty = np.zeros(self.num_envs, dtype=np.float32)
         for world, (state, team) in enumerate(zip(self.states, self.controlled_teams, strict=True)):

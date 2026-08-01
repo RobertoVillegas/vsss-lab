@@ -4,6 +4,7 @@ use numpy::{PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2, Py
 use pyo3::{exceptions::PyValueError, prelude::*};
 use vsss_batch::PhysicsBatch;
 use vsss_features::actions::circular_primitive_wheel_actions;
+use vsss_features::geometry::{Geometry, goal_geometry_metrics};
 use vsss_features::roles::{Assignment, HystereticAssigner, Role, assign_roles, role_features};
 use vsss_features::{Observation, group_widths, team_observation};
 use vsss_physics_api::PhysicsBackend;
@@ -361,6 +362,61 @@ impl BatchSimulator {
             .map(|world| world.iter().map(|pair| pair.to_vec()).collect())
             .collect();
         Ok(PyArray3::from_vec3(py, &nested)?)
+    }
+
+    /// Describe every world's attacking line, the quantity the shaping term is built from.
+    ///
+    /// Returns one row per world holding the potential followed by the four components it is
+    /// assembled from, so the decomposition the reward records stays assertable term by term.
+    // PyO3 requires argument types by value in an exported signature.
+    #[allow(clippy::needless_pass_by_value)]
+    fn goal_geometry<'py>(
+        &self,
+        py: Python<'py>,
+        teams: PyReadonlyArray1<'py, i64>,
+        field_length: f64,
+        goal_width: f64,
+        ball_radius: f64,
+    ) -> PyResult<Bound<'py, PyArray2<f64>>> {
+        let worlds = self.batch.len();
+        let teams = teams.as_slice()?;
+        if teams.len() != worlds {
+            return Err(PyValueError::new_err(
+                "one team index per world is required",
+            ));
+        }
+        let geometry = Geometry {
+            field_length,
+            goal_width,
+            ball_radius,
+        };
+        let states: Vec<Vec<f32>> = (0..worlds)
+            .map(|index| flatten_state(&self.batch.world(index).snapshot()))
+            .collect();
+        let rows = py
+            .detach(|| -> Result<Vec<Vec<f64>>, String> {
+                states
+                    .iter()
+                    .zip(teams)
+                    .map(|(state, team)| {
+                        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                        let team = *team as u8;
+                        goal_geometry_metrics(state, team, geometry)
+                            .map(|metrics| {
+                                vec![
+                                    metrics.potential,
+                                    metrics.attacker_alignment,
+                                    metrics.goal_aperture,
+                                    metrics.controllable_proximity,
+                                    metrics.attacking_progress,
+                                ]
+                            })
+                            .map_err(|error| format!("{error:?}"))
+                    })
+                    .collect()
+            })
+            .map_err(PyValueError::new_err)?;
+        Ok(PyArray2::from_vec2(py, &rows)?)
     }
 
     /// Forget one world's role history, as an episode boundary does.

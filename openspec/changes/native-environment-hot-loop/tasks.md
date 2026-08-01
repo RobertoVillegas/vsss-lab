@@ -10,7 +10,7 @@
       duplication is load-bearing: the reward's call must stay stateless for the potential to be
       a function of the state, and the two disagree on 6.8 per cent of decisions.
 - [x] Slice 2: role assignment, both the hysteretic and the stateless call, at 45.6x together.
-- [ ] Slice 3: reward terms, asserted term by term against the recorded decomposition.
+- [x] Slice 3: the goal-geometry potential, asserted term by term against the decomposition.
 - [ ] Slice 4: contact, deadlock and idle-spin detection.
 - [ ] Slice 5: the free-ball restart, which today serializes a snapshot dictionary inside the
       hot loop.
