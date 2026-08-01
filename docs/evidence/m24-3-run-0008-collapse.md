@@ -85,3 +85,28 @@ quickly and deliberately, trading one perverse incentive for another.
 
 The behaviour gate now also requires a stop-fraction ceiling and a goals-per-minute floor, so a
 policy that has stopped playing cannot be promoted for not spinning.
+
+## The fix, measured
+
+`tools/probe_collapse.py` runs both settings for 220 iterations on the live configuration, same
+seed, nothing else different. First quarter to last quarter:
+
+| setting | strikes | stop | intensity | unresolved |
+| --- | --- | --- | --- | --- |
+| timeout free, as run 0008 | 0.264 → 0.318 | 0.281 → 0.167 | 0.398 → 0.492 | 0.775 → 0.442 |
+| timeout costs what failure costs | 0.283 → **0.695** | 0.236 → **0.060** | 0.334 → 0.503 | 0.800 → 0.615 |
+
+Strikes end 2.2 times higher and the stop fraction 2.8 times lower. The two start together and
+separate from about iteration 75.
+
+Two things this probe does not show, stated rather than left for someone to discover:
+
+- It starts from a randomly initialized policy, not from the distilled teacher the CLI
+  bootstraps. Run 0008 collapsed *from* competence, and this measures the direction the
+  incentive pushes rather than reproducing that trajectory. Neither variant scores in 220
+  iterations from a cold start.
+- Unresolved ends *higher* under the fix, 0.615 against 0.442. The charged variant is attempting
+  far more, which produces episodes that do not settle into a drill's success predicate inside
+  the horizon; and because the curriculum adapts to measured success, the two variants are not
+  facing the same difficulty ladder by the end. This is worth watching in the next run rather
+  than explained away here.

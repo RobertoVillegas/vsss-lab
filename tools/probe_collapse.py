@@ -29,6 +29,18 @@ def probe(config_overrides: dict[str, object], iterations: int, seed: int) -> li
 
     history = []
     for iteration in range(iterations):
+        if iteration and iteration % 25 == 0:
+            recent = history[-25:]
+            print(
+                "    %4d  remates %.3f  stop %.3f  sin resolver %.3f"
+                % (
+                    iteration,
+                    sum(r["strike_fraction"] for r in recent) / len(recent),
+                    sum(r["stop_fraction"] for r in recent) / len(recent),
+                    sum(r["unresolved_share"] for r in recent) / len(recent),
+                ),
+                flush=True,
+            )
         result = train_iteration(
             learner,
             None,
@@ -90,9 +102,10 @@ def main() -> None:
     header = f"{'variante':<22}" + "  ".join(
         f"{n:>13}" for n in ("remates", "stop", "intensidad", "sin resolver", "goles")
     )
-    print(header)
+    print(header, flush=True)
     results = {}
     for name, overrides in variants.items():
+        print(name, flush=True)
         history = probe(overrides, arguments.iterations, arguments.seed)
         results[name] = history
         print(summarize(name, history), flush=True)
