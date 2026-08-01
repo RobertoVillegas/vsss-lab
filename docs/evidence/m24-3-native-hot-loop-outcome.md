@@ -50,6 +50,30 @@ ADR drew from the three per cent — that porting the learner would trade PyTorc
 nothing — still holds, because the remaining cost is in PyTorch's own sampling and distribution
 code rather than in code this project wrote.
 
+## Whole-trajectory equivalence
+
+Each slice has its own equivalence test, but those compare one function at a time. Driving both
+environments with identical actions compares the composition, which is what a run actually
+depends on. 200 decisions across 32 worlds, same seeds, same action stream:
+
+| | difference |
+| --- | --- |
+| per-decision rewards, terminals, ball position, observation context | at most 1.2e-7 |
+| decisions agreeing within 1e-6 | 200 of 200 |
+
+Run twice. The first pass used the configuration as written and looked cleaner than it was:
+seven reward terms carry a zero coefficient there, so they contribute zero to both
+implementations and agree without either being exercised. The second pass forced every reward
+coefficient to one, which brought the attacker alignment, ball direction, progress, action
+delta, wheel effort, useful touch, goal geometry and defensive coverage terms into the
+comparison. All agreed exactly or to 5e-8.
+
+Four terms are still not covered by this: the two deadlock penalties, idle spin and teammate
+congestion never fire under random play in 200 decisions. Those are covered by the per-slice
+tests instead, which force the conditions deliberately — the contact test widens the contact
+distance to one metre so streaks reach the deadlock branch, and the idle-spin test asserts that
+flags actually fired rather than comparing all-false against all-false.
+
 ## What is worth doing next
 
 The largest single item is von Mises rejection sampling, which the circular heading
