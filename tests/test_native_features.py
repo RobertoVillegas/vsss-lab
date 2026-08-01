@@ -16,6 +16,7 @@ import pytest
 import torch
 from vsss_env._native import BatchSimulator
 from vsss_train.marl import build_team_observation
+from vsss_train.primitives import circular_primitive_wheel_actions
 from vsss_train.roles import DynamicRoleAssigner, assign_roles, role_features
 
 ROOT = Path(__file__).parents[1]
@@ -173,6 +174,41 @@ def test_resetting_roles_clears_the_history_a_world_carries() -> None:
 
     with pytest.raises(ValueError, match="world index out of range"):
         simulator.reset_roles(worlds)
+
+
+def test_native_wheel_actions_match_the_python_reference() -> None:
+    """Tokens the policy could emit, including the edges the decode rounds at."""
+    worlds = 8
+    simulator = stirred_batch(worlds)
+    generator = np.random.default_rng(11)
+    teams = np.arange(worlds, dtype=np.int64) % 2
+
+    for step in range(20):
+        states = np.asarray(
+            simulator.step_repeated(
+                generator.uniform(-1.0, 1.0, (worlds, 6, 2)).astype(np.float32) * 10.0, 4
+            )
+        )
+        tokens = generator.uniform(-1.0, 1.0, (worlds, 3, 3)).astype(np.float32)
+        if step == 0:
+            # The skill index comes from rounding, so the halfway points decide a branch.
+            tokens[:, :, 0] = np.float32(-0.5)
+            tokens[:, 0, 0] = np.float32(0.5)
+        actual = np.asarray(simulator.circular_wheel_actions(teams, tokens, 0.8))
+
+        for world, (state, team) in enumerate(zip(states, teams, strict=True)):
+            want = circular_primitive_wheel_actions(state, team=int(team), tokens=tokens[world])
+            np.testing.assert_allclose(actual[world], want, rtol=0.0, atol=TOLERANCE)
+
+
+def test_native_wheel_actions_reject_a_malformed_request() -> None:
+    simulator = stirred_batch(4)
+    tokens = np.zeros((4, 3, 3), dtype=np.float32)
+
+    with pytest.raises(ValueError, match="one team index per world"):
+        simulator.circular_wheel_actions(np.zeros(2, dtype=np.int64), tokens, 0.8)
+    with pytest.raises(ValueError, match=r"tokens must have shape"):
+        simulator.circular_wheel_actions(np.zeros(4, dtype=np.int64), tokens[:, :, :2], 0.8)
 
 
 def test_native_observations_feed_the_actor_unchanged() -> None:

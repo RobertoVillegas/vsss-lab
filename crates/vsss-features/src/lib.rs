@@ -4,6 +4,7 @@
 //! 98.8 per cent of an environment step against 1.2 per cent for the physics itself. The
 //! arithmetic is unchanged: this is the same construction, expressed where the loop is cheap.
 
+pub mod actions;
 pub mod roles;
 
 /// Scalars before the first robot row in a flattened state.

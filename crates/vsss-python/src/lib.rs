@@ -1,8 +1,9 @@
 //! Native contiguous Python batch API.
 
-use numpy::{PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2, PyReadonlyArray3};
+use numpy::{PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2, PyReadonlyArray3};
 use pyo3::{exceptions::PyValueError, prelude::*};
 use vsss_batch::PhysicsBatch;
+use vsss_features::actions::circular_primitive_wheel_actions;
 use vsss_features::roles::{Assignment, HystereticAssigner, Role, assign_roles, role_features};
 use vsss_features::{Observation, group_widths, team_observation};
 use vsss_physics_api::PhysicsBackend;
@@ -288,6 +289,73 @@ impl BatchSimulator {
         let (features, changed, uncovered) = assignment_arrays(py, &assignments)?;
         let names = assignments.iter().map(role_names).collect();
         Ok((features, changed, uncovered, names))
+    }
+
+    /// Turn one team's circular primitive tokens into wheel commands, for every world.
+    ///
+    /// The reference ran this once per robot per decision through numpy, which the profile put
+    /// at almost a fifth of an iteration. Reading the states from the batch keeps the tokens the
+    /// only thing that has to cross the boundary.
+    // PyO3 requires argument types by value in an exported signature.
+    #[allow(clippy::needless_pass_by_value)]
+    fn circular_wheel_actions<'py>(
+        &self,
+        py: Python<'py>,
+        teams: PyReadonlyArray1<'py, i64>,
+        tokens: PyReadonlyArray3<'py, f32>,
+        ball_deceleration: f64,
+    ) -> PyResult<Bound<'py, PyArray3<f32>>> {
+        let worlds = self.batch.len();
+        let teams = teams.as_slice()?;
+        if teams.len() != worlds {
+            return Err(PyValueError::new_err(
+                "one team index per world is required",
+            ));
+        }
+        let view = tokens.as_array();
+        if view.shape() != [worlds, vsss_features::TEAM_SIZE, 3] {
+            return Err(PyValueError::new_err(format!(
+                "tokens must have shape ({worlds}, {}, 3)",
+                vsss_features::TEAM_SIZE
+            )));
+        }
+        let states: Vec<Vec<f32>> = (0..worlds)
+            .map(|index| flatten_state(&self.batch.world(index).snapshot()))
+            .collect();
+        let requests: Vec<[[f32; 3]; vsss_features::TEAM_SIZE]> = (0..worlds)
+            .map(|world| {
+                core::array::from_fn(|slot| {
+                    core::array::from_fn(|channel| view[[world, slot, channel]])
+                })
+            })
+            .collect();
+        let wheels = py
+            .detach(
+                || -> Result<Vec<[[f32; 2]; vsss_features::TEAM_SIZE]>, String> {
+                    states
+                        .iter()
+                        .zip(teams)
+                        .zip(&requests)
+                        .map(|((state, team), request)| {
+                            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                            let team = *team as u8;
+                            circular_primitive_wheel_actions(
+                                state,
+                                team,
+                                request,
+                                ball_deceleration,
+                            )
+                            .map_err(|error| format!("{error:?}"))
+                        })
+                        .collect()
+                },
+            )
+            .map_err(PyValueError::new_err)?;
+        let nested: Vec<Vec<Vec<f32>>> = wheels
+            .iter()
+            .map(|world| world.iter().map(|pair| pair.to_vec()).collect())
+            .collect();
+        Ok(PyArray3::from_vec3(py, &nested)?)
     }
 
     /// Forget one world's role history, as an episode boundary does.

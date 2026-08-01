@@ -14,7 +14,8 @@
 - [ ] Slice 4: contact, deadlock and idle-spin detection.
 - [ ] Slice 5: the free-ball restart, which today serializes a snapshot dictionary inside the
       hot loop.
-- [ ] Slice 6: the action executor, whose scalar geometry runs once per robot per decision.
+- [x] Slice 6, taken early: the action executor, at 107.7x. Reordered ahead of the reward
+      because the stage profile put it at 17.8 per cent against the reward geometry's 15.0.
 - [ ] Retire each Python reference only after its slice has been green for a full run.
 - [ ] Re-measure the floor after every slice; the thirteen-times estimate is an extrapolation
       and should be replaced by measurement as it is approached.
