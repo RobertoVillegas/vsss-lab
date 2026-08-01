@@ -21,11 +21,12 @@ struct BatchSimulator {
     assigners: Vec<HystereticAssigner>,
 }
 
-/// Role features, per-slot change flags and the coverage flag, one row per world.
+/// Role features, per-slot change flags, the coverage flag and the joint cost, per world.
 type RoleArrays<'py> = (
     Bound<'py, PyArray2<f32>>,
     Bound<'py, PyArray2<i64>>,
     Bound<'py, PyArray1<bool>>,
+    Bound<'py, PyArray1<f64>>,
 );
 
 /// [`RoleArrays`] together with the role names, in slot order, for callers that use them.
@@ -33,6 +34,7 @@ type NamedRoleArrays<'py> = (
     Bound<'py, PyArray2<f32>>,
     Bound<'py, PyArray2<i64>>,
     Bound<'py, PyArray1<bool>>,
+    Bound<'py, PyArray1<f64>>,
     Vec<Vec<&'static str>>,
 );
 
@@ -45,6 +47,7 @@ fn assignment_arrays<'py>(
     let mut features = vec![0.0f32; assignments.len() * stride];
     let mut changed = Vec::with_capacity(assignments.len());
     let mut uncovered = Vec::with_capacity(assignments.len());
+    let mut cost = Vec::with_capacity(assignments.len());
     for (index, assignment) in assignments.iter().enumerate() {
         role_features(
             assignment,
@@ -59,12 +62,14 @@ fn assignment_arrays<'py>(
                 .collect::<Vec<_>>(),
         );
         uncovered.push(assignment.uncovered);
+        cost.push(assignment.cost);
     }
     let rows: Vec<Vec<f32>> = features.chunks(stride).map(<[f32]>::to_vec).collect();
     Ok((
         PyArray2::from_vec2(py, &rows)?,
         PyArray2::from_vec2(py, &changed)?,
         PyArray1::from_vec(py, uncovered),
+        PyArray1::from_vec(py, cost),
     ))
 }
 
@@ -241,8 +246,8 @@ impl BatchSimulator {
 
     /// Assign roles for every world, optionally carrying each world's own hysteresis.
     ///
-    /// Returns the role features an observation consumes, the per-slot change flags and the
-    /// coverage flag, plus the role names for the callers that reason about them by name.
+    /// Returns the role features an observation consumes, the per-slot change flags, the
+    /// coverage flag and the joint cost, plus the role names for callers that use them.
     ///
     /// `hysteretic` selects between the two calls the environment genuinely needs. The observation
     /// path wants history, so roles do not thrash between decisions. The reward path must not have
@@ -286,9 +291,9 @@ impl BatchSimulator {
                     .collect()
             })
             .map_err(PyValueError::new_err)?;
-        let (features, changed, uncovered) = assignment_arrays(py, &assignments)?;
+        let (features, changed, uncovered, cost) = assignment_arrays(py, &assignments)?;
         let names = assignments.iter().map(role_names).collect();
-        Ok((features, changed, uncovered, names))
+        Ok((features, changed, uncovered, cost, names))
     }
 
     /// Turn one team's circular primitive tokens into wheel commands, for every world.
@@ -359,12 +364,34 @@ impl BatchSimulator {
     }
 
     /// Forget one world's role history, as an episode boundary does.
-    fn reset_roles(&mut self, index: usize) -> PyResult<()> {
-        self.assigners
-            .get_mut(index)
-            .ok_or_else(|| PyValueError::new_err("world index out of range"))?
-            .reset();
-        Ok(())
+    ///
+    /// Clearing the history is only half of what a restart means. The reference immediately
+    /// assigns again and keeps that result as the new history, so the next decision compares
+    /// against the restarted assignment rather than against nothing; this does the same and
+    /// returns it, since the caller needs it to rebuild that world's observation.
+    fn restart_roles<'py>(
+        &mut self,
+        py: Python<'py>,
+        index: usize,
+        team: u8,
+    ) -> PyResult<NamedRoleArrays<'py>> {
+        if index >= self.batch.len() {
+            return Err(PyValueError::new_err("world index out of range"));
+        }
+        let state = flatten_state(&self.batch.world(index).snapshot());
+        let assigner = &mut self.assigners[index];
+        assigner.reset();
+        let assignment = assigner
+            .assign(&state, team)
+            .map_err(|error| PyValueError::new_err(format!("{error:?}")))?;
+        let (features, changed, uncovered, cost) = assignment_arrays(py, &[assignment])?;
+        Ok((
+            features,
+            changed,
+            uncovered,
+            cost,
+            vec![role_names(&assignment)],
+        ))
     }
 
     fn snapshots(&self) -> PyResult<Vec<String>> {

@@ -120,7 +120,7 @@ def test_native_roles_match_the_python_reference_without_hysteresis() -> None:
             )
         )
         teams = np.arange(worlds, dtype=np.int64) % 2
-        features, changed, uncovered, names = simulator.team_roles(teams, False)
+        features, changed, uncovered, cost, names = simulator.team_roles(teams, False)
 
         for world, (state, team) in enumerate(zip(states, teams, strict=True)):
             want = assign_roles(state, int(team))
@@ -128,6 +128,7 @@ def test_native_roles_match_the_python_reference_without_hysteresis() -> None:
             np.testing.assert_array_equal(features[world], role_features(want).reshape(-1))
             np.testing.assert_array_equal(changed[world], np.asarray(want.changed, dtype=np.int64))
             assert bool(uncovered[world]) == want.uncovered, world
+            assert cost[world] == pytest.approx(want.cost, abs=TOLERANCE), world
 
 
 def test_native_roles_match_the_python_reference_with_hysteresis() -> None:
@@ -135,8 +136,7 @@ def test_native_roles_match_the_python_reference_with_hysteresis() -> None:
     worlds = 6
     simulator = stirred_batch(worlds)
     assigners = [DynamicRoleAssigner() for _ in range(worlds)]
-    for index in range(worlds):
-        simulator.reset_roles(index)
+    # A fresh simulator carries no role history, matching a fresh Python assigner.
     generator = np.random.default_rng(31)
     teams = np.zeros(worlds, dtype=np.int64)
 
@@ -144,13 +144,14 @@ def test_native_roles_match_the_python_reference_with_hysteresis() -> None:
     for step in range(40):
         actions = generator.uniform(-1.0, 1.0, (worlds, 6, 2)).astype(np.float32) * 10.0
         states = np.asarray(simulator.step_repeated(actions, 4))
-        _, changed, uncovered, names = simulator.team_roles(teams, True)
+        _, changed, uncovered, cost, names = simulator.team_roles(teams, True)
 
         for world, state in enumerate(states):
             want = assigners[world].assign(state, 0)
             assert tuple(names[world]) == want.roles, f"step {step} world {world}"
             np.testing.assert_array_equal(changed[world], np.asarray(want.changed, dtype=np.int64))
             assert bool(uncovered[world]) == want.uncovered
+            assert cost[world] == pytest.approx(want.cost, abs=TOLERANCE)
             if want.roles != assign_roles(state, 0).roles:
                 disagreements_with_stateless += 1
 
@@ -159,21 +160,24 @@ def test_native_roles_match_the_python_reference_with_hysteresis() -> None:
     assert disagreements_with_stateless > 0
 
 
-def test_resetting_roles_clears_the_history_a_world_carries() -> None:
+def test_restarting_roles_clears_the_history_and_seeds_the_next_decision() -> None:
     worlds = 4
     simulator = stirred_batch(worlds)
     teams = np.zeros(worlds, dtype=np.int64)
     simulator.team_roles(teams, True)
-    _, changed, _, _ = simulator.team_roles(teams, True)
+    _, changed, _, _, _ = simulator.team_roles(teams, True)
     assert changed.sum() == 0  # a repeated state cannot change a role it already holds
 
-    for index in range(worlds):
-        simulator.reset_roles(index)
-    _, after_reset, _, _ = simulator.team_roles(teams, True)
-    assert after_reset.sum() == 0  # no history means nothing to have changed from
+    # A restart both forgets and re-assigns, so the assignment it returns has nothing to have
+    # changed from, and the decision after it compares against that assignment rather than none.
+    _, restarted, _, _, names = simulator.restart_roles(0, 0)
+    assert restarted.sum() == 0
+    _, after, _, _, following = simulator.team_roles(teams, True)
+    assert after[0].sum() == 0
+    assert following[0] == names[0]
 
     with pytest.raises(ValueError, match="world index out of range"):
-        simulator.reset_roles(worlds)
+        simulator.restart_roles(worlds, 0)
 
 
 def test_native_wheel_actions_match_the_python_reference() -> None:

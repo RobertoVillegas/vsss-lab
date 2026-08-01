@@ -40,7 +40,7 @@ from vsss_train.primitives import (
     parametric_primitive_wheel_actions,
     primitive_wheel_actions,
 )
-from vsss_train.roles import DynamicRoleAssigner, RoleAssignment, assign_roles
+from vsss_train.roles import DynamicRoleAssigner, Role, RoleAssignment, assign_roles
 
 FloatArray = NDArray[np.float32]
 ROBOT_BASE = 10
@@ -601,8 +601,16 @@ class VectorMarlMatchEnv:
         self._ally_contact_streaks[world].fill(0)
         self._opponent_contact_streaks[world].fill(0)
         self.last_terminal_reasons[world] = ""
-        self._role_assigners[world].reset()
-        assignment = self._role_assigners[world].assign(self.states[world], team)
+        # The hysteresis now lives in the native simulator, so restarting it there is what an
+        # episode boundary means. Resetting a Python assigner instead would leave the two
+        # histories to diverge silently, which no shape or value check would catch.
+        _, changed, uncovered, cost, names = self._native.restart_roles(world, team)
+        assignment = RoleAssignment(
+            cast("tuple[Role, Role, Role]", tuple(names[0])),
+            cast("tuple[bool, bool, bool]", tuple(bool(flag) for flag in changed[0])),
+            float(cost[0]),
+            bool(uncovered[0]),
+        )
         self.role_assignments[world] = assignment
         return build_team_observation(self.states[world], team=team, role_assignment=assignment)
 
@@ -621,16 +629,21 @@ class VectorMarlMatchEnv:
         check_team_actions(blue_actions, expected, "controlled team")
         if opponent_actions is not None:
             check_team_actions(opponent_actions, expected, "opponent team")
-        if self.action_parser in ("parametric_primitive", "circular_primitive"):
-            parse = (
-                parametric_primitive_wheel_actions
-                if self.action_parser == "parametric_primitive"
-                else circular_primitive_wheel_actions
+        if self.action_parser == "circular_primitive":
+            normalized_blue = self._normalized_blue_actions
+            np.copyto(
+                normalized_blue,
+                self._native.circular_wheel_actions(
+                    self.controlled_teams,
+                    np.clip(blue_actions, -1.0, 1.0),
+                    CIRCULAR_BALL_DECELERATION,
+                ),
             )
+        elif self.action_parser == "parametric_primitive":
             primitive_tokens = np.clip(blue_actions, -1.0, 1.0)
             normalized_blue = self._normalized_blue_actions
             for world, team in enumerate(self.controlled_teams):
-                normalized_blue[world] = parse(
+                normalized_blue[world] = parametric_primitive_wheel_actions(
                     self.states[world],
                     team=int(team),
                     tokens=primitive_tokens[world],
@@ -973,30 +986,20 @@ class VectorMarlMatchEnv:
         self.last_terminal_reasons[draw] = "draw"
         self.last_terminal_reasons[stagnated] = "stagnation"
         self.last_terminal_reasons[goal_complete] = "goal"
-        assignments: list[RoleAssignment | None] = [
-            assigner.assign(state, int(team))
-            for assigner, state, team in zip(
-                self._role_assigners, self.states, self.controlled_teams, strict=True
-            )
-        ]
+        observations, native_assignments = _native_team_features(
+            self._native, self.controlled_teams, self._config, hysteretic=True
+        )
+        assignments: list[RoleAssignment | None] = list(native_assignments)
         self.role_assignments = assignments
         self.role_switches += np.asarray(
-            [sum(assignment.changed) for assignment in assignments if assignment is not None],
+            [sum(assignment.changed) for assignment in native_assignments],
             dtype=np.int64,
         )
         self.uncovered_steps += np.asarray(
-            [assignment.uncovered for assignment in assignments if assignment is not None],
+            [assignment.uncovered for assignment in native_assignments],
             dtype=np.int64,
         )
         self.role_decisions += 1
-        observations = stack_team_batches(
-            [
-                build_team_observation(state, team=int(team), role_assignment=assignment)
-                for state, team, assignment in zip(
-                    self.states, self.controlled_teams, assignments, strict=True
-                )
-            ]
-        )
         # Episode completion and value-bootstrap termination have different
         # semantics for timeouts. Never alias them: the collector may mark a
         # skill timeout as truncated without cancelling the required reset.
@@ -1288,6 +1291,56 @@ def _ball_direction_reward(
     enemy_similarity = _cosine_similarity(enemy, velocity)
     ally_similarity = _cosine_similarity(ally, velocity)
     return math.tanh(enemy_similarity) - math.tanh(ally_similarity)
+
+
+#: Ball deceleration the circular executor plans an intercept against, in metres per second
+#: squared. The Python reference carries it as a default argument; the native call takes it
+#: explicitly, so the value has to be named somewhere the two agree on.
+CIRCULAR_BALL_DECELERATION = 0.8
+
+#: Shapes the native observation groups are folded back into, per world.
+_GROUP_SHAPES = ((3, 8), (3, 7), (3, 4), (3, 9), (3, 2, 6), (3, 3, 6))
+
+
+def _native_team_features(
+    simulator: BatchSimulator,
+    teams: NDArray[np.int64],
+    config: dict[str, Any],
+    *,
+    hysteretic: bool,
+) -> tuple[TeamBatch, list[RoleAssignment]]:
+    """Assign roles and build every world's observation without a Python loop over worlds.
+
+    The two are computed together because the observation consumes the role features, and
+    keeping them in one place is what lets the whole per-world construction stay native. The
+    `RoleAssignment` objects are still returned: single-world callers rebuild an observation
+    from them, and they are cheap next to the permutation search they no longer perform.
+    """
+    worlds = len(teams)
+    features, changed, uncovered, cost, names = simulator.team_roles(teams, hysteretic)
+    groups = simulator.observations(
+        teams,
+        features,
+        float(config["field"]["length"]),
+        float(config["field"]["width"]),
+        float(config["match_duration"]),
+    )
+    observations = TeamBatch(
+        *(
+            torch.from_numpy(np.ascontiguousarray(group)).reshape(worlds, *shape)
+            for group, shape in zip(groups, _GROUP_SHAPES, strict=True)
+        )
+    )
+    assignments = [
+        RoleAssignment(
+            cast("tuple[Role, Role, Role]", tuple(names[world])),
+            cast("tuple[bool, bool, bool]", tuple(bool(flag) for flag in changed[world])),
+            float(cost[world]),
+            bool(uncovered[world]),
+        )
+        for world in range(worlds)
+    ]
+    return observations, assignments
 
 
 def _goal_geometry_metrics(

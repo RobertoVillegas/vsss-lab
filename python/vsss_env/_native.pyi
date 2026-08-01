@@ -24,14 +24,28 @@ class BatchSimulator:
     ) -> list[NDArray[np.float32]]: ...
     def team_roles(
         self, teams: NDArray[np.int64], hysteretic: bool
-    ) -> tuple[NDArray[np.float32], NDArray[np.int64], NDArray[np.bool_], list[list[str]]]: ...
+    ) -> tuple[
+        NDArray[np.float32],
+        NDArray[np.int64],
+        NDArray[np.bool_],
+        NDArray[np.float64],
+        list[list[str]],
+    ]: ...
     def circular_wheel_actions(
         self,
         teams: NDArray[np.int64],
         tokens: NDArray[np.float32],
         ball_deceleration: float,
     ) -> NDArray[np.float32]: ...
-    def reset_roles(self, index: int) -> None: ...
+    def restart_roles(
+        self, index: int, team: int
+    ) -> tuple[
+        NDArray[np.float32],
+        NDArray[np.int64],
+        NDArray[np.bool_],
+        NDArray[np.float64],
+        list[list[str]],
+    ]: ...
     def snapshots(self) -> list[str]: ...
     def restore(self, index: int, snapshot_json: str) -> None: ...
     def restore_state(self, index: int, snapshot_json: str) -> NDArray[np.float32]: ...
