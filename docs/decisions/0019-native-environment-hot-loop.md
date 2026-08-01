@@ -66,3 +66,20 @@ Slices, in the order their cost and their independence suggest:
   in behaviour only if its equivalence test passes, which is precisely why the test gates it.
 - A new crate holds the ported logic. `vsss-spec` stays free of it, since the canonical domain
   model must not acquire training concerns.
+
+## Outcome
+
+Measured after every slice landed, same machine and configuration, with the pre-migration Python
+run against the same binary so the only variable is the Python: an environment step went from
+3.47 to 0.23 seconds, 15.1 times, past the thirteen this ADR extrapolated. A full training
+iteration went from 8.60 to 4.03 seconds, 2.13 times, well short of it.
+
+The extrapolation was wrong, and its error is worth keeping. It measured one environment step,
+found the physics at 1.2 per cent, and projected the whole iteration down as if everything above
+the physics were the environment. The rest of the rollout — von Mises sampling, distribution
+construction, tensor creation — was never in that split and is now half an iteration.
+
+The claim above that the learner is three per cent no longer holds either; it is around a
+quarter. The decision it supported still does, because what remains is PyTorch's own sampling
+code rather than code this project wrote. `docs/evidence/m24-3-native-hot-loop-outcome.md` has
+the breakdown.

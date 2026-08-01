@@ -23,5 +23,7 @@
 - [x] Slice 6, taken early: the action executor, at 107.7x. Reordered ahead of the reward
       because the stage profile put it at 17.8 per cent against the reward geometry's 15.0.
 - [ ] Retire each Python reference only after its slice has been green for a full run.
-- [ ] Re-measure the floor after every slice; the thirteen-times estimate is an extrapolation
-      and should be replaced by measurement as it is approached.
+- [x] Re-measure the floor after every slice; the thirteen-times estimate is an extrapolation
+      and should be replaced by measurement as it is approached. Done: the environment step
+      reached 15.1x and the full iteration 2.13x, and the gap is recorded in
+      docs/evidence/m24-3-native-hot-loop-outcome.md with why the extrapolation was wrong.
