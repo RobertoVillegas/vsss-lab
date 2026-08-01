@@ -4,6 +4,7 @@ use numpy::{PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2, Py
 use pyo3::{exceptions::PyValueError, prelude::*};
 use vsss_batch::PhysicsBatch;
 use vsss_features::actions::circular_primitive_wheel_actions;
+use vsss_features::baseline::scripted_team_actions;
 use vsss_features::contact::{Contacts, Rules as ContactRules, contact_metrics};
 use vsss_features::geometry::{Geometry, goal_geometry_metrics};
 use vsss_features::roles::{Assignment, HystereticAssigner, Role, assign_roles, role_features};
@@ -613,6 +614,49 @@ impl BatchSimulator {
             PyArray2::from_vec2(py, &opponent)?,
             PyArray2::from_vec2(py, &summary)?,
         ))
+    }
+
+    /// Plan the scripted controller's wheel commands for one team in every world.
+    ///
+    /// `teams` names the scripted side per world, which is the side the learner does not
+    /// control. The commands are normalized against the wheel limit, as the reference's are.
+    // PyO3 requires argument types by value in an exported signature.
+    #[allow(clippy::needless_pass_by_value)]
+    fn scripted_actions<'py>(
+        &self,
+        py: Python<'py>,
+        teams: PyReadonlyArray1<'py, i64>,
+    ) -> PyResult<Bound<'py, PyArray3<f32>>> {
+        let worlds = self.batch.len();
+        let teams = teams.as_slice()?;
+        if teams.len() != worlds {
+            return Err(PyValueError::new_err(
+                "one team index per world is required",
+            ));
+        }
+        let states: Vec<Vec<f32>> = (0..worlds)
+            .map(|index| flatten_state(&self.batch.world(index).snapshot()))
+            .collect();
+        let wheels = py
+            .detach(
+                || -> Result<Vec<[[f32; 2]; vsss_features::TEAM_SIZE]>, String> {
+                    states
+                        .iter()
+                        .zip(teams)
+                        .map(|(state, team)| {
+                            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                            let team = *team as u8;
+                            scripted_team_actions(state, team).map_err(|error| format!("{error:?}"))
+                        })
+                        .collect()
+                },
+            )
+            .map_err(PyValueError::new_err)?;
+        let nested: Vec<Vec<Vec<f32>>> = wheels
+            .iter()
+            .map(|world| world.iter().map(|pair| pair.to_vec()).collect())
+            .collect();
+        Ok(PyArray3::from_vec3(py, &nested)?)
     }
 
     /// Forget one world's role history, as an episode boundary does.

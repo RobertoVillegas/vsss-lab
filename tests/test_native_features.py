@@ -14,6 +14,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 import torch
+from vsss_baselines import DynamicTeamController
 from vsss_env._native import BatchSimulator
 from vsss_train.marl import build_team_observation
 from vsss_train.marl_env import (
@@ -365,6 +366,26 @@ def test_native_contacts_match_the_python_reference_over_a_sequence(
     # Streaks that never reach the grace window leave the deadlock branch untested.
     if contact_distance > 0.5:
         assert deadlocks > 0
+
+
+def test_native_scripted_opponent_matches_the_python_reference() -> None:
+    """The scripted side is what the learner is scored against, so it must not drift."""
+    worlds = 8
+    simulator = stirred_batch(worlds)
+    generator = np.random.default_rng(59)
+    teams = np.arange(worlds, dtype=np.int64) % 2
+    controllers = [DynamicTeamController(0, 1), DynamicTeamController(3, -1)]
+
+    for _ in range(20):
+        states = np.asarray(
+            simulator.step_repeated(
+                generator.uniform(-1.0, 1.0, (worlds, 6, 2)).astype(np.float32) * 12.0, 4
+            )
+        )
+        actual = np.asarray(simulator.scripted_actions(teams))
+        for world, (state, team) in enumerate(zip(states, teams, strict=True)):
+            want = controllers[int(team)].actions(state)
+            np.testing.assert_allclose(actual[world], want, rtol=0.0, atol=TOLERANCE)
 
 
 def test_native_observations_feed_the_actor_unchanged() -> None:

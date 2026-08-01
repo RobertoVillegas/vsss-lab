@@ -37,6 +37,7 @@ class BatchSimulator:
         tokens: NDArray[np.float32],
         ball_deceleration: float,
     ) -> NDArray[np.float32]: ...
+    def scripted_actions(self, teams: NDArray[np.int64]) -> NDArray[np.float32]: ...
     def contacts(
         self,
         teams: NDArray[np.int64],

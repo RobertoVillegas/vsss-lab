@@ -5,6 +5,7 @@
 //! arithmetic is unchanged: this is the same construction, expressed where the loop is cheap.
 
 pub mod actions;
+pub mod baseline;
 pub mod contact;
 pub mod geometry;
 pub mod roles;

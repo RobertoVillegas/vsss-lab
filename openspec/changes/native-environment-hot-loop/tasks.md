@@ -14,6 +14,8 @@
 - [x] Slice 4: idle-spin detection.
 - [x] Slice 4b: contact and deadlock. Recorded first as already vectorized, which was wrong —
       the profile showed one call per world per decision. Ported after the correction.
+- [x] Slice 4c: the scripted opponent, which the profile made the largest remaining stage at
+      36 per cent once the listed slices were done. Not in the original list.
 - [ ] Slice 5: the free-ball restart, which today serializes a snapshot dictionary inside the
       hot loop.
 - [x] Slice 6, taken early: the action executor, at 107.7x. Reordered ahead of the reward
