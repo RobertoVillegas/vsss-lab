@@ -16,7 +16,7 @@ import pytest
 import torch
 from vsss_env._native import BatchSimulator
 from vsss_train.marl import build_team_observation
-from vsss_train.roles import assign_roles, role_features
+from vsss_train.roles import DynamicRoleAssigner, assign_roles, role_features
 
 ROOT = Path(__file__).parents[1]
 CONFIG = (ROOT / "tests/golden/m1_match_config.json").read_text()
@@ -105,6 +105,74 @@ def test_native_observations_reject_a_malformed_request() -> None:
         simulator.observations(np.zeros(3, dtype=np.int64), roles, 1.5, 1.3, 600.0)
     with pytest.raises(ValueError, match="one role row per world"):
         simulator.observations(np.zeros(4, dtype=np.int64), roles[:2], 1.5, 1.3, 600.0)
+
+
+def test_native_roles_match_the_python_reference_without_hysteresis() -> None:
+    """The reward's assignment is stateless, so each state is judged on its own."""
+    worlds = 8
+    simulator = stirred_batch(worlds)
+    for _ in range(24):
+        states = np.asarray(
+            simulator.step_repeated(
+                np.random.default_rng(7).uniform(-1.0, 1.0, (worlds, 6, 2)).astype(np.float32) * 9,
+                4,
+            )
+        )
+        teams = np.arange(worlds, dtype=np.int64) % 2
+        features, changed, uncovered, names = simulator.team_roles(teams, False)
+
+        for world, (state, team) in enumerate(zip(states, teams, strict=True)):
+            want = assign_roles(state, int(team))
+            assert tuple(names[world]) == want.roles, world
+            np.testing.assert_array_equal(features[world], role_features(want).reshape(-1))
+            np.testing.assert_array_equal(changed[world], np.asarray(want.changed, dtype=np.int64))
+            assert bool(uncovered[world]) == want.uncovered, world
+
+
+def test_native_roles_match_the_python_reference_with_hysteresis() -> None:
+    """Hysteresis is a per-world history, so it only agrees if the whole sequence agrees."""
+    worlds = 6
+    simulator = stirred_batch(worlds)
+    assigners = [DynamicRoleAssigner() for _ in range(worlds)]
+    for index in range(worlds):
+        simulator.reset_roles(index)
+    generator = np.random.default_rng(31)
+    teams = np.zeros(worlds, dtype=np.int64)
+
+    disagreements_with_stateless = 0
+    for step in range(40):
+        actions = generator.uniform(-1.0, 1.0, (worlds, 6, 2)).astype(np.float32) * 10.0
+        states = np.asarray(simulator.step_repeated(actions, 4))
+        _, changed, uncovered, names = simulator.team_roles(teams, True)
+
+        for world, state in enumerate(states):
+            want = assigners[world].assign(state, 0)
+            assert tuple(names[world]) == want.roles, f"step {step} world {world}"
+            np.testing.assert_array_equal(changed[world], np.asarray(want.changed, dtype=np.int64))
+            assert bool(uncovered[world]) == want.uncovered
+            if want.roles != assign_roles(state, 0).roles:
+                disagreements_with_stateless += 1
+
+    # If hysteresis never bit, this test would pass for the wrong reason: it would only be
+    # re-checking the stateless path the previous test already covers.
+    assert disagreements_with_stateless > 0
+
+
+def test_resetting_roles_clears_the_history_a_world_carries() -> None:
+    worlds = 4
+    simulator = stirred_batch(worlds)
+    teams = np.zeros(worlds, dtype=np.int64)
+    simulator.team_roles(teams, True)
+    _, changed, _, _ = simulator.team_roles(teams, True)
+    assert changed.sum() == 0  # a repeated state cannot change a role it already holds
+
+    for index in range(worlds):
+        simulator.reset_roles(index)
+    _, after_reset, _, _ = simulator.team_roles(teams, True)
+    assert after_reset.sum() == 0  # no history means nothing to have changed from
+
+    with pytest.raises(ValueError, match="world index out of range"):
+        simulator.reset_roles(worlds)
 
 
 def test_native_observations_feed_the_actor_unchanged() -> None:

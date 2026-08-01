@@ -3,6 +3,7 @@
 use numpy::{PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2, PyReadonlyArray3};
 use pyo3::{exceptions::PyValueError, prelude::*};
 use vsss_batch::PhysicsBatch;
+use vsss_features::roles::{Assignment, HystereticAssigner, Role, assign_roles, role_features};
 use vsss_features::{Observation, group_widths, team_observation};
 use vsss_physics_api::PhysicsBackend;
 use vsss_physics_rapier::RapierBackend;
@@ -15,6 +16,68 @@ pub const STATE_WIDTH: usize = 77;
 #[pyclass]
 struct BatchSimulator {
     batch: PhysicsBatch<RapierBackend>,
+    /// One assigner per world, so hysteresis follows a world across decisions and resets with it.
+    assigners: Vec<HystereticAssigner>,
+}
+
+/// Role features, per-slot change flags and the coverage flag, one row per world.
+type RoleArrays<'py> = (
+    Bound<'py, PyArray2<f32>>,
+    Bound<'py, PyArray2<i64>>,
+    Bound<'py, PyArray1<bool>>,
+);
+
+/// [`RoleArrays`] together with the role names, in slot order, for callers that use them.
+type NamedRoleArrays<'py> = (
+    Bound<'py, PyArray2<f32>>,
+    Bound<'py, PyArray2<i64>>,
+    Bound<'py, PyArray1<bool>>,
+    Vec<Vec<&'static str>>,
+);
+
+/// Flatten a batch of assignments into the arrays Python reads them back as.
+fn assignment_arrays<'py>(
+    py: Python<'py>,
+    assignments: &[Assignment],
+) -> PyResult<RoleArrays<'py>> {
+    let stride = vsss_features::TEAM_SIZE * vsss_features::ROLE_WIDTH;
+    let mut features = vec![0.0f32; assignments.len() * stride];
+    let mut changed = Vec::with_capacity(assignments.len());
+    let mut uncovered = Vec::with_capacity(assignments.len());
+    for (index, assignment) in assignments.iter().enumerate() {
+        role_features(
+            assignment,
+            &mut features[index * stride..(index + 1) * stride],
+        )
+        .map_err(|error| PyValueError::new_err(format!("{error:?}")))?;
+        changed.push(
+            assignment
+                .changed
+                .iter()
+                .map(|flag| i64::from(*flag))
+                .collect::<Vec<_>>(),
+        );
+        uncovered.push(assignment.uncovered);
+    }
+    let rows: Vec<Vec<f32>> = features.chunks(stride).map(<[f32]>::to_vec).collect();
+    Ok((
+        PyArray2::from_vec2(py, &rows)?,
+        PyArray2::from_vec2(py, &changed)?,
+        PyArray1::from_vec(py, uncovered),
+    ))
+}
+
+/// Decode the role names Python names them by, in slot order.
+fn role_names(assignment: &Assignment) -> Vec<&'static str> {
+    assignment
+        .roles
+        .iter()
+        .map(|role| match role {
+            Role::Attacker => "attacker",
+            Role::Support => "support",
+            Role::Coverage => "coverage",
+        })
+        .collect()
 }
 
 #[pymethods]
@@ -34,6 +97,7 @@ impl BatchSimulator {
             .map_err(|error| PyValueError::new_err(error.to_string()))?;
         Ok(Self {
             batch: PhysicsBatch::new(worlds),
+            assigners: vec![HystereticAssigner::new(); num_worlds],
         })
     }
 
@@ -172,6 +236,67 @@ impl BatchSimulator {
                 Ok(PyArray2::from_vec2(py, &rows)?)
             })
             .collect()
+    }
+
+    /// Assign roles for every world, optionally carrying each world's own hysteresis.
+    ///
+    /// Returns the role features an observation consumes, the per-slot change flags and the
+    /// coverage flag, plus the role names for the callers that reason about them by name.
+    ///
+    /// `hysteretic` selects between the two calls the environment genuinely needs. The observation
+    /// path wants history, so roles do not thrash between decisions. The reward path must not have
+    /// it: a shaping potential has to be a function of the state alone, and an assignment that
+    /// depends on the previous one is not. The two disagree on about seven per cent of decisions.
+    // PyO3 requires argument types by value in an exported signature.
+    #[allow(clippy::needless_pass_by_value)]
+    fn team_roles<'py>(
+        &mut self,
+        py: Python<'py>,
+        teams: PyReadonlyArray1<'py, i64>,
+        hysteretic: bool,
+    ) -> PyResult<NamedRoleArrays<'py>> {
+        let worlds = self.batch.len();
+        let teams = teams.as_slice()?;
+        if teams.len() != worlds {
+            return Err(PyValueError::new_err(
+                "one team index per world is required",
+            ));
+        }
+        let states: Vec<Vec<f32>> = (0..worlds)
+            .map(|index| flatten_state(&self.batch.world(index).snapshot()))
+            .collect();
+        let assigners = &mut self.assigners;
+        let assignments = py
+            .detach(|| -> Result<Vec<Assignment>, String> {
+                states
+                    .iter()
+                    .zip(teams)
+                    .zip(assigners)
+                    .map(|((state, team), assigner)| {
+                        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                        let team = *team as u8;
+                        if hysteretic {
+                            assigner.assign(state, team)
+                        } else {
+                            assign_roles(state, team, None)
+                        }
+                        .map_err(|error| format!("{error:?}"))
+                    })
+                    .collect()
+            })
+            .map_err(PyValueError::new_err)?;
+        let (features, changed, uncovered) = assignment_arrays(py, &assignments)?;
+        let names = assignments.iter().map(role_names).collect();
+        Ok((features, changed, uncovered, names))
+    }
+
+    /// Forget one world's role history, as an episode boundary does.
+    fn reset_roles(&mut self, index: usize) -> PyResult<()> {
+        self.assigners
+            .get_mut(index)
+            .ok_or_else(|| PyValueError::new_err("world index out of range"))?
+            .reset();
+        Ok(())
     }
 
     fn snapshots(&self) -> PyResult<Vec<String>> {
