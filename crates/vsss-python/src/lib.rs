@@ -6,6 +6,7 @@ use vsss_batch::PhysicsBatch;
 use vsss_features::actions::circular_primitive_wheel_actions;
 use vsss_features::geometry::{Geometry, goal_geometry_metrics};
 use vsss_features::roles::{Assignment, HystereticAssigner, Role, assign_roles, role_features};
+use vsss_features::spin::{Spin, Thresholds, idle_spin};
 use vsss_features::{Observation, group_widths, team_observation};
 use vsss_physics_api::PhysicsBackend;
 use vsss_physics_rapier::RapierBackend;
@@ -38,6 +39,9 @@ type NamedRoleArrays<'py> = (
     Bound<'py, PyArray1<f64>>,
     Vec<Vec<&'static str>>,
 );
+
+/// Per-slot spin flags and the intensity the penalty scales by, one row per world.
+type SpinArrays<'py> = (Bound<'py, PyArray2<bool>>, Bound<'py, PyArray2<f32>>);
 
 /// Flatten a batch of assignments into the arrays Python reads them back as.
 fn assignment_arrays<'py>(
@@ -417,6 +421,73 @@ impl BatchSimulator {
             })
             .map_err(PyValueError::new_err)?;
         Ok(PyArray2::from_vec2(py, &rows)?)
+    }
+
+    /// Flag robots spinning in place across every world.
+    ///
+    /// Returns the per-slot flags and the intensity the penalty scales by, so the caller keeps
+    /// both the count it reports and the magnitude it charges.
+    // PyO3 requires argument types by value in an exported signature.
+    #[allow(clippy::needless_pass_by_value, clippy::too_many_arguments)]
+    fn idle_spin<'py>(
+        &self,
+        py: Python<'py>,
+        teams: PyReadonlyArray1<'py, i64>,
+        actions: PyReadonlyArray3<'py, f32>,
+        angular_speed: f64,
+        drive: f64,
+        speed: f64,
+        ball_distance: f64,
+    ) -> PyResult<SpinArrays<'py>> {
+        let worlds = self.batch.len();
+        let teams = teams.as_slice()?;
+        if teams.len() != worlds {
+            return Err(PyValueError::new_err(
+                "one team index per world is required",
+            ));
+        }
+        let view = actions.as_array();
+        if view.shape() != [worlds, vsss_features::TEAM_SIZE, 2] {
+            return Err(PyValueError::new_err(format!(
+                "actions must have shape ({worlds}, {}, 2)",
+                vsss_features::TEAM_SIZE
+            )));
+        }
+        let thresholds = Thresholds {
+            angular_speed,
+            drive,
+            speed,
+            ball_distance,
+        };
+        let states: Vec<Vec<f32>> = (0..worlds)
+            .map(|index| flatten_state(&self.batch.world(index).snapshot()))
+            .collect();
+        let commands: Vec<[[f32; 2]; vsss_features::TEAM_SIZE]> = (0..worlds)
+            .map(|world| {
+                core::array::from_fn(|slot| core::array::from_fn(|side| view[[world, slot, side]]))
+            })
+            .collect();
+        let spins = py
+            .detach(|| -> Result<Vec<Spin>, String> {
+                states
+                    .iter()
+                    .zip(teams)
+                    .zip(&commands)
+                    .map(|((state, team), action)| {
+                        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                        let team = *team as u8;
+                        idle_spin(state, team, action, thresholds)
+                            .map_err(|error| format!("{error:?}"))
+                    })
+                    .collect()
+            })
+            .map_err(PyValueError::new_err)?;
+        let flags: Vec<Vec<bool>> = spins.iter().map(|spin| spin.flags.to_vec()).collect();
+        let intensity: Vec<Vec<f32>> = spins.iter().map(|spin| spin.intensity.to_vec()).collect();
+        Ok((
+            PyArray2::from_vec2(py, &flags)?,
+            PyArray2::from_vec2(py, &intensity)?,
+        ))
     }
 
     /// Forget one world's role history, as an episode boundary does.

@@ -7,6 +7,7 @@
 pub mod actions;
 pub mod geometry;
 pub mod roles;
+pub mod spin;
 
 /// Scalars before the first robot row in a flattened state.
 pub const ROBOT_BASE: usize = 10;

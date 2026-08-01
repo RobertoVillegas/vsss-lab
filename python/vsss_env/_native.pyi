@@ -37,6 +37,15 @@ class BatchSimulator:
         tokens: NDArray[np.float32],
         ball_deceleration: float,
     ) -> NDArray[np.float32]: ...
+    def idle_spin(
+        self,
+        teams: NDArray[np.int64],
+        actions: NDArray[np.float32],
+        angular_speed: float,
+        drive: float,
+        speed: float,
+        ball_distance: float,
+    ) -> tuple[NDArray[np.bool_], NDArray[np.float32]]: ...
     def goal_geometry(
         self,
         teams: NDArray[np.int64],

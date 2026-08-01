@@ -865,26 +865,24 @@ class VectorMarlMatchEnv:
             0.0,
             self._native_goal_geometry()[:, 0],
         ).astype(np.float32)
-        idle_spin_penalty = np.zeros(self.num_envs, dtype=np.float32)
-        for world, (state, team) in enumerate(zip(self.states, self.controlled_teams, strict=True)):
-            flags, turn_intensity = _idle_spin_flags(
-                state,
-                int(team),
-                normalized_blue[world],
-                angular_speed_threshold=self.idle_spin_angular_speed,
-                drive_threshold=self.idle_spin_drive_threshold,
-                speed_threshold=self.idle_spin_speed_threshold,
-                ball_distance=self.idle_spin_ball_distance,
-            )
-            self._idle_spin_streaks[world] = np.where(flags, self._idle_spin_streaks[world] + 1, 0)
-            penalized = flags & (self._idle_spin_streaks[world] > self.idle_spin_grace_steps)
-            idle_spin_penalty[world] = float(np.where(penalized, turn_intensity, 0.0).mean())
-            self.idle_spin_steps[world] += int(flags.sum())
-            team_offset = 0 if int(team) == 0 else 3
-            self.active_agent_decisions[world] += sum(
-                bool(float(state[ROBOT_BASE + (team_offset + slot) * ROBOT_WIDTH + 10]))
-                for slot in range(3)
-            )
+        spin_flags, turn_intensity = self._native.idle_spin(
+            self.controlled_teams,
+            normalized_blue,
+            self.idle_spin_angular_speed,
+            self.idle_spin_drive_threshold,
+            self.idle_spin_speed_threshold,
+            self.idle_spin_ball_distance,
+        )
+        self._idle_spin_streaks = np.where(spin_flags, self._idle_spin_streaks + 1, 0)
+        penalized = spin_flags & (self._idle_spin_streaks > self.idle_spin_grace_steps)
+        idle_spin_penalty = np.where(penalized, turn_intensity, 0.0).mean(axis=1).astype(np.float32)
+        self.idle_spin_steps += spin_flags.sum(axis=1)
+        team_offsets = np.where(self.controlled_teams == 0, 0, 3)
+        slots = team_offsets[:, None] + np.arange(3)[None, :]
+        enabled_columns = ROBOT_BASE + slots * ROBOT_WIDTH + 10
+        self.active_agent_decisions += (
+            np.take_along_axis(self.states, enabled_columns, axis=1) != 0.0
+        ).sum(axis=1)
         scored = np.where(self.controlled_teams == 0, (events & 1) != 0, (events & 2) != 0)
         conceded = np.where(
             self.controlled_teams == 0,

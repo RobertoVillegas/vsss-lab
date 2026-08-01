@@ -16,7 +16,7 @@ import pytest
 import torch
 from vsss_env._native import BatchSimulator
 from vsss_train.marl import build_team_observation
-from vsss_train.marl_env import _goal_geometry_metrics
+from vsss_train.marl_env import _goal_geometry_metrics, _idle_spin_flags
 from vsss_train.primitives import circular_primitive_wheel_actions
 from vsss_train.roles import DynamicRoleAssigner, assign_roles, role_features
 
@@ -249,6 +249,41 @@ def test_native_goal_geometry_matches_the_python_reference_term_by_term() -> Non
             want = _goal_geometry_metrics(state, config, int(team))
             for index, term in enumerate(terms):
                 assert actual[world, index] == pytest.approx(want[term], abs=TOLERANCE), term
+
+
+def test_native_idle_spin_matches_the_python_reference() -> None:
+    """The flag gates a penalty, so a threshold that lands differently changes the reward."""
+    worlds = 8
+    simulator = stirred_batch(worlds)
+    generator = np.random.default_rng(23)
+    teams = np.arange(worlds, dtype=np.int64) % 2
+    thresholds = {
+        "angular_speed_threshold": 2.5,
+        "drive_threshold": 0.25,
+        "speed_threshold": 0.08,
+        "ball_distance": 0.30,
+    }
+
+    flagged = 0
+    for _ in range(16):
+        states = np.asarray(
+            simulator.step_repeated(
+                generator.uniform(-1.0, 1.0, (worlds, 6, 2)).astype(np.float32) * 14.0, 4
+            )
+        )
+        actions = generator.uniform(-1.0, 1.0, (worlds, 3, 2)).astype(np.float32)
+        flags, intensity = simulator.idle_spin(teams, actions, *thresholds.values())
+
+        for world, (state, team) in enumerate(zip(states, teams, strict=True)):
+            want_flags, want_intensity = _idle_spin_flags(
+                state, int(team), actions[world], **thresholds
+            )
+            np.testing.assert_array_equal(flags[world], want_flags)
+            np.testing.assert_allclose(intensity[world], want_intensity, rtol=0.0, atol=TOLERANCE)
+            flagged += int(want_flags.sum())
+
+    # A comparison of all-false against all-false proves nothing about the threshold.
+    assert flagged > 0
 
 
 def test_native_observations_feed_the_actor_unchanged() -> None:
