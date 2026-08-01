@@ -781,36 +781,29 @@ class VectorMarlMatchEnv:
             ],
             dtype=np.float32,
         )
-        contact_metrics = [
-            _contact_deadlock_metrics(
-                state,
-                int(team),
-                contact_distance=self.contact_distance,
-                grace_steps=self.contact_grace_steps,
-                ally_streaks=self._ally_contact_streaks[world],
-                opponent_streaks=self._opponent_contact_streaks[world],
-                previous_ball=self._previous_ball_positions[world],
-                meaningful_ball_displacement=self.movement_speed_threshold * self._decision_period,
-                config=self._config,
-            )
-            for world, (state, team) in enumerate(
-                zip(self.states, self.controlled_teams, strict=True)
-            )
-        ]
-        ally_deadlock_penalty = np.asarray(
-            [metric.ally_penalty for metric in contact_metrics], dtype=np.float32
+        ally_streaks, opponent_streaks, contact_summary = self._native.contacts(
+            self.controlled_teams,
+            self._previous_ball_positions,
+            self._ally_contact_streaks,
+            self._opponent_contact_streaks,
+            self.contact_distance,
+            self.contact_grace_steps,
+            self.movement_speed_threshold * self._decision_period,
+            (
+                float(self._config["robot"]["length"]),
+                float(self._config["robot"]["width"]),
+                float(self._config["ball"]["radius"]),
+            ),
         )
-        opponent_deadlock_penalty = np.asarray(
-            [metric.opponent_penalty for metric in contact_metrics], dtype=np.float32
-        )
-        for world, metric in enumerate(contact_metrics):
-            self._ally_contact_streaks[world] = metric.ally_streaks
-            self._opponent_contact_streaks[world] = metric.opponent_streaks
-            self.ally_contact_steps[world] += metric.ally_contacts
-            self.opponent_contact_steps[world] += metric.opponent_contacts
-            self.ally_deadlocks[world] += metric.ally_deadlocks
-            self.opponent_deadlocks[world] += metric.opponent_deadlocks
-            self.contact_escapes[world] += metric.escapes
+        ally_deadlock_penalty = contact_summary[:, 0].astype(np.float32)
+        opponent_deadlock_penalty = contact_summary[:, 1].astype(np.float32)
+        self._ally_contact_streaks = ally_streaks
+        self._opponent_contact_streaks = opponent_streaks
+        self.ally_contact_steps += contact_summary[:, 2].astype(np.int64)
+        self.opponent_contact_steps += contact_summary[:, 3].astype(np.int64)
+        self.ally_deadlocks += contact_summary[:, 4].astype(np.int64)
+        self.opponent_deadlocks += contact_summary[:, 5].astype(np.int64)
+        self.contact_escapes += contact_summary[:, 6].astype(np.int64)
         newly_scored = ((events & 0b11) != 0) & (self._goal_grace_remaining < 0)
         self._episode_goal_events[newly_scored] = events[newly_scored] & 0b11
         self._goal_grace_remaining[newly_scored] = round(

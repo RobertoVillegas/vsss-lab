@@ -16,7 +16,11 @@ import pytest
 import torch
 from vsss_env._native import BatchSimulator
 from vsss_train.marl import build_team_observation
-from vsss_train.marl_env import _goal_geometry_metrics, _idle_spin_flags
+from vsss_train.marl_env import (
+    _contact_deadlock_metrics,
+    _goal_geometry_metrics,
+    _idle_spin_flags,
+)
 from vsss_train.primitives import circular_primitive_wheel_actions
 from vsss_train.roles import DynamicRoleAssigner, assign_roles, role_features
 
@@ -284,6 +288,83 @@ def test_native_idle_spin_matches_the_python_reference() -> None:
 
     # A comparison of all-false against all-false proves nothing about the threshold.
     assert flagged > 0
+
+
+@pytest.mark.parametrize("contact_distance", [0.115, 1.0])
+def test_native_contacts_match_the_python_reference_over_a_sequence(
+    contact_distance: float,
+) -> None:
+    """Streaks accumulate, so one wrong decision poisons every one after it.
+
+    The wide contact distance is not a realistic tolerance; it is the only way to hold pairs
+    in contact long enough for the deadlock, penalty and escape branches to run at all. Under
+    the realistic one, random play scatters the robots and those branches are never reached.
+    """
+    worlds = 6
+    simulator = stirred_batch(worlds)
+    config = json.loads(CONFIG)
+    generator = np.random.default_rng(41)
+    teams = np.arange(worlds, dtype=np.int64) % 2
+    grace_steps = 3
+    displacement = 0.04
+    robot = (
+        float(config["robot"]["length"]),
+        float(config["robot"]["width"]),
+        float(config["ball"]["radius"]),
+    )
+
+    ally = np.zeros((worlds, 3), dtype=np.int64)
+    opponent = np.zeros((worlds, 9), dtype=np.int64)
+    want_ally = ally.copy()
+    want_opponent = opponent.copy()
+    deadlocks = 0
+
+    for step in range(30):
+        states = np.asarray(
+            simulator.step_repeated(
+                generator.uniform(-1.0, 1.0, (worlds, 6, 2)).astype(np.float32) * 16.0, 4
+            )
+        )
+        previous_ball = generator.uniform(-0.5, 0.5, (worlds, 2)).astype(np.float32)
+        ally, opponent, summary = simulator.contacts(
+            teams,
+            previous_ball,
+            ally,
+            opponent,
+            contact_distance,
+            grace_steps,
+            displacement,
+            robot,
+        )
+
+        for world, (state, team) in enumerate(zip(states, teams, strict=True)):
+            want = _contact_deadlock_metrics(
+                state,
+                int(team),
+                ally_streaks=want_ally[world],
+                opponent_streaks=want_opponent[world],
+                previous_ball=previous_ball[world],
+                config=config,
+                grace_steps=grace_steps,
+                contact_distance=contact_distance,
+                meaningful_ball_displacement=displacement,
+            )
+            np.testing.assert_array_equal(ally[world], want.ally_streaks, err_msg=f"step {step}")
+            np.testing.assert_array_equal(opponent[world], want.opponent_streaks)
+            assert summary[world, 0] == pytest.approx(want.ally_penalty, abs=TOLERANCE)
+            assert summary[world, 1] == pytest.approx(want.opponent_penalty, abs=TOLERANCE)
+            assert summary[world, 2] == want.ally_contacts
+            assert summary[world, 3] == want.opponent_contacts
+            assert summary[world, 4] == want.ally_deadlocks
+            assert summary[world, 5] == want.opponent_deadlocks
+            assert summary[world, 6] == want.escapes
+            want_ally[world] = want.ally_streaks
+            want_opponent[world] = want.opponent_streaks
+            deadlocks += want.ally_deadlocks + want.opponent_deadlocks
+
+    # Streaks that never reach the grace window leave the deadlock branch untested.
+    if contact_distance > 0.5:
+        assert deadlocks > 0
 
 
 def test_native_observations_feed_the_actor_unchanged() -> None:

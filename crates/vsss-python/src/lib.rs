@@ -4,6 +4,7 @@ use numpy::{PyArray1, PyArray2, PyArray3, PyReadonlyArray1, PyReadonlyArray2, Py
 use pyo3::{exceptions::PyValueError, prelude::*};
 use vsss_batch::PhysicsBatch;
 use vsss_features::actions::circular_primitive_wheel_actions;
+use vsss_features::contact::{Contacts, Rules as ContactRules, contact_metrics};
 use vsss_features::geometry::{Geometry, goal_geometry_metrics};
 use vsss_features::roles::{Assignment, HystereticAssigner, Role, assign_roles, role_features};
 use vsss_features::spin::{Spin, Thresholds, idle_spin};
@@ -38,6 +39,20 @@ type NamedRoleArrays<'py> = (
     Bound<'py, PyArray1<bool>>,
     Bound<'py, PyArray1<f64>>,
     Vec<Vec<&'static str>>,
+);
+
+/// One world's previous ball position and its two streak vectors.
+type ContactInput = (
+    (f64, f64),
+    [i64; vsss_features::contact::ALLY_PAIRS],
+    [i64; vsss_features::contact::OPPONENT_PAIRS],
+);
+
+/// Updated ally streaks, updated opponent streaks, and a summary row, all per world.
+type ContactArrays<'py> = (
+    Bound<'py, PyArray2<i64>>,
+    Bound<'py, PyArray2<i64>>,
+    Bound<'py, PyArray2<f64>>,
 );
 
 /// Per-slot spin flags and the intensity the penalty scales by, one row per world.
@@ -487,6 +502,116 @@ impl BatchSimulator {
         Ok((
             PyArray2::from_vec2(py, &flags)?,
             PyArray2::from_vec2(py, &intensity)?,
+        ))
+    }
+
+    /// Measure sustained contact and deadlock across every world.
+    ///
+    /// The streaks travel in and out rather than living here, because an episode boundary
+    /// resets them and the environment already owns when that happens.
+    ///
+    /// Returns the updated ally and opponent streaks, then a per-world row holding the ally
+    /// penalty, the opponent penalty, the two contact counts, the two deadlock counts and the
+    /// escapes, in that order.
+    // PyO3 requires argument types by value in an exported signature.
+    #[allow(clippy::needless_pass_by_value, clippy::too_many_arguments)]
+    fn contacts<'py>(
+        &self,
+        py: Python<'py>,
+        teams: PyReadonlyArray1<'py, i64>,
+        previous_ball: PyReadonlyArray2<'py, f32>,
+        ally_streaks: PyReadonlyArray2<'py, i64>,
+        opponent_streaks: PyReadonlyArray2<'py, i64>,
+        contact_distance: f64,
+        grace_steps: i64,
+        meaningful_ball_displacement: f64,
+        robot: (f64, f64, f64),
+    ) -> PyResult<ContactArrays<'py>> {
+        let worlds = self.batch.len();
+        let teams = teams.as_slice()?;
+        if teams.len() != worlds {
+            return Err(PyValueError::new_err(
+                "one team index per world is required",
+            ));
+        }
+        let ball_view = previous_ball.as_array();
+        let ally_view = ally_streaks.as_array();
+        let opponent_view = opponent_streaks.as_array();
+        if ball_view.shape() != [worlds, 2]
+            || ally_view.shape() != [worlds, vsss_features::contact::ALLY_PAIRS]
+            || opponent_view.shape() != [worlds, vsss_features::contact::OPPONENT_PAIRS]
+        {
+            return Err(PyValueError::new_err(
+                "previous ball and streak arrays must have one row per world",
+            ));
+        }
+        let (robot_length, robot_width, ball_radius) = robot;
+        let rules = ContactRules {
+            contact_distance,
+            grace_steps,
+            meaningful_ball_displacement,
+            robot_length,
+            robot_width,
+            ball_radius,
+        };
+        let states: Vec<Vec<f32>> = (0..worlds)
+            .map(|index| flatten_state(&self.batch.world(index).snapshot()))
+            .collect();
+        let inputs: Vec<ContactInput> = (0..worlds)
+            .map(|world| {
+                (
+                    (
+                        f64::from(ball_view[[world, 0]]),
+                        f64::from(ball_view[[world, 1]]),
+                    ),
+                    core::array::from_fn(|pair| ally_view[[world, pair]]),
+                    core::array::from_fn(|pair| opponent_view[[world, pair]]),
+                )
+            })
+            .collect();
+        let measured = py
+            .detach(|| -> Result<Vec<Contacts>, String> {
+                states
+                    .iter()
+                    .zip(teams)
+                    .zip(&inputs)
+                    .map(|((state, team), (ball, ally, opponent))| {
+                        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                        let team = *team as u8;
+                        contact_metrics(state, team, *ball, ally, opponent, rules)
+                            .map_err(|error| format!("{error:?}"))
+                    })
+                    .collect()
+            })
+            .map_err(PyValueError::new_err)?;
+
+        let ally: Vec<Vec<i64>> = measured
+            .iter()
+            .map(|found| found.ally_streaks.to_vec())
+            .collect();
+        let opponent: Vec<Vec<i64>> = measured
+            .iter()
+            .map(|found| found.opponent_streaks.to_vec())
+            .collect();
+        #[allow(clippy::cast_precision_loss)] // counts are at most nine per world
+        let summary: Vec<Vec<f64>> = measured
+            .iter()
+            .map(|found| {
+                vec![
+                    found.ally_penalty,
+                    found.opponent_penalty,
+                    found.ally_contacts as f64,
+                    found.opponent_contacts as f64,
+                    found.ally_deadlocks as f64,
+                    found.opponent_deadlocks as f64,
+                    found.escapes as f64,
+                ]
+            })
+            .collect();
+        Ok((
+            PyArray2::from_vec2(py, &ally)?,
+            PyArray2::from_vec2(py, &opponent)?,
+            PyArray2::from_vec2(py, &summary)?,
         ))
     }
 

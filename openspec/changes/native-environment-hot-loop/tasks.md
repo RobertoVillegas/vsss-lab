@@ -11,8 +11,9 @@
       a function of the state, and the two disagree on 6.8 per cent of decisions.
 - [x] Slice 2: role assignment, both the hysteretic and the stateless call, at 45.6x together.
 - [x] Slice 3: the goal-geometry potential, asserted term by term against the decomposition.
-- [x] Slice 4: idle-spin detection. Contact and deadlock were already vectorized across worlds
-      rather than looped, so they were never the per-world Python this change is about.
+- [x] Slice 4: idle-spin detection.
+- [x] Slice 4b: contact and deadlock. Recorded first as already vectorized, which was wrong —
+      the profile showed one call per world per decision. Ported after the correction.
 - [ ] Slice 5: the free-ball restart, which today serializes a snapshot dictionary inside the
       hot loop.
 - [x] Slice 6, taken early: the action executor, at 107.7x. Reordered ahead of the reward
