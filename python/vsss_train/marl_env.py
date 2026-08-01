@@ -48,6 +48,15 @@ ROBOT_WIDTH = 11
 # The teacher demonstrates full authority, but a target of exactly one is unreachable
 # through tanh, so it is expressed just inside the interval the policy can express.
 TEACHER_AUTHORITY = 0.9
+# Rule 15 of the LARC VSSS rulebook. The figure fixes the free-ball marks 37.5 cm from each
+# end; the lateral placement is read as the quadrant centre. A robot within 20 cm of the mark
+# is moved to its own half.
+FREE_BALL_X = 0.375
+FREE_BALL_Y = 0.325
+# Rule 2.4: the goal area is a 70 by 15 cm rectangle in front of each goal. An impasse there
+# is a goal kick, which is not modelled, so the free ball does not apply inside it.
+GOAL_AREA_DEPTH = 0.15
+GOAL_AREA_HALF_WIDTH = 0.35
 ACTION_PARSERS = (
     "continuous",
     "lattice",
@@ -454,6 +463,8 @@ class VectorMarlMatchEnv:
         stagnation_seconds: float,
         stagnation_ball_distance: float,
         action_parser: str = "continuous",
+        free_ball_seconds: float = 10.0,
+        free_ball_clearance: float = 0.20,
     ) -> None:
         if stage not in (7, 8):
             raise ValueError("stage must be C7 or C8")
@@ -500,6 +511,9 @@ class VectorMarlMatchEnv:
         self.action_parser = action_parser
         self.stagnation_limit = max(1, round(stagnation_seconds / self._decision_period))
         self.stagnation_ball_distance = stagnation_ball_distance
+        self.free_ball_limit = max(1, round(free_ball_seconds / self._decision_period))
+        self.free_ball_clearance = free_ball_clearance
+        self.free_balls = np.zeros(num_envs, dtype=np.int64)
         self.states = np.zeros((num_envs, BatchSimulator.state_width()), dtype=np.float32)
         self.steps = np.zeros(num_envs, dtype=np.int64)
         self._ball_x = np.zeros(num_envs, dtype=np.float32)
@@ -776,9 +790,16 @@ class VectorMarlMatchEnv:
         active_grace = self._goal_grace_remaining >= 0
         self._goal_grace_remaining[active_grace] -= 1
         goal_complete = active_grace & (self._goal_grace_remaining <= 0)
-        stagnated = (self._goal_grace_remaining < 0) & (
-            self._stagnation_steps >= self.stagnation_limit
+        # Rule 15: an impasse away from both goal areas is resolved by placing the ball on
+        # the quadrant's free-ball mark and continuing, not by ending the game. Ending it and
+        # charging a penalty taught the policy that a stalled ball is a loss, and four of six
+        # episodes in one capture died at exactly the old five-second limit.
+        impasse = (self._goal_grace_remaining < 0) & (
+            self._stagnation_steps >= self.free_ball_limit
         )
+        for stalled in np.flatnonzero(impasse):
+            self._restart_free_ball(int(stalled))
+        stagnated = np.zeros(self.num_envs, dtype=np.bool_)
         draw = (self.steps >= self.horizon) & ~goal_complete & ~stagnated
         attack_sign = np.where(self.controlled_teams == 0, 1.0, -1.0)
         current_ball_contact = np.asarray(
@@ -989,6 +1010,37 @@ class VectorMarlMatchEnv:
             -1.0,
         ) * (self._ball_x - self._initial_ball_x)
         return np.asarray(scores, dtype=np.float32)
+
+    def _restart_free_ball(self, world: int) -> None:
+        """Place the ball on the quadrant's free-ball mark and let play continue."""
+        snapshot = self.snapshot(world)
+        ball = snapshot["ball"]
+        if (
+            abs(float(ball["x"])) >= float(self._config["field"]["length"]) / 2 - GOAL_AREA_DEPTH
+            and abs(float(ball["y"])) <= GOAL_AREA_HALF_WIDTH
+        ):
+            # Inside a goal area this is a goal kick, which is not modelled. Restart the
+            # impasse clock so the ball is not repositioned out of the area by this rule.
+            self._stagnation_steps[world] = 0
+            return
+        mark_x = math.copysign(FREE_BALL_X, float(ball["x"]) or 1.0)
+        mark_y = math.copysign(FREE_BALL_Y, float(ball["y"]) or 1.0)
+        ball.update(x=mark_x, y=mark_y, vx=0.0, vy=0.0, omega=0.0)
+        for robot in snapshot["robots"]:
+            pose = robot["pose"]
+            if math.dist((pose["x"], pose["y"]), (mark_x, mark_y)) < self.free_ball_clearance:
+                own_sign = -1.0 if robot["team"] == "blue" else 1.0
+                pose["x"] = own_sign * FREE_BALL_X
+                pose["y"] = -mark_y
+            robot["twist"].update(vx=0.0, vy=0.0, omega=0.0)
+            robot.update(wheel_speed_left=0.0, wheel_speed_right=0.0)
+        self.states[world] = self._native.restore_state(
+            world,
+            json.dumps(snapshot, separators=(",", ":")),
+        )
+        self._stagnation_anchor[world] = self.states[world, 5:7]
+        self._stagnation_steps[world] = 0
+        self.free_balls[world] += 1
 
     def snapshot(self, world: int) -> dict[str, Any]:
         return cast(dict[str, Any], json.loads(self._native.snapshots()[world]))

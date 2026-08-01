@@ -162,7 +162,14 @@ class MarlConfig:
     defensive_activation_x: float = 0.15
     draw_penalty: float = 0.25
     stagnation_penalty: float = 0.10
+    # Retained so checkpoints written before rule 15 replaced the stagnation terminal stay
+    # loadable: the compatibility check rejects a stored key that no longer exists. The
+    # simulation no longer ends an episode on a stalled ball.
     stagnation_seconds: float = 5.0
+    # Rule 15: an impasse of ten seconds away from both goal areas restarts play at the
+    # quadrant's free-ball mark. A robot within the clearance is moved to its own half.
+    free_ball_seconds: float = 10.0
+    free_ball_clearance: float = 0.20
     stagnation_ball_distance: float = 0.02
     curriculum_heuristic_iterations: int = 0
     league_self_play_weight: float = 1.0

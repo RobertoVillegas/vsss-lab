@@ -158,6 +158,8 @@ def create_rollout_session(config: MarlConfig, config_json: str, state_json: str
             stagnation_penalty=config.stagnation_penalty,
             stagnation_seconds=config.stagnation_seconds,
             stagnation_ball_distance=config.stagnation_ball_distance,
+            free_ball_seconds=config.free_ball_seconds,
+            free_ball_clearance=config.free_ball_clearance,
             action_parser=config.action_parser,
         ),
         episode_counts=[0] * config.num_envs,

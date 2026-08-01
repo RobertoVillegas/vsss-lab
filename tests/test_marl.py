@@ -790,3 +790,44 @@ def test_normalized_actions_scale_to_physical_wheel_velocity() -> None:
     _, _, _, info = environment.step(np.ones((3, 2), dtype=np.float32))
 
     assert np.allclose(np.asarray(info["actions"])[:3], 30.0)
+
+
+def test_impasse_restarts_at_the_free_ball_mark_instead_of_ending_the_game() -> None:
+    """Rule 15: ten seconds of impasse away from the goal areas restarts play.
+
+    Ending the episode and charging a penalty taught that a stalled ball is a loss, which is
+    not what the rulebook says happens.
+    """
+    config = MarlConfig(
+        device="cpu",
+        num_envs=1,
+        horizon=2_000,
+        action_repeat=4,
+        free_ball_seconds=1.0,
+        stagnation_ball_distance=0.02,
+        goal_coefficient=0.0,
+    )
+    environment = create_rollout_session(config, CONFIG, STATE).environment
+    snapshot = json.loads(STATE)
+    # A ball parked away from both goal areas with nobody near it is an impasse.
+    snapshot["ball"].update(x=0.10, y=0.20, vx=0.0, vy=0.0, omega=0.0)
+    for robot, (x, y) in zip(
+        snapshot["robots"],
+        ((-0.60, 0.0), (-0.55, 0.30), (-0.55, -0.30), (0.60, 0.0), (0.55, 0.30), (0.55, -0.30)),
+        strict=True,
+    ):
+        robot["pose"].update(x=x, y=y)
+        robot["twist"].update(vx=0.0, vy=0.0, omega=0.0)
+    environment.reset_state(0, snapshot)
+    actions = np.zeros((1, 3, 2), dtype=np.float32)
+
+    ended = False
+    for _ in range(environment.free_ball_limit + 3):
+        _, _, done, _, _ = environment.step(actions, None)
+        ended |= bool(done[0])
+
+    assert not ended
+    assert environment.free_balls[0] >= 1
+    assert environment.last_terminal_reasons[0] != "stagnation"
+    # The ball is on a free-ball mark rather than where it stalled.
+    assert abs(float(environment.states[0, 5])) == pytest.approx(0.375, abs=1e-3)
