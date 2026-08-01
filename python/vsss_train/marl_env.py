@@ -627,6 +627,7 @@ class VectorMarlMatchEnv:
                     float(self._config["ball"]["radius"]),
                     self.teammate_spacing,
                 ),
+                self.movement_speed_threshold,
             )
         )
 
@@ -882,20 +883,7 @@ class VectorMarlMatchEnv:
                 * (2.0 * (self._closest - closest) + attack_sign * (ball_x - self._ball_x))
             ).astype(np.float32),
             "ball_direction": (
-                self.ball_direction_coefficient
-                * np.asarray(
-                    [
-                        _ball_direction_reward(
-                            state,
-                            self._config,
-                            self.movement_speed_threshold,
-                            int(team),
-                        )
-                        for state, team in zip(self.states, self.controlled_teams, strict=True)
-                    ],
-                    dtype=np.float32,
-                )
-                / self.horizon
+                self.ball_direction_coefficient * scalars[:, 5].astype(np.float32) / self.horizon
             ).astype(np.float32),
             "useful_touch": (
                 self.useful_touch_impulse_coefficient * np.tanh(useful_touch_impulse)
@@ -910,17 +898,7 @@ class VectorMarlMatchEnv:
             "idle_spin": (-self.idle_spin_coefficient * idle_spin_penalty).astype(np.float32),
             "attacker_alignment": (
                 self.attacker_alignment_coefficient
-                * np.asarray(
-                    [
-                        _attacker_alignment_reward(
-                            state,
-                            self.movement_speed_threshold,
-                            int(team),
-                        )
-                        for state, team in zip(self.states, self.controlled_teams, strict=True)
-                    ],
-                    dtype=np.float32,
-                )
+                * scalars[:, 4].astype(np.float32)
                 / self.horizon
             ).astype(np.float32),
             "time": np.full(

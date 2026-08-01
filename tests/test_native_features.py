@@ -18,6 +18,8 @@ from vsss_baselines import DynamicTeamController
 from vsss_env._native import BatchSimulator
 from vsss_train.marl import build_team_observation
 from vsss_train.marl_env import (
+    _attacker_alignment_reward,
+    _ball_direction_reward,
     _closest_team_distance,
     _contact_deadlock_metrics,
     _defensive_distance,
@@ -392,14 +394,15 @@ def test_native_scripted_opponent_matches_the_python_reference() -> None:
             np.testing.assert_allclose(actual[world], want, rtol=0.0, atol=TOLERANCE)
 
 
-def test_native_team_scalars_match_their_four_python_references() -> None:
-    """Four separate references answered by one pass, so each is compared to its own."""
+def test_native_team_scalars_match_their_python_references() -> None:
+    """Six separate references answered by one pass, so each is compared to its own."""
     worlds = 8
     simulator = stirred_batch(worlds)
     config = json.loads(CONFIG)
     generator = np.random.default_rng(67)
     teams = np.arange(worlds, dtype=np.int64) % 2
     spacing = 0.30
+    speed_threshold = 0.05
     field = (
         float(config["field"]["length"]),
         float(config["field"]["goal_width"]),
@@ -410,7 +413,7 @@ def test_native_team_scalars_match_their_four_python_references() -> None:
     )
 
     def compare(states: np.ndarray) -> int:
-        actual = np.asarray(simulator.team_scalars(teams, field))
+        actual = np.asarray(simulator.team_scalars(teams, field, speed_threshold))
         seen = 0
         for world, (state, team) in enumerate(zip(states, teams, strict=True)):
             side = int(team)
@@ -423,6 +426,12 @@ def test_native_team_scalars_match_their_four_python_references() -> None:
             )
             assert actual[world, 3] == pytest.approx(
                 _defensive_distance(state, config, side), abs=TOLERANCE
+            )
+            assert actual[world, 4] == pytest.approx(
+                _attacker_alignment_reward(state, speed_threshold, side), abs=TOLERANCE
+            )
+            assert actual[world, 5] == pytest.approx(
+                _ball_direction_reward(state, config, speed_threshold, side), abs=TOLERANCE
             )
             seen += int(_team_touches_ball(state, side, config))
         return seen

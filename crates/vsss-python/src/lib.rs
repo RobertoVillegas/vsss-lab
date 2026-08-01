@@ -660,10 +660,11 @@ impl BatchSimulator {
         Ok(PyArray3::from_vec3(py, &nested)?)
     }
 
-    /// Measure the four per-world scalars in one pass.
+    /// Measure the per-world scalars in one pass.
     ///
     /// Returns a row per world holding the ball-touch flag, the distance to the nearest robot,
-    /// the teammate congestion and the distance to the defensive post, in that order.
+    /// the teammate congestion, the distance to the defensive post, the attacker's approach
+    /// alignment and the ball's direction of travel, in that order.
     // PyO3 requires argument types by value in an exported signature.
     #[allow(clippy::needless_pass_by_value)]
     fn team_scalars<'py>(
@@ -671,6 +672,7 @@ impl BatchSimulator {
         py: Python<'py>,
         teams: PyReadonlyArray1<'py, i64>,
         field: (f64, f64, f64, f64, f64, f64),
+        speed_threshold: f64,
     ) -> PyResult<Bound<'py, PyArray2<f64>>> {
         let worlds = self.batch.len();
         let teams = teams.as_slice()?;
@@ -699,13 +701,15 @@ impl BatchSimulator {
                     .map(|(state, team)| {
                         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
                         let team = *team as u8;
-                        team_scalars(state, team, field)
+                        team_scalars(state, team, field, speed_threshold)
                             .map(|found| {
                                 vec![
                                     f64::from(u8::from(found.touches_ball)),
                                     found.closest_distance,
                                     found.congestion,
                                     found.defensive_distance,
+                                    found.attacker_alignment,
+                                    found.ball_direction,
                                 ]
                             })
                             .map_err(|error| format!("{error:?}"))

@@ -41,6 +41,7 @@ class BatchSimulator:
         self,
         teams: NDArray[np.int64],
         field: tuple[float, float, float, float, float, float],
+        speed_threshold: float,
     ) -> NDArray[np.float64]: ...
     def scripted_actions(self, teams: NDArray[np.int64]) -> NDArray[np.float32]: ...
     def contacts(
