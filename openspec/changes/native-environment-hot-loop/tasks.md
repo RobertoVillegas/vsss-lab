@@ -18,8 +18,8 @@
       36 per cent once the listed slices were done. Not in the original list.
 - [x] Slice 4d: the four per-world scalars — ball touch, closest distance, teammate congestion
       and defensive distance — computed in one pass rather than four crossings.
-- [ ] Slice 5: the free-ball restart, which today serializes a snapshot dictionary inside the
-      hot loop.
+- [x] Slice 5: the free-ball restart. The state is now edited where it lives, with no JSON in
+      the loop at all.
 - [x] Slice 6, taken early: the action executor, at 107.7x. Reordered ahead of the reward
       because the stage profile put it at 17.8 per cent against the reward geometry's 15.0.
 - [ ] Retire each Python reference only after its slice has been green for a full run.

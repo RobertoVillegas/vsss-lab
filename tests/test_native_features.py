@@ -18,11 +18,16 @@ from vsss_baselines import DynamicTeamController
 from vsss_env._native import BatchSimulator
 from vsss_train.marl import build_team_observation
 from vsss_train.marl_env import (
+    FREE_BALL_X,
+    FREE_BALL_Y,
+    GOAL_AREA_DEPTH,
+    GOAL_AREA_HALF_WIDTH,
     _attacker_alignment_reward,
     _ball_direction_reward,
     _closest_team_distance,
     _contact_deadlock_metrics,
     _defensive_distance,
+    _free_ball_snapshot,
     _goal_geometry_metrics,
     _idle_spin_flags,
     _team_touches_ball,
@@ -456,6 +461,54 @@ def test_native_team_scalars_match_their_python_references() -> None:
 
     # The touch flag is a threshold; if it never fired, only its false branch was compared.
     assert touches > 0
+
+
+@pytest.mark.parametrize(
+    ("ball", "expect_applied"),
+    [
+        ((0.30, 0.20), True),
+        ((-0.30, -0.20), True),
+        ((0.0, 0.0), True),  # a ball on both axes still has a quadrant to be placed in
+        ((0.70, 0.05), False),  # inside a goal area, where the restart is a goal kick
+        ((-0.70, 0.05), False),
+    ],
+)
+def test_native_free_ball_matches_the_python_reference(
+    ball: tuple[float, float], expect_applied: bool
+) -> None:
+    """The restart moves a whole world, so the comparison is over the world it produces."""
+    simulator = stirred_batch(2)
+    config = json.loads(CONFIG)
+    clearance = 0.20
+    field_length = float(config["field"]["length"])
+
+    placed = json.loads(simulator.snapshots()[0])
+    placed["ball"]["x"], placed["ball"]["y"] = ball
+    simulator.restore(0, json.dumps(placed))
+    simulator.restore(1, json.dumps(placed))
+
+    want = json.loads(json.dumps(placed))
+    applied = _free_ball_snapshot(want, clearance, field_length)
+    assert applied is expect_applied
+    expected = np.asarray(simulator.restore_state(1, json.dumps(want)))
+
+    native_applied, actual = simulator.restart_free_ball(
+        0,
+        FREE_BALL_X,
+        FREE_BALL_Y,
+        clearance,
+        GOAL_AREA_DEPTH,
+        GOAL_AREA_HALF_WIDTH,
+        field_length,
+    )
+    assert native_applied is expect_applied
+    np.testing.assert_allclose(np.asarray(actual), expected, rtol=0.0, atol=TOLERANCE)
+
+
+def test_native_free_ball_rejects_a_world_that_does_not_exist() -> None:
+    simulator = stirred_batch(2)
+    with pytest.raises(ValueError, match="world index out of range"):
+        simulator.restart_free_ball(2, 0.375, 0.325, 0.2, 0.15, 0.35, 1.5)
 
 
 def test_native_observations_feed_the_actor_unchanged() -> None:

@@ -13,7 +13,10 @@ use vsss_features::spin::{Spin, Thresholds, idle_spin};
 use vsss_features::{Observation, group_widths, team_observation};
 use vsss_physics_api::PhysicsBackend;
 use vsss_physics_rapier::RapierBackend;
-use vsss_spec::{AngularVelocity, MatchConfig, MatchState, RobotAction, serialization};
+use vsss_spec::{
+    AngularVelocity, Distance, LinearVelocity, MatchConfig, MatchState, RobotAction, Team,
+    serialization,
+};
 
 /// Number of scalars in one canonical flattened M3 state row.
 pub const STATE_WIDTH: usize = 77;
@@ -718,6 +721,73 @@ impl BatchSimulator {
             })
             .map_err(PyValueError::new_err)?;
         Ok(PyArray2::from_vec2(py, &rows)?)
+    }
+
+    /// Place the ball on the quadrant's free-ball mark and let play continue.
+    ///
+    /// Rule 15 resolves an impasse away from both goal areas by repositioning, not by ending
+    /// the game. The reference did this by serializing the world to a JSON dictionary, editing
+    /// it in Python and parsing it back, inside the hot loop; here the state is edited where it
+    /// already lives.
+    ///
+    /// Returns whether the restart applied and the world's state after it. Inside a goal area
+    /// the correct restart is a goal kick, which is not modelled, so nothing is moved and the
+    /// caller is told so rather than being given a silently unchanged state.
+    #[allow(clippy::too_many_arguments)]
+    fn restart_free_ball<'py>(
+        &mut self,
+        py: Python<'py>,
+        index: usize,
+        mark_x: f32,
+        mark_y: f32,
+        clearance: f32,
+        goal_area_depth: f32,
+        goal_area_half_width: f32,
+        field_length: f32,
+    ) -> PyResult<(bool, Bound<'py, PyArray1<f32>>)> {
+        if index >= self.batch.len() {
+            return Err(PyValueError::new_err("world index out of range"));
+        }
+        let mut state = self.batch.world(index).snapshot();
+        let ball_x = state.ball.x.0;
+        let ball_y = state.ball.y.0;
+        if ball_x.abs() >= field_length / 2.0 - goal_area_depth
+            && ball_y.abs() <= goal_area_half_width
+        {
+            let row = flatten_state(&state);
+            return Ok((false, PyArray1::from_vec(py, row)));
+        }
+
+        // A ball resting exactly on an axis has no side to be placed on, and the reference
+        // resolves that by treating zero as positive rather than by leaving the sign undefined.
+        let placed_x = mark_x.copysign(if ball_x == 0.0 { 1.0 } else { ball_x });
+        let placed_y = mark_y.copysign(if ball_y == 0.0 { 1.0 } else { ball_y });
+        state.ball.x = Distance(placed_x);
+        state.ball.y = Distance(placed_y);
+        state.ball.vx = LinearVelocity(0.0);
+        state.ball.vy = LinearVelocity(0.0);
+        state.ball.omega = AngularVelocity(0.0);
+
+        for robot in &mut state.robots {
+            let away = (robot.pose.x.0 - placed_x).hypot(robot.pose.y.0 - placed_y);
+            if away < clearance {
+                let own_sign = if robot.team == Team::Blue { -1.0 } else { 1.0 };
+                robot.pose.x = Distance(own_sign * mark_x);
+                robot.pose.y = Distance(-placed_y);
+            }
+            robot.twist.vx = LinearVelocity(0.0);
+            robot.twist.vy = LinearVelocity(0.0);
+            robot.twist.omega = AngularVelocity(0.0);
+            robot.wheel_speed_left = AngularVelocity(0.0);
+            robot.wheel_speed_right = AngularVelocity(0.0);
+        }
+
+        self.batch
+            .world_mut(index)
+            .restore(&state)
+            .map_err(|error| PyValueError::new_err(error.to_string()))?;
+        let row = flatten_state(&self.batch.world(index).snapshot());
+        Ok((true, PyArray1::from_vec(py, row)))
     }
 
     /// Forget one world's role history, as an episode boundary does.

@@ -37,6 +37,16 @@ class BatchSimulator:
         tokens: NDArray[np.float32],
         ball_deceleration: float,
     ) -> NDArray[np.float32]: ...
+    def restart_free_ball(
+        self,
+        index: int,
+        mark_x: float,
+        mark_y: float,
+        clearance: float,
+        goal_area_depth: float,
+        goal_area_half_width: float,
+        field_length: float,
+    ) -> tuple[bool, NDArray[np.float32]]: ...
     def team_scalars(
         self,
         teams: NDArray[np.int64],

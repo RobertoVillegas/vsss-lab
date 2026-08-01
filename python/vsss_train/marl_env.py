@@ -985,31 +985,21 @@ class VectorMarlMatchEnv:
 
     def _restart_free_ball(self, world: int) -> None:
         """Place the ball on the quadrant's free-ball mark and let play continue."""
-        snapshot = self.snapshot(world)
-        ball = snapshot["ball"]
-        if (
-            abs(float(ball["x"])) >= float(self._config["field"]["length"]) / 2 - GOAL_AREA_DEPTH
-            and abs(float(ball["y"])) <= GOAL_AREA_HALF_WIDTH
-        ):
+        applied, state = self._native.restart_free_ball(
+            world,
+            FREE_BALL_X,
+            FREE_BALL_Y,
+            self.free_ball_clearance,
+            GOAL_AREA_DEPTH,
+            GOAL_AREA_HALF_WIDTH,
+            float(self._config["field"]["length"]),
+        )
+        if not applied:
             # Inside a goal area this is a goal kick, which is not modelled. Restart the
             # impasse clock so the ball is not repositioned out of the area by this rule.
             self._stagnation_steps[world] = 0
             return
-        mark_x = math.copysign(FREE_BALL_X, float(ball["x"]) or 1.0)
-        mark_y = math.copysign(FREE_BALL_Y, float(ball["y"]) or 1.0)
-        ball.update(x=mark_x, y=mark_y, vx=0.0, vy=0.0, omega=0.0)
-        for robot in snapshot["robots"]:
-            pose = robot["pose"]
-            if math.dist((pose["x"], pose["y"]), (mark_x, mark_y)) < self.free_ball_clearance:
-                own_sign = -1.0 if robot["team"] == "blue" else 1.0
-                pose["x"] = own_sign * FREE_BALL_X
-                pose["y"] = -mark_y
-            robot["twist"].update(vx=0.0, vy=0.0, omega=0.0)
-            robot.update(wheel_speed_left=0.0, wheel_speed_right=0.0)
-        self.states[world] = self._native.restore_state(
-            world,
-            json.dumps(snapshot, separators=(",", ":")),
-        )
+        self.states[world] = state
         self._stagnation_anchor[world] = self.states[world, 5:7]
         self._stagnation_steps[world] = 0
         self.free_balls[world] += 1
@@ -1255,6 +1245,33 @@ def _ball_direction_reward(
     enemy_similarity = _cosine_similarity(enemy, velocity)
     ally_similarity = _cosine_similarity(ally, velocity)
     return math.tanh(enemy_similarity) - math.tanh(ally_similarity)
+
+
+def _free_ball_snapshot(snapshot: dict[str, Any], clearance: float, field_length: float) -> bool:
+    """Reference for the native free-ball restart; edits the snapshot and reports if it applied.
+
+    Retained by ADR 0019: a slice keeps its Python implementation as the thing its
+    equivalence test compares against, and this one was the clearest violation of the stated
+    boundary, editing a JSON dictionary inside the hot loop.
+    """
+    ball = snapshot["ball"]
+    if (
+        abs(float(ball["x"])) >= field_length / 2 - GOAL_AREA_DEPTH
+        and abs(float(ball["y"])) <= GOAL_AREA_HALF_WIDTH
+    ):
+        return False
+    mark_x = math.copysign(FREE_BALL_X, float(ball["x"]) or 1.0)
+    mark_y = math.copysign(FREE_BALL_Y, float(ball["y"]) or 1.0)
+    ball.update(x=mark_x, y=mark_y, vx=0.0, vy=0.0, omega=0.0)
+    for robot in snapshot["robots"]:
+        pose = robot["pose"]
+        if math.dist((pose["x"], pose["y"]), (mark_x, mark_y)) < clearance:
+            own_sign = -1.0 if robot["team"] == "blue" else 1.0
+            pose["x"] = own_sign * FREE_BALL_X
+            pose["y"] = -mark_y
+        robot["twist"].update(vx=0.0, vy=0.0, omega=0.0)
+        robot.update(wheel_speed_left=0.0, wheel_speed_right=0.0)
+    return True
 
 
 #: Ball deceleration the circular executor plans an intercept against, in metres per second
