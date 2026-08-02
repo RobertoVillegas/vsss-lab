@@ -245,3 +245,42 @@ taught at this volume.
 The next setting has to be chosen against that ratio rather than against the goal coefficient,
 which is the mistake this one made. A carry worth a tenth of a goal sounded conservative and is
 in fact inaudible.
+
+## Run 0013: the carry works at five, and the coefficient was the whole story
+
+Same term, same shape, coefficient raised from 1.0 to 5.0 — chosen against the conceding term
+rather than against the goal, which is what run 0012 got wrong. At iteration 400:
+
+| | strike | stop | shot | goals per minute |
+| --- | --- | --- | --- | --- |
+| 0011, no carry | 0.215 | 0.003 | 0.45 | 0.0 |
+| 0012, carry at 1.0 | 0.322 | 0.161 | 0.25 | 0.0 – 0.2 |
+| **0013, carry at 5.0** | **0.744** | **0.003** | **0.45** | **0.4** |
+
+And on the term's own claim, the occupancy it exists to raise:
+
+| checkpoint | mean Φ | share Φ > 0.5 | share Φ > 0.3 |
+| --- | --- | --- | --- |
+| the distilled bootstrap | 0.154 | 0.015 | 0.058 |
+| iteration 400 at 1.0 | 0.157 | 0.007 | 0.025 |
+| **iteration 400 at 5.0** | **0.174** | **0.046** | **0.102** |
+
+Three times the bootstrap's time in a convertible position, against half of it at the lower
+setting. The design was never the problem and neither was the shape; the coefficient was, and
+specifically the habit of scaling a new term against the goal instead of against whatever
+currently dominates the gradient.
+
+This is the first setting of the ablation that works, not the end of it. A third point is still
+owed, and it should bracket 5.0 from above.
+
+### What now blocks promotion
+
+`idle_spin_ratio` sits at 0.09 – 0.16 against its 0.08 ceiling and fails every evaluation. That
+is not the pathology the gate was built for: this policy strikes on three quarters of decisions,
+holds its stop fraction at 0.003, and scores 0.4 to 0.6 goals per minute — run 0009 spun at
+0.005 – 0.04 and scored less.
+
+The ceiling is not being raised. A gate that blocks is doing its job until the behaviour behind
+the number is measured, and lowering a threshold because it is inconvenient is how the reward
+that paid a policy to give up survived eight hundred iterations. What the flagged robots are
+actually doing is the next thing to measure.
