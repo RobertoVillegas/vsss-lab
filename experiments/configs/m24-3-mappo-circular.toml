@@ -48,6 +48,11 @@ wheel_effort_coefficient = 0.0
 ball_direction_coefficient = 0.0
 useful_touch_impulse_coefficient = 0.15
 goal_geometry_coefficient = 0.05
+# The carry gradient (ADR 0021). Undiscounted, so its whole episode contribution is bounded by
+# this number, against a goal paying goal_coefficient. One tenth: enough to be a dense signal
+# against an action-change penalty three hundred times smaller per step, and nowhere near enough
+# to make carrying the ball a substitute for scoring.
+ball_progress_coefficient = 1.0
 goal_geometry_discount = 0.99
 idle_spin_coefficient = 0.002
 idle_spin_grace_seconds = 0.5
