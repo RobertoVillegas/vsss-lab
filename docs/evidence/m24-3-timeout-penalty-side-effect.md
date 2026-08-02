@@ -90,3 +90,29 @@ understood anything.
 The drill terminal is now the sharpest signal in the reward: `±1` on every drill, against goals
 that arrive rarely. Thirty-five per cent of episodes are full matches, and they are losing the
 argument.
+
+## Cycle 3: the drills are not outvoting the matches — dead end
+
+Cycle 2 ended on the reading that the drill terminal had become the sharpest signal in the
+reward and that full matches, at thirty-five per cent of episodes, were losing the argument. If
+that were true the fix would be balance, and it is not true.
+
+Reward accumulated per finished episode, environment terms only, 1200 decisions across the live
+configuration (`tools/probe_reward_balance.py`):
+
+| episode kind | episodes | mean | mean magnitude | steps |
+| --- | --- | --- | --- | --- |
+| drill | 28 | −6.89 | 10.39 | 381 |
+| full match | 6 | −6.93 | 10.09 | 733 |
+
+The two carry the same reward to within one per cent. The drill terminal adds `±1` on top of a
+magnitude near ten — a tenth, not an order of magnitude. Whatever is teaching the policy to
+navigate through matches, it is not that drills shout louder.
+
+This also rules out the obvious rebalancing fixes: lowering the drill terminal, or raising
+`semantic_full_match_fraction`, would each move a quantity that is already balanced.
+
+What remains is generalization rather than magnitude. The policy strikes on drill opening states
+and navigates in matches; if both kinds of experience carry equal reward, then what differs is
+what the states *look like*. The shot drill places the ball near the goal with the striker
+already behind it, which is a configuration a match rarely presents.
