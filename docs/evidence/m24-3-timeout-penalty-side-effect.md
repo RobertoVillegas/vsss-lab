@@ -208,3 +208,40 @@ The chain is now closed and it does not end at the reward:
 5. And that is because the shooting line is the only place any primitive can finish from.
 
 The action set, not the reward and not the curriculum, is what caps finishing.
+
+## Run 0012: the carry gradient at a tenth of a goal does not carry
+
+ADR 0021's term was enabled at `ball_progress_coefficient = 1.0` against a goal paying 10, so a
+full carry is worth a tenth of scoring. The claim to test is not that it scores — finishing is
+capped by the action set — but that it brings the ball to where finishing is possible. Measured
+on that, over 300 decisions across 32 worlds (`tools/probe_ball_position.py`):
+
+| checkpoint | mean Φ | share Φ > 0.5 | share Φ > 0.3 |
+| --- | --- | --- | --- |
+| iteration 0, the distilled bootstrap | 0.154 | 0.015 | 0.058 |
+| iteration 400, trained with the carry | 0.157 | **0.007** | **0.025** |
+
+Four hundred iterations of a dense per-step signal left the mean potential flat and **halved**
+the time the ball spends in a convertible position. The term did not merely fail to help; the
+quantity it exists to raise went down.
+
+Two things are worth separating. Even at the bootstrap the ball is in front of the goal 1.5 per
+cent of the time, so the underlying occupancy is very low and the measurement is on a small
+number. And the term is outvoted: over the last hundred iterations `goal_mouth` accumulated
+−0.023 against `goal_conceded`'s −0.446, a factor of **19**. The loudest gradient in the reward
+is still "do not concede", and the safe way to satisfy it is to keep the ball away from our own
+goal, which is not the same as taking it to theirs.
+
+The run also crossed the behaviour gate's stop-fraction ceiling at iteration 400 (0.161 against
+0.15) and was stopped there rather than spending six more hours.
+
+### What this does and does not settle
+
+It settles one of the three ablation settings the change asks for, and it settles it negatively.
+It does not settle the design: a coefficient that is nineteen times quieter than the conceding
+term has not been given a fair test of whether carrying can be taught, only of whether it can be
+taught at this volume.
+
+The next setting has to be chosen against that ratio rather than against the goal coefficient,
+which is the mistake this one made. A carry worth a tenth of a goal sounded conservative and is
+in fact inaudible.
