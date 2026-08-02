@@ -116,3 +116,46 @@ What remains is generalization rather than magnitude. The policy strikes on dril
 and navigates in matches; if both kinds of experience carry equal reward, then what differs is
 what the states *look like*. The shot drill places the ball near the goal with the striker
 already behind it, which is a configuration a match rarely presents.
+
+## Cycle 4: the shot drill taught a shape, not a situation
+
+Cycles 2 and 3 left generalization as the only surviving explanation. Three quantities describe
+a finishing chance for the robot nearest the ball; measured across 120 shot-drill opening states
+and 2148 match states with the ball in the attacking third (`tools/probe_geometry_overlap.py`):
+
+| quantity | drill p10/p50/p90 | match p10/p50/p90 |
+| --- | --- | --- |
+| robot to ball, m | 0.10 / 0.18 / 0.26 | 0.06 / 0.19 / 0.37 |
+| ball to goal, m | 0.33 / 0.53 / 0.73 | 0.35 / 0.59 / 0.79 |
+| **off the shooting line, degrees** | **1.4 / 7.0 / 13.9** | **22.2 / 100.4 / 144.9** |
+
+Both distances overlap almost exactly. The angle does not overlap at all: the drill's ninetieth
+percentile sits below the match's tenth. Within 45 degrees of the shooting line the drill is at
+1.00 and a match at 0.26.
+
+`_place_behind` parked the striker directly behind the ball with ±3.5 cm of lateral jitter, so
+every finishing chance the drill ever presented started on the line. The policy learned to
+strike from a shape that play produces a quarter of the time, and navigated through everything
+else. That is the same class of defect as the two ladders already repaired, and the third
+instance of it.
+
+The approach angle is now what `ball_angle` carries for `shot`, spanning 8 to 120 degrees, and
+the axis is declared in `FAMILY_AXES`. The drill's angle spread becomes 5.6 / 62.5 / 125.0
+against the match's 22.2 / 100.4 / 144.9 — overlapping where it did not before.
+
+A side effect worth recording: `spawn_distance` for `shot` improves from
+`0.50 1.00 0.50 0.50 0.12`, non-monotonic and starting at half, to `1.00 0.75 0.75 0.75 0.50`.
+The old placement was producing awkward starts at short range that the range axis was being
+blamed for.
+
+### The new axis is a cliff, and that is the finding
+
+Audited against the 0009 checkpoint, `ball_angle` for `shot` reads `0.50 0.00 0.00 0.00 0.00` —
+solvable at the easy end and impossible from level 0.25, which is 36 degrees off the line. The
+policy cannot finish from an angle at all.
+
+The range was left wide rather than compressed to make the ladder read as a ramp. Matches
+present 45 degrees or worse three times in four, so a drill that stops short of that would teach
+the same shape in a narrower band. The cliff is where capability ends, it is now measurable, and
+the curriculum can advance through it as the policy improves — which it could not do while the
+demand was absent.
