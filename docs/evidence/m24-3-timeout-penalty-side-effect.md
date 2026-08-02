@@ -53,3 +53,40 @@ found strikes *rising*, 0.283 to 0.695. From the distilled bootstrap the same ch
 down. The starting point decides the sign, and the probe's limitation was written down when it
 ran — it just was not treated as disqualifying. Any further probe of this reward has to start
 from the bootstrap.
+
+## Cycle 2: the policy conditions on drills, and defaults to navigate in matches
+
+The cycle-1 reading was that a correct per-family signal had become a global bias because the
+network could not tell the families apart. Measured, that is refuted, and the truth is more
+specific.
+
+What each checkpoint asks for on the opening state of a drill, 24 seeds per family
+(`tools/probe_conditioning.py`):
+
+| checkpoint | interception | shot | approach |
+| --- | --- | --- | --- |
+| 0009, iteration 1500 | strike 1.00 | strike 1.00 | strike 1.00 |
+| 0011, iteration 175 | **navigate 1.00** | **strike 1.00** | navigate 0.42 / strike 0.58 |
+
+The run that looked broken is the one selecting correctly: it blocks in interception, where
+striking succeeds on none of twenty attempts, and strikes in shot. The run that looked healthy
+strikes everywhere, including where striking cannot work. Falling aggregate `strike_fraction` is
+therefore not a collapse — the drill mix is dominated by families where navigate is right.
+
+That leaves the scoring gap unexplained, so the same question was put to a full match
+(`tools/probe_match_tokens.py`), 200 decisions across 32 worlds, split by where the ball is:
+
+| checkpoint | ball in the attacking third | midfield |
+| --- | --- | --- |
+| 0009, iteration 1500 | strike 0.82 | strike 0.87 |
+| 0011, iteration 175 | **navigate 0.95** | **navigate 1.00** |
+
+In a match the 0011 policy navigates almost exclusively, including in the attacking third where
+a goal requires a strike. It learned to recognize *drill configurations* — a ball placed near
+the goal with the striker behind it — not the underlying situation of having a chance to shoot.
+Run 0009 scored because striking indiscriminately happens to work in a match, not because it
+understood anything.
+
+The drill terminal is now the sharpest signal in the reward: `±1` on every drill, against goals
+that arrive rarely. Thirty-five per cent of episodes are full matches, and they are losing the
+argument.
