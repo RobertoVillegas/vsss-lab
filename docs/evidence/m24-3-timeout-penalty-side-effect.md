@@ -159,3 +159,52 @@ present 45 degrees or worse three times in four, so a drill that stops short of 
 the same shape in a narrower band. The cliff is where capability ends, it is now measurable, and
 the curriculum can advance through it as the policy improves — which it could not do while the
 demand was absent.
+
+## Cycle 5: no primitive can finish from an angle, and cycle 4 is withdrawn
+
+Cycle 4 widened the shot drill's approach angle to match what play presents, and audited the new
+axis as a cliff. The question left open was whether that cliff is the policy's limit or the
+primitive's. It is neither — it belongs to the whole action set.
+
+Driving one intent on a loop through shot drills while sweeping `ball_angle`, 20 seeds per cell,
+scoring rate (`tools/primitive_race.py angle`):
+
+| intent | 0.00 | 0.25 | 0.50 | 0.75 | 1.00 |
+| --- | --- | --- | --- | --- | --- |
+| navigate at the ball | 0.80 | 0.30 | **0.00** | 0.00 | 0.00 |
+| navigate at the goal, dribbling | 0.80 | 0.45 | **0.00** | 0.00 | 0.00 |
+| strike | 0.55 | 0.05 | **0.00** | 0.00 | 0.00 |
+
+Nothing scores from level 0.5, which is 62 degrees off the shooting line. Stop, navigate and
+strike all reach zero together. A second reading worth keeping: even on the line, dribbling at
+the goal (0.80) beats striking (0.55). The strike primitive is not the best finisher in its own
+best case.
+
+### Why cycle 4 was withdrawn
+
+The drill's narrow angle was not a defect measured against play — it was matched to what the
+action space can do. Widening it teaches a demand no primitive can satisfy, and the audit says
+so: `shot`'s `spawn_distance` went from a ramp to `beyond-reference` and its `ball_speed` from a
+ramp to `inverted`. Narrowing the widened range to 40 degrees did not recover them either.
+
+The change is reverted and the generator revision returns to `m24.3-ladders-3`. Both `shot` axes
+audit as ramps again. What survives is the knowledge: the drill-to-match geometry gap measured in
+cycle 4 is real, and it cannot be closed from the curriculum side.
+
+A bug of mine is recorded with it. The widened placement added a lateral offset to a rotated
+position, which shortens the radius as the bearing turns, and the scenario validator caught a
+robot overlapping the ball. The validator earned its keep.
+
+### What this leaves
+
+The chain is now closed and it does not end at the reward:
+
+1. Charging the drill timeout doubled an existing penalty on striking into interceptions, where
+   striking genuinely cannot work.
+2. The policy responded correctly per drill, and navigated through matches.
+3. Reward magnitude is balanced between drills and matches, so it is not being outvoted.
+4. The shot drill only ever presented chances from the shooting line, which is a quarter of what
+   play presents.
+5. And that is because the shooting line is the only place any primitive can finish from.
+
+The action set, not the reward and not the curriculum, is what caps finishing.

@@ -7,6 +7,7 @@ whatever the family is nominally teaching.
 
 import json
 import math
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -36,16 +37,18 @@ def token(skill: str, heading: float, intensity: float = 1.0) -> list[float]:
 
 
 def scripted(skill: str, state, slot: int, attack_sign: float):
-    """Always ask for one primitive: navigate at the ball, strike toward the goal."""
+    """One intent per run: reach the ball, dribble at the goal, or strike toward the goal."""
     base_index = 10 + slot * 11
-    if skill == "navigate":
+    if skill == "navigate_ball":
         heading = math.atan2(state[6] - state[base_index + 3], state[5] - state[base_index + 2])
-    else:
-        heading = math.atan2(-state[6], attack_sign * GOAL_X - state[5])
-    return token(skill, heading * attack_sign if attack_sign < 0 else heading)
+        return token("navigate", heading)
+    heading = math.atan2(-state[6], attack_sign * GOAL_X - state[5])
+    return token("navigate" if skill == "navigate_goal" else "strike", heading)
 
 
-def race(family: str, skill: str, difficulty: float, trials: int = 20):
+def race(
+    family: str, skill: str, difficulty: float, trials: int = 20, axis: str = "spawn_distance"
+):
     resolved = steps_to = successes = 0
     for seed in range(trials):
         parameters = SkillScenarioParameters(
@@ -53,7 +56,7 @@ def race(family: str, skill: str, difficulty: float, trials: int = 20):
             family=family,
             seed=seed,
             controlled_team="blue",
-            difficulty=SkillDifficulty(spawn_distance=difficulty, ball_speed=0.1),
+            difficulty=SkillDifficulty(ball_speed=0.1, **{axis: difficulty}),
             roster="3v3",
             horizon=240,
             holdout=False,
@@ -96,9 +99,19 @@ def race(family: str, skill: str, difficulty: float, trials: int = 20):
     return resolved / trials, successes / trials, mean_steps
 
 
-print("what the drill asks for, and which primitive delivers it first")
-print(f"{'family':<16}{'primitive':<12}{'resolved':>10}{'success':>10}{'steps':>8}")
-for family in ("approach", "interception", "shot"):
-    for skill in ("navigate", "strike"):
-        rate, success, steps = race(family, skill, 0.1)
-        print(f"{family:<16}{skill:<12}{rate:>10.2f}{success:>10.2f}{steps:>8.0f}")
+if len(sys.argv) > 1 and sys.argv[1] == "angle":
+    print("can any primitive finish from an angle? shot, sweeping ball_angle")
+    print(f"{'intent':<16}" + "".join(f"{level:>10.2f}" for level in (0.0, 0.25, 0.5, 0.75, 1.0)))
+    for skill in ("navigate_ball", "navigate_goal", "strike"):
+        cells = []
+        for level in (0.0, 0.25, 0.5, 0.75, 1.0):
+            _, success, _ = race("shot", skill, level, axis="ball_angle")
+            cells.append(f"{success:>10.2f}")
+        print(f"{skill:<16}" + "".join(cells))
+else:
+    print("what the drill asks for, and which primitive delivers it first")
+    print(f"{'family':<16}{'primitive':<12}{'resolved':>10}{'success':>10}{'steps':>8}")
+    for family in ("approach", "interception", "shot"):
+        for skill in ("navigate_ball", "strike"):
+            rate, success, steps = race(family, skill, 0.1)
+            print(f"{family:<16}{skill:<12}{rate:>10.2f}{success:>10.2f}{steps:>8.0f}")

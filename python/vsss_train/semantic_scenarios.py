@@ -25,7 +25,7 @@ SkillFamily = Literal[
 ControlledTeam = Literal["blue", "yellow"]
 Roster = Literal["1v0", "1v1", "2v1", "2v2", "3v2", "3v3"]
 
-GENERATOR_REVISION = "m24.3-ladders-4"
+GENERATOR_REVISION = "m24.3-ladders-3"
 DIFFICULTY_AXES = (
     "ball_speed",
     "ball_angle",
@@ -42,7 +42,7 @@ FAMILY_AXES: dict[str, tuple[str, ...]] = {
     "interception": ("ball_speed",),
     "save_deflection": ("ball_speed",),
     "clearance": ("spawn_distance", "ball_speed"),
-    "shot": ("spawn_distance", "ball_speed", "ball_angle"),
+    "shot": ("spawn_distance", "ball_speed"),
     "pass_receive": ("ball_angle", "target_width"),
     "rotation_recovery": ("spawn_distance",),
 }
@@ -662,11 +662,11 @@ def compile_skill_scenario(
             speed=_lerp(0.0, 0.28, difficulty.ball_speed),
             heading=lane_sign * math.pi / 2,
         )
-        # Every shot drill used to start the striker on the shooting line — a median 7 degrees
-        # off it, and within 45 degrees on every single attempt. Matches present a chance from
-        # 45 degrees or worse three times in four. The drill taught a shape, not a situation,
-        # and the policy struck in drills while navigating through matches. The angle is now
-        # the demand `ball_angle` carries.
+        # The striker starts on the shooting line. Matches present a chance from 45 degrees or
+        # worse three times in four, so this is narrower than play — but widening it was tried
+        # and reverted: no primitive in the set can finish from 62 degrees or more, so the wide
+        # drill taught a demand the action space cannot express and broke two working ladders.
+        # See docs/evidence/m24-3-timeout-penalty-side-effect.md, cycles 4 and 5.
         _place_behind(
             primary,
             attack_sign,
@@ -674,7 +674,6 @@ def compile_skill_scenario(
             spawn_distance * 0.75,
             heading_error=0.18,
             generator=generator,
-            approach_angle=_lerp(0.14, 2.09, difficulty.ball_angle),
         )
         _park_robot(support, attack_sign, -0.20, -lane_sign * 0.38, 0.0)
     else:
@@ -822,29 +821,17 @@ def _place_behind(
     *,
     heading_error: float,
     generator: random.Random,
-    approach_angle: float = 0.0,
 ) -> None:
-    """Park a robot at `distance` from the ball, `approach_angle` radians off the shooting line.
-
-    Zero places it directly behind the ball, which is where every finishing chance the shot
-    drill ever presented used to start. Measured against play, that is not what a chance looks
-    like: matches put the nearest robot a median of 100 degrees off the line, and within 45
-    degrees only a quarter of the time, against the drill's every time.
-    """
-    side = 1.0 if generator.random() < 0.5 else -1.0
-    bearing = math.pi + side * approach_angle
     y_offset = generator.uniform(-0.035, 0.035)
-    offset_x = distance * math.cos(bearing)
-    offset_y = distance * math.sin(bearing) + y_offset
-    heading = math.atan2(-offset_y, -offset_x) + generator.uniform(
+    heading = math.atan2(-y_offset, distance) + generator.uniform(
         -heading_error,
         heading_error,
     )
     _park_robot(
         robot,
         attack_sign,
-        ball[0] + offset_x,
-        ball[1] + offset_y,
+        ball[0] - distance,
+        ball[1] + y_offset,
         heading,
     )
 
