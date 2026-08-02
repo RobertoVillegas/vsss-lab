@@ -10,9 +10,9 @@
       behind it advanced at twelve per cent of its speed. A  flag fixes the chase.
 - [ ] The angle remains unsolved and needs a different change. Nothing converts from 60 degrees
       or more, before or after, on a bench that places the striker directly.
-- [ ] Measure it with `tools/primitive_race.py angle` against both dribbling intents. Accept it
-      only if it converts from an angle at a rate that is not zero and is not worse than
-      dribbling on the line.
+- [x] Measure it. `tools/probe_finishing_angle.py` places the striker at a chosen angle instead
+      of trusting a drill, because the generator only ever places it on the line. Scoring is
+      unchanged within noise: 0.46 to 0.50 at 30 degrees, zero from 60 degrees either way.
 - [x] Confirm dribbling is unchanged: both driving intents score identically at every angle.
 - [ ] Re-run `tools/audit_skill_difficulty.py` over `shot`. A primitive that can finish from an
       angle changes what the ladder measures, and `ball_angle` may become a usable axis where it
@@ -20,5 +20,7 @@
 - [ ] Ablate the carry-to-goal ratio over at least three settings, reported against goals per
       minute and against how often the ball reaches a convertible position.
 - [ ] Record the chosen ratio and the measurements behind it in `docs/evidence/`.
-- [ ] Port the primitive and the carry potential to `vsss-features` behind equivalence tests,
-      after the ablation has chosen and not before.
+- [x] Port the approach fix to `vsss-features`. Deferring it was the stated plan, and the
+      equivalence test refused: it caught the divergence the moment Python moved, and a native
+      path disagreeing with its reference is worse than porting a small settled change early.
+- [ ] Port the carry potential, after the ablation has chosen its coefficient.

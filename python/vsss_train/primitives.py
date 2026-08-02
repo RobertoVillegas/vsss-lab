@@ -349,7 +349,6 @@ def parametric_primitive_wheel_actions(
         sign = 1.0 if team == 0 else -1.0
         direction = (sign * math.cos(command.direction), sign * math.sin(command.direction))
         pose = robot_pose(state, slot)
-        settle = True
         if command.skill == "navigate":
             target = (pose[0] + 0.4 * direction[0], pose[1] + 0.4 * direction[1])
             arrival_scale = 1.0
