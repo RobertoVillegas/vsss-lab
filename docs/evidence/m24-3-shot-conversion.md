@@ -50,6 +50,33 @@ from range is 0.4 from the goal and a certain 0.11 from the impulse. There is ve
 telling the policy that a *better* strike from distance is worth anything, and nothing at all
 telling it that a second attempt is worth making.
 
+## It does not abandon the ball — it stops shooting
+
+The obvious reading of one touch per attempt is that the striker drives through the ball, ends
+up facing away, and cannot get back. Measured at difficulty 0.75, that is wrong on both counts.
+
+| striker's token | before the first touch | after |
+| --- | --- | --- |
+| `strike` | 77% | **8%** |
+| `navigate` | 23% | **92%** |
+| `stop` | 0% | 0% |
+
+It reaches the ball again on 12 of 16 attempts. What changes is what it asks for: before contact
+it strikes, after contact it navigates almost exclusively. `navigate` projects a target 40 cm
+along the requested heading and drives to it — it neither aims through the ball nor at the goal.
+The policy takes one shot and then dribbles, which is why the median attempt at this range burns
+the whole 240-step horizon without scoring.
+
+This rules out the reward-magnitude reading. Raising `useful_touch_impulse_coefficient` pays for
+hitting the ball harder toward the goal, and the policy is not hitting it softly — it has
+stopped hitting it. A larger impulse coefficient would reward the one strike it already makes
+and say nothing about the ninety-two per cent of post-contact decisions that are the problem.
+
+The remaining question is why `navigate` wins at short range, and the primitive's own geometry
+is the first suspect: `strike` selects a contact point *behind* the ball, so from close in it
+must first move away from the ball to line up, while `navigate` acts immediately. If that is the
+cause it is a primitive-design problem, not a reward one.
+
 ## Candidates, not a conclusion
 
 Three levers, none of them free, listed so the next change is a choice rather than a reflex:
