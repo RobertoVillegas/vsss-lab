@@ -409,3 +409,42 @@ def test_cooperation_phase_reserves_rehearsal_and_full_matches() -> None:
     assert full_matches >= 300
     assert previous_phase >= 200
     assert families.count("pass_receive") < 500
+
+
+def test_rotation_recovery_opens_its_approach_angle_with_difficulty() -> None:
+    """The easy end must be a straight approach, not a close one at a wide angle.
+
+    The ladder was inverted: the lateral offset was a constant 0.10 while only the
+    longitudinal gap moved, so the easy end put the challenger 50 degrees off the ball's line
+    of travel with no room to line up. A differential drive that must turn ninety degrees
+    loses a rolling ball, and the drill stalled 1 cm short of contact on every attempt below
+    difficulty 0.25 while making contact on every attempt at 0.50.
+    """
+    match_config = json.loads(Path("tests/golden/m1_match_config.json").read_text())
+    base_state = json.loads(Path("tests/golden/m1_match_state.json").read_text())
+
+    def approach_angle(level: float) -> float:
+        parameters = SkillScenarioParameters(
+            schema_version=1,
+            family="rotation_recovery",
+            seed=4,
+            controlled_team="blue",
+            difficulty=SkillDifficulty(spawn_distance=level),
+            roster="3v3",
+            horizon=240,
+        )
+        scenario = compile_skill_scenario(parameters, base_state, match_config)
+        state = scenario.scenario.state
+        robots = cast("list[dict[str, Any]]", state["robots"])
+        challenger = next(
+            robot for robot in robots if str(robot["id"]) == scenario.context.controlled_robot_id
+        )
+        ball = cast("dict[str, Any]", state["ball"])
+        pose = cast("dict[str, Any]", challenger["pose"])
+        lateral = abs(float(ball["y"]) - float(pose["y"]))
+        longitudinal = abs(float(ball["x"]) - float(pose["x"]))
+        return math.degrees(math.atan2(lateral, longitudinal))
+
+    angles = [approach_angle(level) for level in (0.0, 0.25, 0.5, 0.75, 1.0)]
+    assert angles == sorted(angles), f"the approach angle must widen with difficulty: {angles}"
+    assert angles[0] < 25.0, f"the easy end must be a near-straight approach, got {angles[0]:.0f}"

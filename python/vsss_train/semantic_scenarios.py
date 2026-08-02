@@ -25,7 +25,7 @@ SkillFamily = Literal[
 ControlledTeam = Literal["blue", "yellow"]
 Roster = Literal["1v0", "1v1", "2v1", "2v2", "3v2", "3v3"]
 
-GENERATOR_REVISION = "m24.3-ladders-2"
+GENERATOR_REVISION = "m24.3-ladders-3"
 DIFFICULTY_AXES = (
     "ball_speed",
     "ball_angle",
@@ -609,11 +609,18 @@ def compile_skill_scenario(
     elif family == "rotation_recovery":
         ball = (-0.08, lane * 0.45)
         _set_ball(state, attack_sign, *ball, speed=speed * 0.35, heading=math.pi)
+        # The lateral offset used to be a constant 0.10 while only the longitudinal gap moved
+        # with difficulty, which inverted the ladder: at the easy end the challenger sat 50
+        # degrees off the ball's line of travel with almost no room to line up, and a
+        # differential drive that must turn ninety degrees loses a rolling ball. Measured, it
+        # stalled 1 cm short of contact on every attempt below difficulty 0.25 and made contact
+        # on every attempt at 0.50. The offset now opens with difficulty, so the easy end is a
+        # straight approach and the hard end is the wide one.
         _park_robot(
             primary,
             attack_sign,
             ball[0] - spawn_distance * 0.65,
-            ball[1] + lane_sign * 0.10,
+            ball[1] + lane_sign * _lerp(0.03, 0.18, difficulty.spawn_distance),
             -lane_sign * 0.25,
         )
         # The previous attacker begins beyond the play and must rotate through
