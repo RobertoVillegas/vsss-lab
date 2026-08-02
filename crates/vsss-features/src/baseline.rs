@@ -96,7 +96,7 @@ pub fn scripted_team_actions(state: &[f32], team: u8) -> Result<[[f32; 2]; DUTIE
         core::array::from_fn(|slot| robot_pose(state, team_offset + slot));
     let order = assign(&poses, &targets);
     Ok(core::array::from_fn(|slot| {
-        go_to_target(poses[slot], targets[order[slot]])
+        go_to_target(poses[slot], targets[order[slot]], true)
     }))
 }
 

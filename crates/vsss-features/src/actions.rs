@@ -97,14 +97,23 @@ pub fn robot_pose(state: &[f32], slot: usize) -> (f64, f64, f64) {
 }
 
 /// Bounded wheel commands driving a robot toward a target.
+///
+/// `settle` tapers the speed inside half a metre so the robot comes to rest on the point. A
+/// striker closing on a contact point that moves with the ball must not: measured, it crawls
+/// after it at twelve per cent of its speed and the ball rolls away. See ADR 0022.
 #[must_use]
-pub fn go_to_target(pose: (f64, f64, f64), target: (f64, f64)) -> [f32; 2] {
+pub fn go_to_target(pose: (f64, f64, f64), target: (f64, f64), settle: bool) -> [f32; 2] {
     let (x, y, theta) = pose;
     let delta_x = target.0 - x;
     let delta_y = target.1 - y;
     let distance = delta_x.hypot(delta_y);
     let error = (delta_y.atan2(delta_x) - theta + PI).rem_euclid(2.0 * PI) - PI;
-    let forward = (2.0 * distance).min(1.0) * error.cos().max(0.0);
+    let taper = if settle {
+        (2.0 * distance).min(1.0)
+    } else {
+        1.0
+    };
+    let forward = taper * error.cos().max(0.0);
     let turn = TURN_AUTHORITY * (error / (PI / 2.0)).clamp(-1.0, 1.0);
     #[allow(clippy::cast_possible_truncation)] // the controller's output is f32 by definition
     [
@@ -124,7 +133,9 @@ struct Contact {
 /// Select a reachable behind-ball point, then drive through contact.
 ///
 /// Reachability is judged at the authority the caller will actually execute, so a
-/// reduced-intensity request cannot select an intercept it can never arrive at.
+/// reduced-intensity request cannot select an intercept it can never arrive at. The second
+/// return says whether the target is the drive-through one, which is what decides whether the
+/// approach may taper: an acquisition point moves with the ball and is not one to settle on.
 #[must_use]
 pub fn strike_target(
     state: &[f32],
@@ -132,7 +143,7 @@ pub fn strike_target(
     direction: (f64, f64),
     ball_deceleration: f64,
     authority: f64,
-) -> (f64, f64) {
+) -> ((f64, f64), bool) {
     let ball_x = f64::from(state[5]);
     let ball_y = f64::from(state[6]);
     let velocity_x = f64::from(state[7]);
@@ -199,11 +210,14 @@ pub fn strike_target(
     // acquisition envelope and faces the exit half-plane.
     if acquisition_error <= ACQUISITION_ENVELOPE && aligned {
         return (
-            exit_x.mul_add(DRIVE_THROUGH, selected.ball_x),
-            exit_y.mul_add(DRIVE_THROUGH, selected.ball_y),
+            (
+                exit_x.mul_add(DRIVE_THROUGH, selected.ball_x),
+                exit_y.mul_add(DRIVE_THROUGH, selected.ball_y),
+            ),
+            true,
         );
     }
-    (selected.x, selected.y)
+    ((selected.x, selected.y), false)
 }
 
 /// Execute one team's circular headings at the authority each token requested.
@@ -246,23 +260,28 @@ pub fn circular_primitive_wheel_actions(
             sign * command.direction.sin(),
         );
         let pose = robot_pose(state, slot);
-        let (target, arrival_scale) = if command.skill == Skill::Navigate {
+        let (target, arrival_scale, settle) = if command.skill == Skill::Navigate {
             (
                 (
                     direction.0.mul_add(NAVIGATE_REACH, pose.0),
                     direction.1.mul_add(NAVIGATE_REACH, pose.1),
                 ),
                 1.0,
+                true,
             )
         } else {
-            let target =
+            let (target, driving_through) =
                 strike_target(state, pose, direction, ball_deceleration, command.intensity);
             let to_target_x = target.0 - f64::from(state[5]);
             let to_target_y = target.1 - f64::from(state[6]);
             let forward = to_target_x.mul_add(direction.0, to_target_y * direction.1) > 0.0;
-            (target, if forward { 1.0 } else { ACQUIRE_SCALE })
+            (
+                target,
+                if forward { 1.0 } else { ACQUIRE_SCALE },
+                driving_through,
+            )
         };
-        let wheels = go_to_target(pose, target);
+        let wheels = go_to_target(pose, target, settle);
         // The reference narrows the authority to f32 before scaling, so the product is an f32
         // multiplication rather than an f64 one rounded afterwards.
         #[allow(clippy::cast_possible_truncation)]

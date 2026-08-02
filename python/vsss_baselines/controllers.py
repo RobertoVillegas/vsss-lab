@@ -21,13 +21,24 @@ def robot_pose(state: FloatArray, robot_index: int) -> tuple[float, float, float
     return float(state[offset + 2]), float(state[offset + 3]), float(state[offset + 4])
 
 
-def go_to_target(pose: tuple[float, float, float], target: tuple[float, float]) -> FloatArray:
-    """Return bounded wheel commands driving a robot toward a target."""
+def go_to_target(
+    pose: tuple[float, float, float],
+    target: tuple[float, float],
+    *,
+    settle: bool = True,
+) -> FloatArray:
+    """Return bounded wheel commands driving a robot toward a target.
+
+    `settle` tapers the speed inside half a metre so the robot comes to rest on the point. A
+    striker closing on a contact point that moves with the ball must not: measured, it crawls
+    after it at twelve per cent of its speed and the ball rolls away.
+    """
     x, y, theta = pose
     dx, dy = target[0] - x, target[1] - y
     distance = hypot(dx, dy)
     error = (atan2(dy, dx) - theta + pi) % (2.0 * pi) - pi
-    forward = min(1.0, 2.0 * distance) * max(0.0, cos(error))
+    taper = min(1.0, 2.0 * distance) if settle else 1.0
+    forward = taper * max(0.0, cos(error))
     turn = TURN_AUTHORITY * max(-1.0, min(1.0, error / (pi / 2.0)))
     # Scalar np.clip goes through numpy's dispatch machinery and dominated the rollout at
     # 2.9 million calls per three iterations. The builtin form is identical for scalars.

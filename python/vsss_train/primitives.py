@@ -184,11 +184,12 @@ def circular_primitive_wheel_actions(
         sign = 1.0 if team == 0 else -1.0
         direction = (sign * math.cos(command.direction), sign * math.sin(command.direction))
         pose = robot_pose(state, slot)
+        settle = True
         if command.skill == "navigate":
             target = (pose[0] + 0.4 * direction[0], pose[1] + 0.4 * direction[1])
             arrival_scale = 1.0
         else:
-            target = _strike_target(
+            target, driving_through = _strike_target(
                 state,
                 pose,
                 direction,
@@ -198,7 +199,8 @@ def circular_primitive_wheel_actions(
             ball = np.asarray(state[5:7], dtype=np.float64)
             target_vector = np.asarray(target, dtype=np.float64) - ball
             arrival_scale = 1.0 if float(np.dot(target_vector, direction)) > 0.0 else 0.72
-        wheels = go_to_target(pose, target)
+            settle = driving_through
+        wheels = go_to_target(pose, target, settle=settle)
         result[local_slot] = wheels * np.float32(command.intensity * arrival_scale)
     return result
 
@@ -231,7 +233,7 @@ def describe_circular_primitive_actions(
             target = (pose[0] + 0.4 * direction[0], pose[1] + 0.4 * direction[1])
             phase = "navigate"
         else:
-            target = _strike_target(
+            target, _ = _strike_target(
                 state,
                 pose,
                 direction,
@@ -313,7 +315,7 @@ def primitive_wheel_actions(
         if command.skill == "navigate":
             target = (pose[0] + 0.4 * direction[0], pose[1] + 0.4 * direction[1])
         else:
-            target = _strike_target(
+            target, _ = _strike_target(
                 state,
                 pose,
                 direction,
@@ -347,11 +349,12 @@ def parametric_primitive_wheel_actions(
         sign = 1.0 if team == 0 else -1.0
         direction = (sign * math.cos(command.direction), sign * math.sin(command.direction))
         pose = robot_pose(state, slot)
+        settle = True
         if command.skill == "navigate":
             target = (pose[0] + 0.4 * direction[0], pose[1] + 0.4 * direction[1])
             arrival_scale = 1.0
         else:
-            target = _strike_target(
+            target, _ = _strike_target(
                 state,
                 pose,
                 direction,
@@ -394,7 +397,7 @@ def describe_parametric_primitive_actions(
             target = (pose[0] + 0.4 * direction[0], pose[1] + 0.4 * direction[1])
             phase = "navigate"
         else:
-            target = _strike_target(state, pose, direction, ball_deceleration=0.8)
+            target, _ = _strike_target(state, pose, direction, ball_deceleration=0.8)
             exit_dot = (target[0] - ball[0]) * direction[0] + (target[1] - ball[1]) * direction[1]
             phase = "strike" if exit_dot > 0.0 else "acquire"
         descriptions.append(
@@ -441,7 +444,7 @@ def describe_primitive_actions(
             target = (pose[0] + 0.4 * direction[0], pose[1] + 0.4 * direction[1])
             phase = "navigate"
         else:
-            target = _strike_target(state, pose, direction, ball_deceleration=0.8)
+            target, _ = _strike_target(state, pose, direction, ball_deceleration=0.8)
             exit_dot = (target[0] - ball[0]) * direction[0] + (target[1] - ball[1]) * direction[1]
             phase = "strike" if exit_dot > 0.0 else "acquire"
         descriptions.append(
@@ -469,8 +472,14 @@ def _strike_target(
     *,
     ball_deceleration: float,
     authority: float = 1.0,
-) -> tuple[float, float]:
+) -> tuple[tuple[float, float], bool]:
     """Select a reachable behind-ball point, then drive through contact.
+
+    Returns the target and whether it is the drive-through one. The caller needs to know:
+    `go_to_target` tapers its speed inside half a metre so a robot settles on a point, and the
+    acquisition point is not a point to settle on — it moves with the ball. Measured, a striker
+    six centimetres from a fleeing contact point crawls after it at twelve per cent of its speed
+    and never arrives.
 
     Reachability is judged at the authority the caller will actually execute, so a
     reduced-intensity request cannot select an intercept it can never arrive at.
@@ -528,5 +537,5 @@ def _strike_target(
     # without oscillation. Enter the drive-through phase once the robot is
     # inside a body-scale acquisition envelope and faces the exit half-plane.
     if acquisition_error <= 0.11 and aligned:
-        return selected_ball_x + 0.28 * exit_x, selected_ball_y + 0.28 * exit_y
-    return selected_x, selected_y
+        return (selected_ball_x + 0.28 * exit_x, selected_ball_y + 0.28 * exit_y), True
+    return (selected_x, selected_y), False
