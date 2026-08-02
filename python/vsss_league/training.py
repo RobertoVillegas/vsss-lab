@@ -137,6 +137,7 @@ def create_rollout_session(config: MarlConfig, config_json: str, state_json: str
             useful_touch_impulse_coefficient=config.useful_touch_impulse_coefficient,
             goal_geometry_coefficient=config.goal_geometry_coefficient,
             goal_geometry_discount=config.goal_geometry_discount,
+            ball_progress_coefficient=config.ball_progress_coefficient,
             idle_spin_coefficient=config.idle_spin_coefficient,
             idle_spin_grace_seconds=config.idle_spin_grace_seconds,
             idle_spin_angular_speed=config.idle_spin_angular_speed,

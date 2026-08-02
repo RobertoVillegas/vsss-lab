@@ -153,6 +153,7 @@ class MarlMatchEnv:
         ball_direction_coefficient: float = 0.0,
         goal_geometry_coefficient: float = 0.0,
         goal_geometry_discount: float = 0.99,
+        ball_progress_coefficient: float = 0.0,
         attacker_alignment_coefficient: float = 0.0,
         time_penalty_coefficient: float = 0.0,
         movement_speed_threshold: float = 0.03,
@@ -183,6 +184,7 @@ class MarlMatchEnv:
         self.ball_direction_coefficient = ball_direction_coefficient
         self.goal_geometry_coefficient = goal_geometry_coefficient
         self.goal_geometry_discount = goal_geometry_discount
+        self.ball_progress_coefficient = ball_progress_coefficient
         self.attacker_alignment_coefficient = attacker_alignment_coefficient
         self.time_penalty_coefficient = time_penalty_coefficient
         self.movement_speed_threshold = movement_speed_threshold
@@ -441,6 +443,7 @@ class VectorMarlMatchEnv:
         useful_touch_impulse_coefficient: float,
         goal_geometry_coefficient: float,
         goal_geometry_discount: float,
+        ball_progress_coefficient: float,
         idle_spin_coefficient: float,
         idle_spin_grace_seconds: float,
         idle_spin_angular_speed: float,
@@ -486,6 +489,7 @@ class VectorMarlMatchEnv:
         self.useful_touch_impulse_coefficient = useful_touch_impulse_coefficient
         self.goal_geometry_coefficient = goal_geometry_coefficient
         self.goal_geometry_discount = goal_geometry_discount
+        self.ball_progress_coefficient = ball_progress_coefficient
         self._decision_period = float(self._config["timestep"]) * action_repeat
         self.idle_spin_coefficient = idle_spin_coefficient
         self.idle_spin_grace_steps = max(1, round(idle_spin_grace_seconds / self._decision_period))
@@ -534,6 +538,7 @@ class VectorMarlMatchEnv:
         self._previous_ball_velocities = np.zeros((num_envs, 2), dtype=np.float32)
         self._controlled_ball_contact = np.zeros(num_envs, dtype=np.bool_)
         self._goal_geometry_potential = np.zeros(num_envs, dtype=np.float32)
+        self._mouth_potential = np.zeros(num_envs, dtype=np.float32)
         self._idle_spin_streaks = np.zeros((num_envs, 3), dtype=np.int64)
         self._ally_contact_streaks = np.zeros((num_envs, 3), dtype=np.int64)
         self._opponent_contact_streaks = np.zeros((num_envs, 9), dtype=np.int64)
@@ -600,6 +605,7 @@ class VectorMarlMatchEnv:
         self._goal_geometry_potential[world] = _goal_geometry_potential(
             self.states[world], self._config, team
         )
+        self._mouth_potential[world] = _goal_mouth_potential(self.states[world], self._config, team)
         self._idle_spin_streaks[world].fill(0)
         self._stagnation_steps[world] = 0
         self._ally_contact_streaks[world].fill(0)
@@ -865,6 +871,17 @@ class VectorMarlMatchEnv:
             0.0,
             self._native_goal_geometry()[:, 0],
         ).astype(np.float32)
+        mouth_potential = np.where(
+            goal_complete | stagnated | draw,
+            0.0,
+            np.asarray(
+                [
+                    _goal_mouth_potential(state, self._config, int(team))
+                    for state, team in zip(self.states, self.controlled_teams, strict=True)
+                ],
+                dtype=np.float32,
+            ),
+        ).astype(np.float32)
         spin_flags, turn_intensity = self._native.idle_spin(
             self.controlled_teams,
             normalized_blue,
@@ -903,6 +920,12 @@ class VectorMarlMatchEnv:
             ).astype(np.float32),
             "useful_touch": (
                 self.useful_touch_impulse_coefficient * np.tanh(useful_touch_impulse)
+            ).astype(np.float32),
+            # Undiscounted, so what it pays is the change in position and not a charge
+            # proportional to holding one. Terminal potential is zero like the geometry term:
+            # otherwise the last transition pays for how the episode ended.
+            "goal_mouth": (
+                self.ball_progress_coefficient * (mouth_potential - self._mouth_potential)
             ).astype(np.float32),
             "goal_geometry": (
                 self.goal_geometry_coefficient
@@ -959,6 +982,7 @@ class VectorMarlMatchEnv:
         np.copyto(self._previous_ball_velocities, self.states[:, 7:9])
         np.copyto(self._controlled_ball_contact, current_ball_contact)
         np.copyto(self._goal_geometry_potential, goal_geometry_potential)
+        np.copyto(self._mouth_potential, mouth_potential)
         self._closest = closest
         self._defensive_distance = defensive_distance
         done = draw | goal_complete | stagnated
@@ -1413,6 +1437,31 @@ def _goal_geometry_metrics(
         "controllable_proximity": controllable_proximity,
         "attacking_progress": attacking_progress,
     }
+
+
+def _goal_mouth_potential(
+    state: FloatArray,
+    config: dict[str, Any],
+    team: int = 0,
+) -> float:
+    """How much of the goal the ball can see, normalized against standing in front of it.
+
+    The angular width of the goal mouth subtended at the ball is maximal directly in front and
+    collapses at grazing incidence, so a ball in the corner is worth almost nothing however
+    close it is to the line. That shape is what keeps a carry down the touchline from paying:
+    measured over the field, dragging from the wing into the corner is -0.077 while bringing
+    the ball from midfield to in front of the goal is +0.427.
+    """
+    attack_sign = 1.0 if team == 0 else -1.0
+    goal_x = attack_sign * float(config["field"]["length"]) / 2.0
+    half_goal = float(config["field"]["goal_width"]) / 2.0
+    ball_x, ball_y = float(state[5]), float(state[6])
+    near = math.atan2(half_goal - ball_y, abs(goal_x - ball_x))
+    far = math.atan2(-half_goal - ball_y, abs(goal_x - ball_x))
+    peak = 2.0 * math.atan2(half_goal, 0.02)
+    if attack_sign * ball_x > attack_sign * goal_x:
+        return 0.0
+    return min(1.0, abs(near - far) / peak)
 
 
 def _goal_geometry_potential(

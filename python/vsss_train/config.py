@@ -152,6 +152,12 @@ class MarlConfig:
     useful_touch_impulse_coefficient: float = 0.0
     goal_geometry_coefficient: float = 0.0
     goal_geometry_discount: float = 0.99
+    # Pays for carrying the ball into a position a goal can be scored from. The potential is
+    # the angular width of the goal mouth seen from the ball, so a corner is worth almost
+    # nothing however close it is, and dragging along a touchline costs rather than pays.
+    # Undiscounted on purpose: at the training discount the standing charge measured 10.5 times
+    # the part that pays for carrying. See ADR 0021.
+    ball_progress_coefficient: float = 0.0
     idle_spin_coefficient: float = 0.0
     idle_spin_grace_seconds: float = 0.5
     # Retained so checkpoints written before behavior detection moved to measured
@@ -300,6 +306,8 @@ class MarlConfig:
         )
         if any(value < 0.0 for value in non_negative):
             raise ValueError("MARL reward coefficients must be non-negative")
+        if self.ball_progress_coefficient < 0.0:
+            raise ValueError("ball_progress_coefficient must not be negative")
         if not 0.0 <= self.goal_geometry_discount <= 1.0:
             raise ValueError("goal_geometry_discount must be in [0, 1]")
         if self.idle_spin_grace_seconds <= 0.0:

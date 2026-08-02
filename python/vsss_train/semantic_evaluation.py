@@ -249,6 +249,7 @@ def _environment(
         ball_direction_coefficient=0.0,
         useful_touch_impulse_coefficient=0.0,
         goal_geometry_coefficient=0.0,
+        ball_progress_coefficient=0.0,
         goal_geometry_discount=0.99,
         idle_spin_coefficient=0.0,
         idle_spin_grace_seconds=idle_spin.grace_seconds,
