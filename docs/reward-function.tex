@@ -20,7 +20,7 @@
 \title{Función de recompensa de VSSS Lab\\
   \large MAPPO M24.3 con formación por roles dinámicos}
 \author{VSSS Lab}
-\date{2 de agosto de 2026}
+\date{3 de agosto de 2026}
 
 \newcommand{\indicator}[1]{\mathbb{I}\!\left[#1\right]}
 \newcommand{\Rteam}{R_t^{\mathrm{team}}}
@@ -83,7 +83,7 @@ Tabla~\ref{tab:coefficients}.
     Resultado semántico & $\pm 1$ & Éxito, fracaso o timeout del ejercicio \\
     Transporte a boca de gol & $5.0$ & Cambio de potencial angular del balón \\
     Geometría atacante & $0.05$ & Shaping descontado attacker--balón--gol \\
-    Formación dinámica & $0.20$ & Shaping de support y coverage activos \\
+    Formación dinámica & $0.10$ & Shaping de support y coverage activos \\
     Contacto útil & $0.15$ & Impulso firmado al entrar en contacto \\
     Cobertura defensiva & $0.10$ & Mejora al cubrir una amenaza \\
     Cambio de acción & $-0.002$ & Regularización cuadrática \\
@@ -170,8 +170,9 @@ entre el robot asignado y el objetivo geométrico ya empleado por el asignador d
 
 \begin{align}
 q_r &= \exp\!\left(-\frac{d_r}{0.25\ \mathrm{m}}\right),\\
-\Phi_{\mathrm{formation}} &= \frac{1}{|\mathcal{R}_{\mathrm{active}}|}
-\sum_{r\in\mathcal{R}_{\mathrm{active}}} q_r,
+\Phi_{\mathrm{formation}} &=
+\left(\prod_{r\in\mathcal{R}_{\mathrm{active}}}q_r\right)^{
+1/|\mathcal{R}_{\mathrm{active}}|},
 \quad \mathcal{R}_{\mathrm{active}}\subseteq
 \{\mathrm{support},\mathrm{coverage}\}.
 \end{align}
@@ -180,7 +181,7 @@ Si ninguno de esos roles está activo, como en un ejercicio 1v0, el potencial es
 recompensa es
 
 \begin{equation}
-R_{\mathrm{formation}} = 0.20
+R_{\mathrm{formation}} = 0.10
 \left(0.99\Phi_{\mathrm{formation}}(s_{t+1})-
 \Phi_{\mathrm{formation}}(s_t)\right).
 \end{equation}
@@ -190,9 +191,11 @@ positiva. Cuando dos robots intercambian responsabilidades, el shaping sigue al 
 identidad física. No existe un action mask: coverage todavía puede desafiar el balón cuando la
 asignación dinámica considera que debe rotar.
 
-El coeficiente $0.20$ acota su contribución al retorno descontado a dos por ciento del valor de
-un gol. Sobre el replay final del run 0013 produjo una magnitud media estimada de
-$6.06\times10^{-4}$ por decisión, aproximadamente un tercio del término de transporte del balón.
+La media geométrica hace que support y coverage sean un cuello de botella conjunto: una
+responsabilidad bien cubierta ya no puede ocultar el abandono de la otra. El coeficiente $0.10$
+acota su contribución al retorno descontado a uno por ciento del valor de un gol. Es la mitad del
+primer experimento de ADR 0023, que produjo separación parcial acompañada de exceso de
+\texttt{STOP}.
 
 \section{Contacto y defensa}
 
@@ -268,7 +271,8 @@ resultado, no por recompensa total. Los criterios principales son:
 
 La implementación vive en \texttt{python/vsss\_train/marl\_env.py}; los coeficientes del nuevo
 experimento están en \texttt{experiments/configs/m24-3-mappo-role-formation.toml}. La decisión
-arquitectónica es ADR 0023 y la evidencia se registra en
+arquitectónica original es ADR 0023 y su corrección posterior al run role-0001 es ADR 0024. La
+evidencia se registra en
 \texttt{docs/evidence/m24-3-role-formation-credit.md}.
 
 El rollback no requiere cambiar código: fijar

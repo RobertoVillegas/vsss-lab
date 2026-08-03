@@ -34,7 +34,7 @@ value_coefficient = 0.5
 max_grad_norm = 0.5
 epochs = 4
 minibatch_size = 8192
-policy_id = "m24.3-role-formation-mappo-shared-v1"
+policy_id = "m24.3-role-balanced-mappo-shared-v2"
 curriculum_stage = 8
 horizon = 1500
 rollout_steps = 256
@@ -48,10 +48,10 @@ goal_geometry_coefficient = 0.05
 # occupancy of positions the action set can convert while keeping a goal dominant at 10.
 ball_progress_coefficient = 5.0
 goal_geometry_discount = 0.99
-# ADR 0023. The discounted-return bound is 0.20 (two per cent of a goal). On the run-0013
-# final replay its mean absolute contribution was 0.00061 per decision, about one third of
-# the carry term: audible, but not the objective.
-role_formation_coefficient = 0.20
+# ADR 0024. Run role-0001 showed that 0.20 produced transient separation partly through STOP.
+# The geometric bottleneck prevents one responsibility from hiding the other; 0.10 keeps its
+# discounted-return bound at one per cent of a goal while the fresh run measures the correction.
+role_formation_coefficient = 0.10
 idle_spin_coefficient = 0.002
 idle_spin_grace_seconds = 0.5
 idle_spin_angular_speed = 1.0
