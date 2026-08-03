@@ -11,7 +11,7 @@ from tensordict import TensorDict
 from torch.distributions import Normal
 from vsss_baselines.controllers import TURN_AUTHORITY
 from vsss_env._native import BatchSimulator
-from vsss_league.training import create_rollout_session
+from vsss_league.training import _policy_stats, create_rollout_session
 from vsss_train.config import MarlConfig, load_marl_config
 from vsss_train.marl import (
     CentralizedCritic,
@@ -30,6 +30,7 @@ from vsss_train.marl_env import (
     _goal_geometry_metrics,
     _goal_geometry_potential,
     _idle_spin_flags,
+    _role_formation_potential,
     _team_touches_ball,
     _teammate_congestion,
     _useful_touch_impulse,
@@ -47,6 +48,7 @@ from vsss_train.marl_ppo import (
     sample_bounded_action,
 )
 from vsss_train.primitives import parametric_primitive_wheel_actions
+from vsss_train.roles import assign_roles
 
 ROOT = Path(__file__).parents[1]
 
@@ -275,6 +277,53 @@ def test_terminal_state_carries_no_shaping_potential() -> None:
     assert reward.goal_geometry == pytest.approx(-0.5 * entry, abs=2e-3)
 
 
+def test_role_formation_is_terminal_zeroed_and_cannot_pay_for_holding() -> None:
+    environment = MarlMatchEnv(
+        CONFIG,
+        STATE,
+        stage=7,
+        horizon=1,
+        action_repeat=1,
+        role_formation_coefficient=0.2,
+        goal_geometry_discount=0.99,
+    )
+    environment.reset(7)
+    assignment = assign_roles(environment.state, 0)
+    entry = _role_formation_potential(environment.state, 0, assignment)
+
+    _, reward, done, _ = environment.step(np.zeros((3, 2), dtype=np.float32))
+
+    assert done
+    assert entry > 0.0
+    assert reward.role_formation == pytest.approx(-0.2 * entry, abs=2e-3)
+    assert 0.2 * (0.99 * entry - entry) < 0.0
+
+
+def test_inactive_support_and_coverage_do_not_contribute_to_formation() -> None:
+    state = initial_state()
+    assignment = assign_roles(state, 0)
+    attacker = assignment.roles.index("attacker")
+    for slot in range(3):
+        state[ROBOT_BASE + slot * 11 + 10] = float(slot == attacker)
+    reduced = assign_roles(state, 0)
+
+    assert _role_formation_potential(state, 0, reduced) == 0.0
+
+
+def test_role_formation_is_invariant_to_controlled_robot_order() -> None:
+    state = initial_state()
+    expected = _role_formation_potential(state, 0, assign_roles(state, 0))
+    permuted = state.copy()
+    first = state[ROBOT_BASE : ROBOT_BASE + 11].copy()
+    second = state[ROBOT_BASE + 11 : ROBOT_BASE + 22].copy()
+    permuted[ROBOT_BASE : ROBOT_BASE + 11] = second
+    permuted[ROBOT_BASE + 11 : ROBOT_BASE + 22] = first
+
+    actual = _role_formation_potential(permuted, 0, assign_roles(permuted, 0))
+
+    assert actual == pytest.approx(expected)
+
+
 def test_idle_spin_detection_exempts_orientation_and_ball_control() -> None:
     state = initial_state()
     actions = np.asarray(((-0.8, 0.8), (0.4, 0.8), (-0.8, 0.8)), dtype=np.float32)
@@ -399,6 +448,33 @@ def trajectory(learner: MarlLearner, steps: int = 4) -> TeamTrajectory:
         ),
         data,
     )
+
+
+def test_policy_stats_separate_primitive_choice_by_dynamic_role() -> None:
+    learner = MarlLearner(
+        MarlConfig(
+            device="cpu",
+            num_envs=1,
+            hidden_size=8,
+        )
+    )
+    sample = trajectory(learner, steps=2)
+    # The observation has one agent in each role. Attacker always strikes, support navigates,
+    # and coverage stops, making any aggregate-only report deliberately ambiguous.
+    roles = sample.data["context"][..., 4:7].argmax(dim=-1)
+    action_index = torch.zeros_like(roles)
+    action_index[roles == 0] = 9
+    action_index[roles == 1] = 1
+    sample.data["action_index"] = action_index
+
+    stats = _policy_stats(sample, "primitive")
+
+    assert stats is not None
+    by_role = stats["actions_by_role"]
+    assert isinstance(by_role, dict)
+    assert by_role["attacker"]["strike_fraction"] == 1.0
+    assert by_role["support"]["navigate_fraction"] == 1.0
+    assert by_role["coverage"]["stop_fraction"] == 1.0
 
 
 def test_ippo_and_mappo_update_finite_losses() -> None:
@@ -591,6 +667,8 @@ def test_versioned_marl_configs() -> None:
     clean_curriculum = load_marl_config(
         ROOT / "experiments/configs/m23-mappo-clean-curriculum.toml"
     )
+    run_0013 = load_marl_config(ROOT / "experiments/configs/m24-3-mappo-circular.toml")
+    role_formation = load_marl_config(ROOT / "experiments/configs/m24-3-mappo-role-formation.toml")
     assert clean_curriculum.seed == 23
     assert clean_curriculum.semantic_full_match_fraction == 0.30
     assert coordinated.teammate_congestion_coefficient > 0.0
@@ -601,6 +679,9 @@ def test_versioned_marl_configs() -> None:
     assert coordinated.maximum_log_std == -0.2
     assert coordinated.curriculum_heuristic_iterations == 1000
     assert coordinated.league_heuristic_weight == 0.35
+    assert run_0013.role_formation_coefficient == 0.0
+    assert role_formation.role_formation_coefficient == 0.20
+    assert role_formation.policy_id != run_0013.policy_id
 
 
 def test_c7_and_c8_have_explicit_opponent_modes_and_team_rewards() -> None:

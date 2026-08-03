@@ -42,6 +42,9 @@ type ChartDatum = TrainingMetric & {
   stop_fraction?: number;
   navigate_fraction?: number;
   strike_fraction?: number;
+  attacker_strike_fraction?: number;
+  support_strike_fraction?: number;
+  coverage_strike_fraction?: number;
   mean_intensity?: number | null;
   direction_change_mean_degrees?: number | null;
   direction_change_p95_degrees?: number | null;
@@ -94,6 +97,11 @@ export default function TrainingCharts({ metrics }: { metrics: TrainingMetric[] 
       stop_fraction: metric.policy_stats?.stop_fraction,
       navigate_fraction: metric.policy_stats?.navigate_fraction,
       strike_fraction: metric.policy_stats?.strike_fraction,
+      attacker_strike_fraction:
+        metric.policy_stats?.actions_by_role?.attacker.strike_fraction,
+      support_strike_fraction: metric.policy_stats?.actions_by_role?.support.strike_fraction,
+      coverage_strike_fraction:
+        metric.policy_stats?.actions_by_role?.coverage.strike_fraction,
       mean_intensity: metric.policy_stats?.mean_intensity,
       direction_change_mean_degrees: metric.policy_stats?.direction_change_mean_degrees,
       direction_change_p95_degrees: metric.policy_stats?.direction_change_p95_degrees,
@@ -209,6 +217,11 @@ export default function TrainingCharts({ metrics }: { metrics: TrainingMetric[] 
               <Line dataKey="stop_fraction" name="stop" stroke="#82998f" dot={false} />
               <Line dataKey="navigate_fraction" name="navigate" stroke="#49a7ff" dot={false} />
               <Line dataKey="strike_fraction" name="strike" stroke="#ff8a62" dot={false} />
+            </TrainingChart>
+            <TrainingChart title="STRIKE BY DYNAMIC ROLE" data={data}>
+              <Line dataKey="attacker_strike_fraction" name="attacker" stroke="#ff8a62" dot={false} />
+              <Line dataKey="support_strike_fraction" name="support" stroke="#ffd84a" dot={false} />
+              <Line dataKey="coverage_strike_fraction" name="coverage" stroke="#49a7ff" dot={false} />
             </TrainingChart>
             <TrainingChart title="EXPLORATION · LOG STD" data={data}>
               {circular ? (

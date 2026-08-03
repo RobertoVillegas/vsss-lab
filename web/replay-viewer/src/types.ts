@@ -52,11 +52,20 @@ export interface TrainingMetric {
   };
   reward_terms?: Record<string, number>;
   policy_stats?: {
-    action_parser: "primitive" | "parametric_primitive";
+    action_parser: "primitive" | "parametric_primitive" | "circular_primitive";
     action_counts: number[];
     stop_fraction: number;
     navigate_fraction: number;
     strike_fraction: number;
+    actions_by_role?: Record<
+      "attacker" | "support" | "coverage",
+      {
+        action_counts: number[];
+        stop_fraction: number;
+        navigate_fraction: number;
+        strike_fraction: number;
+      }
+    >;
     mean_intensity?: number | null;
     direction_change_mean_degrees?: number | null;
     direction_change_p95_degrees?: number | null;

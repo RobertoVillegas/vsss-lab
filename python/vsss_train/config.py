@@ -158,6 +158,7 @@ class MarlConfig:
     # Undiscounted on purpose: at the training discount the standing charge measured 10.5 times
     # the part that pays for carrying. See ADR 0021.
     ball_progress_coefficient: float = 0.0
+    role_formation_coefficient: float = 0.0
     idle_spin_coefficient: float = 0.0
     idle_spin_grace_seconds: float = 0.5
     # Retained so checkpoints written before behavior detection moved to measured
@@ -291,6 +292,7 @@ class MarlConfig:
             self.ball_direction_coefficient,
             self.useful_touch_impulse_coefficient,
             self.goal_geometry_coefficient,
+            self.role_formation_coefficient,
             self.idle_spin_coefficient,
             self.attacker_alignment_coefficient,
             self.time_penalty_coefficient,

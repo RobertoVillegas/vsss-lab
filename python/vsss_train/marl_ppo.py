@@ -53,6 +53,7 @@ LEGACY_NEUTRAL_CONFIG = {
     "useful_touch_impulse_coefficient": 0.0,
     "goal_geometry_coefficient": 0.0,
     "goal_geometry_discount": 0.99,
+    "role_formation_coefficient": 0.0,
     "attacker_alignment_coefficient": 0.0,
     "time_penalty_coefficient": 0.0,
     "movement_speed_threshold": 0.03,

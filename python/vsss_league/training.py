@@ -138,6 +138,7 @@ def create_rollout_session(config: MarlConfig, config_json: str, state_json: str
             goal_geometry_coefficient=config.goal_geometry_coefficient,
             goal_geometry_discount=config.goal_geometry_discount,
             ball_progress_coefficient=config.ball_progress_coefficient,
+            role_formation_coefficient=config.role_formation_coefficient,
             idle_spin_coefficient=config.idle_spin_coefficient,
             idle_spin_grace_seconds=config.idle_spin_grace_seconds,
             idle_spin_angular_speed=config.idle_spin_angular_speed,
@@ -718,6 +719,28 @@ def _policy_stats(trajectory: TeamTrajectory, action_parser: str) -> dict[str, o
     )
     counts = torch.bincount(indices, minlength=action_count)
     total = max(1, int(counts.sum()))
+    role_names = ("attacker", "support", "coverage")
+    role_one_hot = trajectory.data["context"][..., 4:7].detach().cpu() > 0.5
+    actions_by_role: dict[str, dict[str, object]] = {}
+    all_indices = trajectory.data["action_index"].detach().cpu()
+    for role_index, role_name in enumerate(role_names):
+        role_mask = active & role_one_hot[..., role_index]
+        role_counts = torch.bincount(all_indices[role_mask].reshape(-1), minlength=action_count)
+        role_total = max(1, int(role_counts.sum()))
+        actions_by_role[role_name] = {
+            "action_counts": [int(value) for value in role_counts.tolist()],
+            "stop_fraction": int(role_counts[0]) / role_total,
+            "navigate_fraction": (
+                int(role_counts[1]) / role_total
+                if action_parser in ("parametric_primitive", "circular_primitive")
+                else int(role_counts[1:9].sum()) / role_total
+            ),
+            "strike_fraction": (
+                int(role_counts[2]) / role_total
+                if action_parser in ("parametric_primitive", "circular_primitive")
+                else int(role_counts[9:17].sum()) / role_total
+            ),
+        }
     action = trajectory.data["action"].detach().cpu()
     intensity_channel = (
         3
@@ -762,6 +785,7 @@ def _policy_stats(trajectory: TeamTrajectory, action_parser: str) -> dict[str, o
     return {
         "action_parser": action_parser,
         "action_counts": [int(value) for value in counts.tolist()],
+        "actions_by_role": actions_by_role,
         "stop_fraction": int(counts[0]) / total,
         "navigate_fraction": (
             int(counts[1]) / total

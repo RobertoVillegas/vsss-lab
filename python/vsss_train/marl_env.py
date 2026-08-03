@@ -96,6 +96,7 @@ class TeamReward:
     wheel_effort: float = 0.0
     teammate_congestion: float = 0.0
     defensive_coverage: float = 0.0
+    role_formation: float = 0.0
 
     @property
     def total(self) -> float:
@@ -110,6 +111,7 @@ class TeamReward:
             + self.wheel_effort
             + self.teammate_congestion
             + self.defensive_coverage
+            + self.role_formation
         )
 
 
@@ -154,6 +156,7 @@ class MarlMatchEnv:
         goal_geometry_coefficient: float = 0.0,
         goal_geometry_discount: float = 0.99,
         ball_progress_coefficient: float = 0.0,
+        role_formation_coefficient: float = 0.0,
         attacker_alignment_coefficient: float = 0.0,
         time_penalty_coefficient: float = 0.0,
         movement_speed_threshold: float = 0.03,
@@ -185,6 +188,7 @@ class MarlMatchEnv:
         self.goal_geometry_coefficient = goal_geometry_coefficient
         self.goal_geometry_discount = goal_geometry_discount
         self.ball_progress_coefficient = ball_progress_coefficient
+        self.role_formation_coefficient = role_formation_coefficient
         self.attacker_alignment_coefficient = attacker_alignment_coefficient
         self.time_penalty_coefficient = time_penalty_coefficient
         self.movement_speed_threshold = movement_speed_threshold
@@ -214,6 +218,7 @@ class MarlMatchEnv:
         self._role_assigner = DynamicRoleAssigner()
         self._role_assignment: RoleAssignment | None = None
         self._goal_geometry_potential = 0.0
+        self._role_formation_potential = 0.0
 
     def reset(self, seed: int) -> TeamBatch:
         snapshot = _seeded_snapshot(self._template, seed)
@@ -234,6 +239,11 @@ class MarlMatchEnv:
         self._role_assigner.reset()
         self._role_assignment = self._role_assigner.assign(self.state, 0)
         self._goal_geometry_potential = _goal_geometry_potential(self.state, self._config, 0)
+        self._role_formation_potential = (
+            _role_formation_potential(self.state, 0, self._role_assignment)
+            if self.role_formation_coefficient > 0.0
+            else 0.0
+        )
         return build_team_observation(self.state, team=0, role_assignment=self._role_assignment)
 
     def step(
@@ -333,6 +343,12 @@ class MarlMatchEnv:
             if goal_complete or stagnated or draw
             else _goal_geometry_potential(self.state, self._config, 0)
         )
+        next_role_assignment = self._role_assigner.assign(self.state, 0)
+        role_formation_potential = (
+            0.0
+            if self.role_formation_coefficient == 0.0 or goal_complete or stagnated or draw
+            else _role_formation_potential(self.state, 0, next_role_assignment)
+        )
         reward = TeamReward(
             ball_progress=self.progress_coefficient
             * (2.0 * (self._closest - closest) + (ball_x - self._ball_x)),
@@ -361,17 +377,23 @@ class MarlMatchEnv:
             defensive_coverage=self.defensive_coverage_coefficient
             * threat
             * (self._defensive_distance - defensive_distance),
+            role_formation=self.role_formation_coefficient
+            * (
+                self.goal_geometry_discount * role_formation_potential
+                - self._role_formation_potential
+            ),
         )
         self._previous_blue_actions = normalized_blue.copy()
         self._ball_x = ball_x
         self._closest = closest
         self._defensive_distance = defensive_distance
         self._goal_geometry_potential = goal_geometry_potential
+        self._role_formation_potential = role_formation_potential
         done = draw or goal_complete or stagnated
         terminal_reason = (
             "goal" if goal_complete else "stagnation" if stagnated else "draw" if draw else None
         )
-        self._role_assignment = self._role_assigner.assign(self.state, 0)
+        self._role_assignment = next_role_assignment
         return (
             build_team_observation(self.state, team=0, role_assignment=self._role_assignment),
             reward,
@@ -468,6 +490,7 @@ class VectorMarlMatchEnv:
         action_parser: str = "continuous",
         free_ball_seconds: float = 10.0,
         free_ball_clearance: float = 0.20,
+        role_formation_coefficient: float = 0.0,
     ) -> None:
         if stage not in (7, 8):
             raise ValueError("stage must be C7 or C8")
@@ -490,6 +513,7 @@ class VectorMarlMatchEnv:
         self.goal_geometry_coefficient = goal_geometry_coefficient
         self.goal_geometry_discount = goal_geometry_discount
         self.ball_progress_coefficient = ball_progress_coefficient
+        self.role_formation_coefficient = role_formation_coefficient
         self._decision_period = float(self._config["timestep"]) * action_repeat
         self.idle_spin_coefficient = idle_spin_coefficient
         self.idle_spin_grace_steps = max(1, round(idle_spin_grace_seconds / self._decision_period))
@@ -539,6 +563,7 @@ class VectorMarlMatchEnv:
         self._controlled_ball_contact = np.zeros(num_envs, dtype=np.bool_)
         self._goal_geometry_potential = np.zeros(num_envs, dtype=np.float32)
         self._mouth_potential = np.zeros(num_envs, dtype=np.float32)
+        self._role_formation_potential = np.zeros(num_envs, dtype=np.float32)
         self._idle_spin_streaks = np.zeros((num_envs, 3), dtype=np.int64)
         self._ally_contact_streaks = np.zeros((num_envs, 3), dtype=np.int64)
         self._opponent_contact_streaks = np.zeros((num_envs, 9), dtype=np.int64)
@@ -623,6 +648,11 @@ class VectorMarlMatchEnv:
             bool(uncovered[0]),
         )
         self.role_assignments[world] = assignment
+        self._role_formation_potential[world] = (
+            _role_formation_potential(self.states[world], team, assignment)
+            if self.role_formation_coefficient > 0.0
+            else 0.0
+        )
         return build_team_observation(self.states[world], team=team, role_assignment=assignment)
 
     def current_observations(self) -> TeamBatch:
@@ -842,6 +872,31 @@ class VectorMarlMatchEnv:
             self._restart_free_ball(int(stalled))
         stagnated = np.zeros(self.num_envs, dtype=np.bool_)
         draw = (self.steps >= self.horizon) & ~goal_complete & ~stagnated
+        # Build the next role assignment before reward so shaping and the next actor
+        # observation refer to exactly the same transient responsibilities.
+        observations, native_assignments, role_features = _native_team_features(
+            self._native, self.controlled_teams, self._config, hysteretic=True
+        )
+        role_formation_potential = (
+            np.where(
+                goal_complete | stagnated | draw,
+                0.0,
+                np.asarray(
+                    [
+                        _role_formation_potential(state, int(team), assignment)
+                        for state, team, assignment in zip(
+                            self.states,
+                            self.controlled_teams,
+                            native_assignments,
+                            strict=True,
+                        )
+                    ],
+                    dtype=np.float32,
+                ),
+            ).astype(np.float32)
+            if self.role_formation_coefficient > 0.0
+            else np.zeros(self.num_envs, dtype=np.float32)
+        )
         attack_sign = np.where(self.controlled_teams == 0, 1.0, -1.0)
         current_ball_contact = scalars[:, 0].astype(np.bool_)
         useful_touch_impulse = np.asarray(
@@ -934,6 +989,13 @@ class VectorMarlMatchEnv:
                     - self._goal_geometry_potential
                 )
             ).astype(np.float32),
+            "role_formation": (
+                self.role_formation_coefficient
+                * (
+                    self.goal_geometry_discount * role_formation_potential
+                    - self._role_formation_potential
+                )
+            ).astype(np.float32),
             "idle_spin": (-self.idle_spin_coefficient * idle_spin_penalty).astype(np.float32),
             "attacker_alignment": (
                 self.attacker_alignment_coefficient
@@ -983,6 +1045,7 @@ class VectorMarlMatchEnv:
         np.copyto(self._controlled_ball_contact, current_ball_contact)
         np.copyto(self._goal_geometry_potential, goal_geometry_potential)
         np.copyto(self._mouth_potential, mouth_potential)
+        np.copyto(self._role_formation_potential, role_formation_potential)
         self._closest = closest
         self._defensive_distance = defensive_distance
         done = draw | goal_complete | stagnated
@@ -990,9 +1053,6 @@ class VectorMarlMatchEnv:
         self.last_terminal_reasons[draw] = "draw"
         self.last_terminal_reasons[stagnated] = "stagnation"
         self.last_terminal_reasons[goal_complete] = "goal"
-        observations, native_assignments, role_features = _native_team_features(
-            self._native, self.controlled_teams, self._config, hysteretic=True
-        )
         np.copyto(self._role_features, role_features)
         assignments: list[RoleAssignment | None] = list(native_assignments)
         self.role_assignments = assignments
@@ -1471,6 +1531,46 @@ def _goal_geometry_potential(
 ) -> float:
     """Bounded state potential; reward its discounted change, never the static pose."""
     return _goal_geometry_metrics(state, config, team)["potential"]
+
+
+def _role_formation_potential(
+    state: FloatArray,
+    team: int,
+    assignment: RoleAssignment,
+) -> float:
+    """Bounded quality of the active support/coverage formation.
+
+    Targets are the same identity-free geometry used by the role assigner. The attacker is
+    deliberately absent: carry, contact, and goal geometry already give that responsibility a
+    dense signal, while run 0013 showed that support and coverage were the missing distinction.
+    """
+    attack_sign = 1.0 if team == 0 else -1.0
+    ball_x, ball_y = float(state[5]), float(state[6])
+    own_goal_x = -attack_sign * 0.75
+    defensive_threat = max(0.0, min(1.0, (-attack_sign * ball_x - 0.15) / 0.55))
+    support_target = (
+        ball_x - attack_sign * 0.22,
+        max(-0.42, min(0.42, ball_y * 0.55)),
+    )
+    coverage_x = (1.0 - defensive_threat) * own_goal_x + defensive_threat * (
+        ball_x + attack_sign * 0.06
+    )
+    coverage_target = (
+        max(-0.70, min(0.70, coverage_x)),
+        max(-0.34, min(0.34, ball_y * (0.65 + 0.35 * defensive_threat))),
+    )
+    controlled = [
+        slot for slot in range(6) if int(state[ROBOT_BASE + slot * ROBOT_WIDTH + 1]) == team
+    ]
+    contributions: list[float] = []
+    for slot, role in zip(controlled, assignment.roles, strict=True):
+        base = ROBOT_BASE + slot * ROBOT_WIDTH
+        if not bool(float(state[base + 10])) or role == "attacker":
+            continue
+        target = support_target if role == "support" else coverage_target
+        distance = math.dist((float(state[base + 2]), float(state[base + 3])), target)
+        contributions.append(math.exp(-distance / 0.25))
+    return float(sum(contributions) / len(contributions)) if contributions else 0.0
 
 
 def _idle_spin_flags(

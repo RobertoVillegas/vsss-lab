@@ -234,7 +234,7 @@ class TrainingDashboard:
             )
         if latest is not None and latest.policy_stats is not None:
             policy = latest.policy_stats
-            if policy.get("action_parser") == "parametric_primitive":
+            if policy.get("action_parser") in ("parametric_primitive", "circular_primitive"):
                 table.add_row(
                     "control intensity · heading Δ mean/p95",
                     (
@@ -244,6 +244,15 @@ class TrainingDashboard:
                     ),
                     "",
                 )
+            by_role = policy.get("actions_by_role")
+            if isinstance(by_role, dict):
+                strikes = []
+                for role in ("attacker", "support", "coverage"):
+                    values = by_role.get(role)
+                    if isinstance(values, dict):
+                        strikes.append(f"{role[:3]}:{_number(values.get('strike_fraction')):.0%}")
+                if strikes:
+                    table.add_row("strike by role", "  ".join(strikes), "")
         if latest is not None and latest.curriculum is not None:
             outcomes = latest.curriculum.get("outcomes")
             if isinstance(outcomes, dict):
