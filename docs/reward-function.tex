@@ -1,0 +1,279 @@
+\documentclass[11pt]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish,es-nodecimaldot]{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{xcolor}
+
+\geometry{margin=2.5cm}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!55!black,
+  urlcolor=blue!55!black
+}
+
+\title{Función de recompensa de VSSS Lab\\
+  \large MAPPO M24.3 con formación por roles dinámicos}
+\author{VSSS Lab}
+\date{2 de agosto de 2026}
+
+\newcommand{\indicator}[1]{\mathbb{I}\!\left[#1\right]}
+\newcommand{\Rteam}{R_t^{\mathrm{team}}}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Este documento describe la función de recompensa utilizada por la configuración
+\texttt{m24-3-mappo-role-formation.toml}. La recompensa terminal continúa siendo global para
+los tres robots. El cambio respecto al run 0013 añade crédito denso, acotado e independiente de
+la identidad física para mejorar la formación de los roles dinámicos \emph{support} y
+\emph{coverage}. El objetivo es reducir la persecución colectiva del balón sin crear un portero
+fijo ni premiar al robot que da el último toque.
+\end{abstract}
+
+\section{Principio de distribución}
+
+El entorno produce un escalar de equipo por mundo y por decisión. El colector lo replica para
+los tres agentes activos:
+
+\begin{equation}
+  R_{t,0}=R_{t,1}=R_{t,2}=\Rteam.
+\end{equation}
+
+Por tanto, un gol propio paga $+10$ a cada agente y un gol recibido paga $-10$ a cada agente.
+La recompensa no identifica al anotador. Premiar únicamente el último toque introduciría una
+competencia directa por rematar y reforzaría precisamente la conducta de todos contra el balón.
+
+Los roles \emph{attacker}, \emph{support} y \emph{coverage} se reasignan en cada estado mediante
+una permutación de costo mínimo con histéresis. Ningún ID, marcador ni posición permanente del
+arreglo es dueño de un rol.
+
+\section{Ecuación completa}
+
+La recompensa de equipo es la suma de términos nombrados:
+
+\begin{align}
+\Rteam ={}& R_{\mathrm{goal}} + R_{\mathrm{semantic}}
+ + R_{\mathrm{mouth}} + R_{\mathrm{geometry}} + R_{\mathrm{formation}}
+ + R_{\mathrm{touch}} + R_{\mathrm{defense}} \notag\\
+&+ R_{\mathrm{time}} + R_{\mathrm{action}}
+ + R_{\mathrm{congestion}} + R_{\mathrm{deadlock}}
+ + R_{\mathrm{spin}} + R_{\mathrm{draw}} + R_{\mathrm{stagnation}}.
+\end{align}
+
+La configuración activa conserva $\gamma=0.99$ y los coeficientes de la
+Tabla~\ref{tab:coefficients}.
+
+\begin{table}[ht]
+  \centering
+  \caption{Coeficientes activos de recompensa.}
+  \label{tab:coefficients}
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    Término & Coeficiente & Interpretación \\
+    \midrule
+    Gol propio / recibido & $\pm 10$ & Resultado terminal dominante \\
+    Resultado semántico & $\pm 1$ & Éxito, fracaso o timeout del ejercicio \\
+    Transporte a boca de gol & $5.0$ & Cambio de potencial angular del balón \\
+    Geometría atacante & $0.05$ & Shaping descontado attacker--balón--gol \\
+    Formación dinámica & $0.20$ & Shaping de support y coverage activos \\
+    Contacto útil & $0.15$ & Impulso firmado al entrar en contacto \\
+    Cobertura defensiva & $0.10$ & Mejora al cubrir una amenaza \\
+    Cambio de acción & $-0.002$ & Regularización cuadrática \\
+    Congestión & $-0.001$ & Agrupamiento persistente \\
+    Deadlock aliado & $-0.002$ & Contacto aliado sostenido \\
+    Deadlock rival & $-0.0005$ & Empuje rival sin progreso \\
+    Giro inútil & $-0.002$ & Giro lento, lejos del balón, tras gracia \\
+    Empate & $-0.50$ & Resultado no resuelto \\
+    Estancamiento & $-1.0$ & Terminal heredado; free-ball lo evita en juego \\
+    Tiempo & $-0.05/1500$ & Costo constante por decisión \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Los términos históricos de progreso ingenuo, dirección horizontal del balón, alineación aislada
+y esfuerzo de ruedas permanecen configurados en cero.
+
+\section{Términos terminales y semánticos}
+
+El resultado futbolístico es
+
+\begin{equation}
+R_{\mathrm{goal}} =
+10\indicator{\text{gol propio}} - 10\indicator{\text{gol rival}}.
+\end{equation}
+
+En un ejercicio semántico se añade
+
+\begin{equation}
+R_{\mathrm{semantic}} =
+\begin{cases}
+ +1, & \text{éxito},\\
+ -1, & \text{fracaso},\\
+ -1, & \text{timeout no resuelto},\\
+ 0,  & \text{de otro modo}.
+\end{cases}
+\end{equation}
+
+El timeout se penaliza para que abstenerse de intentar el ejercicio no sea mejor que fallarlo.
+Esta señal es independiente del gol base: un ejercicio de disparo puede producir tanto el evento
+físico de gol como su resultado semántico.
+
+\section{Transporte del balón hacia una oportunidad convertible}
+
+Sea $\Phi_{\mathrm{mouth}}(s)$ la anchura angular de la boca de gol observada desde el balón,
+normalizada a $[0,1]$. Es máxima frente a la portería y colapsa cerca de una incidencia rasante,
+por lo que llevar el balón a una esquina no cobra como si fuera una ocasión:
+
+\begin{equation}
+R_{\mathrm{mouth}} = 5
+\left(\Phi_{\mathrm{mouth}}(s_{t+1})-\Phi_{\mathrm{mouth}}(s_t)\right).
+\end{equation}
+
+Este término es deliberadamente no descontado en su propia diferencia. Mantener el balón quieto
+no genera recompensa y moverlo de una posición buena a una peor devuelve lo cobrado. Su
+contribución máxima por episodio está acotada por $5$, frente a un gol que vale $10$.
+
+\section{Geometría atacante}
+
+El potencial atacante combina cuatro cantidades normalizadas:
+
+\begin{equation}
+\Phi_{\mathrm{geometry}} =
+0.45 A + 0.25 O + 0.15 C + 0.15 P,
+\end{equation}
+
+donde $A$ es la alineación attacker--balón--gol, $O$ es el margen dentro de la apertura
+utilizable, $C$ es la proximidad controlable y $P$ es el progreso longitudinal. Su shaping es
+
+\begin{equation}
+R_{\mathrm{geometry}} = 0.05
+\left(0.99\Phi_{\mathrm{geometry}}(s_{t+1})-
+\Phi_{\mathrm{geometry}}(s_t)\right).
+\end{equation}
+
+El potencial siguiente se fija en cero al terminar el episodio. Así no se paga simplemente por
+finalizar en una pose favorable.
+
+\section{Formación por roles dinámicos}
+
+El nuevo término considera únicamente los robots activos que actualmente poseen las
+responsabilidades \emph{support} y \emph{coverage}. Para un rol activo $r$, sea $d_r$ la distancia
+entre el robot asignado y el objetivo geométrico ya empleado por el asignador de roles:
+
+\begin{align}
+q_r &= \exp\!\left(-\frac{d_r}{0.25\ \mathrm{m}}\right),\\
+\Phi_{\mathrm{formation}} &= \frac{1}{|\mathcal{R}_{\mathrm{active}}|}
+\sum_{r\in\mathcal{R}_{\mathrm{active}}} q_r,
+\quad \mathcal{R}_{\mathrm{active}}\subseteq
+\{\mathrm{support},\mathrm{coverage}\}.
+\end{align}
+
+Si ninguno de esos roles está activo, como en un ejercicio 1v0, el potencial es cero. La
+recompensa es
+
+\begin{equation}
+R_{\mathrm{formation}} = 0.20
+\left(0.99\Phi_{\mathrm{formation}}(s_{t+1})-
+\Phi_{\mathrm{formation}}(s_t)\right).
+\end{equation}
+
+El potencial siguiente también es cero en terminales. Quedarse estacionado no produce una renta
+positiva. Cuando dos robots intercambian responsabilidades, el shaping sigue al rol y no a la
+identidad física. No existe un action mask: coverage todavía puede desafiar el balón cuando la
+asignación dinámica considera que debe rotar.
+
+El coeficiente $0.20$ acota su contribución al retorno descontado a dos por ciento del valor de
+un gol. Sobre el replay final del run 0013 produjo una magnitud media estimada de
+$6.06\times10^{-4}$ por decisión, aproximadamente un tercio del término de transporte del balón.
+
+\section{Contacto y defensa}
+
+El contacto útil es un impulso firmado y sólo ocurre en el flanco de entrada del contacto:
+
+\begin{equation}
+R_{\mathrm{touch}} = 0.15\tanh\!\left(
+\operatorname{sign}_{\mathrm{attack}}\Delta v_{x,\mathrm{ball}}
+\right).
+\end{equation}
+
+El signo hace que impulsar el balón en sentido incorrecto cueste lo mismo que el avance
+equivalente. El flanco evita cobrar repetidamente durante contacto sostenido.
+
+La cobertura defensiva paga reducir la distancia $d_{\mathrm{def}}$ al punto de cobertura sólo
+cuando existe amenaza $T\in[0,1]$:
+
+\begin{equation}
+R_{\mathrm{defense}} = 0.10T
+\left(d_{\mathrm{def},t}-d_{\mathrm{def},t+1}\right).
+\end{equation}
+
+Los deadlocks se penalizan después de una gracia: contacto aliado sostenido cuando no se disputa
+el balón y contacto rival sostenido cuando el balón permanece estancado.
+
+\section{Regularización}
+
+El cambio brusco de comandos se penaliza mediante
+
+\begin{equation}
+R_{\mathrm{action}}=-0.002\operatorname{mean}\!\left((a_t-a_{t-1})^2\right).
+\end{equation}
+
+La congestión y el giro inútil tienen coeficientes pequeños. El giro sólo se activa después de
+$0.5$ segundos cuando el robot está lento, gira por encima de $1\ \mathrm{rad/s}$ y está fuera
+de una envolvente de $0.12$ m alrededor del balón. Estas condiciones evitan castigar una
+orientación legítima antes de un contacto.
+
+\section{Evidencia y criterios para el siguiente run}
+
+En el replay de la iteración 2000 del run 0013 se midió:
+
+\begin{table}[ht]
+  \centering
+  \caption{Conducta por rol antes del nuevo shaping.}
+  \begin{tabular}{@{}lrr@{}}
+    \toprule
+    Rol & Fracción \texttt{STRIKE} & Distancia media al balón \\
+    \midrule
+    attacker & $0.875$ & $0.194$ m \\
+    support  & $0.551$ & $0.434$ m \\
+    coverage & $0.482$ & $0.455$ m \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+La diferenciación espacial existía, pero support y coverage seguían solicitando contacto con el
+balón aproximadamente la mitad del tiempo. El siguiente run debe evaluarse por conducta y
+resultado, no por recompensa total. Los criterios principales son:
+
+\begin{itemize}
+  \item reducir \texttt{coverage.strike\_fraction} por debajo de $0.482$ sin colapsar a
+    \texttt{STOP};
+  \item reducir \texttt{support.strike\_fraction} por debajo de $0.551$ sin degradar pase o
+    rotación;
+  \item conservar attacker como el rol con mayor fracción de \texttt{STRIKE};
+  \item mantener al menos $0.2$ goles por minuto y una tasa de empate no mayor que $0.70$;
+  \item conservar la ocupación de posiciones convertibles que justificó el coeficiente de
+    transporte $5.0$.
+\end{itemize}
+
+\section{Trazabilidad y rollback}
+
+La implementación vive en \texttt{python/vsss\_train/marl\_env.py}; los coeficientes del nuevo
+experimento están en \texttt{experiments/configs/m24-3-mappo-role-formation.toml}. La decisión
+arquitectónica es ADR 0023 y la evidencia se registra en
+\texttt{docs/evidence/m24-3-role-formation-credit.md}.
+
+El rollback no requiere cambiar código: fijar
+\texttt{role\_formation\_coefficient = 0.0} desactiva el término. La configuración histórica
+\texttt{m24-3-mappo-circular.toml} permanece sin modificar y conserva el fingerprint del run
+0013.
+
+\end{document}
