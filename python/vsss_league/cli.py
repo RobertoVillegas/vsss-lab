@@ -459,7 +459,7 @@ def _run(arguments: argparse.Namespace) -> None:
                 phase_before = rollout_session.semantic_curriculum.phase_name
                 phase_advanced = rollout_session.semantic_curriculum.observe_holdout_rates(
                     family_rates,
-                    behavior_eligible=behavior_gate_passed,
+                    behavior_eligible=behavior.motion_eligible,
                 )
                 # Losing to an older self is invisible in every other metric: the heuristic
                 # scorecard cannot show it and the incumbent bound only watches the promoted

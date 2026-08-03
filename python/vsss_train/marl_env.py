@@ -1570,7 +1570,12 @@ def _role_formation_potential(
         target = support_target if role == "support" else coverage_target
         distance = math.dist((float(state[base + 2]), float(state[base + 3])), target)
         contributions.append(math.exp(-distance / 0.25))
-    return float(sum(contributions) / len(contributions)) if contributions else 0.0
+    if not contributions:
+        return 0.0
+    # A mean let excellent coverage hide a support robot that had abandoned its target (and
+    # vice versa).  The geometric mean remains smooth and bounded, agrees with the sole active
+    # responsibility in 2v1, and makes either missing responsibility a team-level bottleneck.
+    return float(math.prod(contributions) ** (1.0 / len(contributions)))
 
 
 def _idle_spin_flags(

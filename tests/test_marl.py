@@ -324,6 +324,30 @@ def test_role_formation_is_invariant_to_controlled_robot_order() -> None:
     assert actual == pytest.approx(expected)
 
 
+def test_role_formation_uses_both_active_responsibilities_as_a_bottleneck() -> None:
+    state = initial_state()
+    assignment = assign_roles(state, 0)
+    attack_sign = 1.0
+    ball_x, ball_y = float(state[5]), float(state[6])
+    targets = {
+        "support": (ball_x - attack_sign * 0.22, ball_y * 0.55),
+        "coverage": (-0.70, ball_y * 0.65),
+    }
+    contributions = []
+    for slot, role in enumerate(assignment.roles):
+        if role == "attacker":
+            continue
+        base = ROBOT_BASE + slot * 11
+        target = targets[role]
+        distance = math.dist((float(state[base + 2]), float(state[base + 3])), target)
+        contributions.append(math.exp(-distance / 0.25))
+
+    potential = _role_formation_potential(state, 0, assignment)
+
+    assert potential == pytest.approx(math.sqrt(math.prod(contributions)))
+    assert potential < sum(contributions) / len(contributions)
+
+
 def test_idle_spin_detection_exempts_orientation_and_ball_control() -> None:
     state = initial_state()
     actions = np.asarray(((-0.8, 0.8), (0.4, 0.8), (-0.8, 0.8)), dtype=np.float32)
@@ -680,7 +704,7 @@ def test_versioned_marl_configs() -> None:
     assert coordinated.curriculum_heuristic_iterations == 1000
     assert coordinated.league_heuristic_weight == 0.35
     assert run_0013.role_formation_coefficient == 0.0
-    assert role_formation.role_formation_coefficient == 0.20
+    assert role_formation.role_formation_coefficient == 0.10
     assert role_formation.policy_id != run_0013.policy_id
 
 

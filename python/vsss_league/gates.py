@@ -38,6 +38,19 @@ class BehaviorJudgement:
             reasons.append("goals_per_minute")
         return tuple(reasons)
 
+    @property
+    def motion_eligible(self) -> bool:
+        """Whether play is active enough to unlock teaching phases.
+
+        Goal throughput remains mandatory for promotion, but a zero-goal short match sample
+        must not prevent the curriculum from teaching the defensive skills that create an
+        integrated scoring policy.  STOP and idle spin still reject a collapsed policy.
+        """
+        return (
+            self.idle_spin_ratio <= self.idle_spin_ceiling
+            and self.stop_fraction <= self.stop_fraction_ceiling
+        )
+
     def as_dict(self) -> dict[str, object]:
         return {
             "passed": self.passed,

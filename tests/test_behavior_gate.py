@@ -91,3 +91,27 @@ def test_a_stop_fraction_ceiling_of_one_cannot_reject() -> None:
         idle_spin_ratio=0.0, stop_fraction=1.0, goals_for_per_minute=1.0, config=config
     )
     assert verdict.passed
+
+
+def test_goal_throughput_does_not_block_motion_eligibility() -> None:
+    verdict = judge_behavior(
+        idle_spin_ratio=0.01,
+        stop_fraction=0.05,
+        goals_for_per_minute=0.0,
+        config=CONFIGURED,
+    )
+
+    assert not verdict.passed
+    assert verdict.failures == ("goals_per_minute",)
+    assert verdict.motion_eligible
+
+
+def test_motion_pathology_blocks_phase_eligibility() -> None:
+    verdict = judge_behavior(
+        idle_spin_ratio=0.01,
+        stop_fraction=0.20,
+        goals_for_per_minute=1.0,
+        config=CONFIGURED,
+    )
+
+    assert not verdict.motion_eligible
