@@ -13,6 +13,7 @@ from vsss_baselines.controllers import TURN_AUTHORITY
 from vsss_env._native import BatchSimulator
 from vsss_league.training import _policy_stats, create_rollout_session
 from vsss_train.config import MarlConfig, load_marl_config
+from vsss_train.heterogeneity import ablate_role_features, measure_heterogeneity_gain
 from vsss_train.marl import (
     CentralizedCritic,
     LocalCritic,
@@ -776,11 +777,59 @@ def test_versioned_marl_configs() -> None:
     assert role_formation.role_formation_coefficient == 0.10
     assert role_formation.policy_id != run_0013.policy_id
     per_role = load_marl_config(ROOT / "experiments/configs/m24-4-mappo-role-formation.toml")
+    complementarity = load_marl_config(ROOT / "experiments/configs/m24-5-mappo-role-formation.toml")
     assert per_role.role_formation_coefficient == 0.0
     assert per_role.support_formation_coefficient == 0.15
     assert per_role.coverage_formation_coefficient == 0.15
     assert per_role.role_switch_penalty == 0.30
     assert per_role.role_emergency_margin == 0.30
+    assert complementarity.role_formation_coefficient == 0.10
+    assert complementarity.support_formation_coefficient == 0.15
+    assert complementarity.coverage_formation_coefficient == 0.15
+    assert complementarity.policy_id != per_role.policy_id
+
+
+def test_role_ablation_rewrites_only_role_columns() -> None:
+    observation = build_team_observation(initial_state(), team=0)
+    rng = np.random.default_rng(0)
+    uniform = ablate_role_features(observation, "uniform", rng)
+    assert torch.equal(uniform.context[..., :4], observation.context[..., :4])
+    roles = uniform.context[..., 4:]
+    assert torch.all(roles[..., 0] == 1.0)
+    assert torch.all(roles[..., 1:] == 0.0)
+    none = ablate_role_features(observation, "none", rng)
+    assert torch.all(none.context[..., 4:] == 0.0)
+    shuffled = ablate_role_features(observation, "shuffle", rng)
+    assert torch.allclose(
+        shuffled.context[..., 4:].sum(dim=0), observation.context[..., 4:].sum(dim=0)
+    )
+    with pytest.raises(ValueError, match="ablation mode"):
+        ablate_role_features(observation, "mirror", rng)
+
+
+def test_heterogeneity_gain_reports_paired_progress() -> None:
+    config = MarlConfig(
+        device="cpu",
+        num_envs=1,
+        hidden_size=8,
+        epochs=1,
+        policy_architecture="role_mlp",
+    )
+    learner = MarlLearner(config)
+    result = measure_heterogeneity_gain(
+        learner.actor,
+        CONFIG,
+        STATE,
+        stage=7,
+        seeds=range(3),
+        horizon=20,
+        action_repeat=1,
+        ablation="uniform",
+    )
+    assert result.seeds == 3
+    assert math.isfinite(result.gain)
+    assert math.isfinite(result.conditioned_progress)
+    assert math.isfinite(result.ablated_progress)
 
 
 def test_c7_and_c8_have_explicit_opponent_modes_and_team_rewards() -> None:

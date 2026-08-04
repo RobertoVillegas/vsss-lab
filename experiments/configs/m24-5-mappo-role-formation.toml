@@ -1,0 +1,87 @@
+schema_version = 1
+algorithm = "mappo"
+policy_architecture = "role_mlp"
+action_parser = "circular_primitive"
+semantic_curriculum = true
+semantic_phased_curriculum = true
+semantic_phase_patience = 2
+semantic_phase_rehearsal_fraction = 0.40
+semantic_phase_full_match_floor = 0.30
+semantic_full_match_fraction = 0.35
+semantic_terminal_reward = 1.0
+semantic_regression_patience = 12
+semantic_regression_warmup_evaluations = 16
+semantic_promotion_floors = { pass_receive = 0.15, rotation_recovery = 0.15, clearance = 0.35, interception = 0.35, save_deflection = 0.35 }
+semantic_max_idle_spin_ratio = 0.08
+semantic_max_stop_fraction = 0.15
+semantic_min_goals_per_minute = 0.2
+semantic_min_match_win_rate = 0.20
+semantic_max_match_draw_rate = 0.70
+seed = 245
+device = "auto"
+num_envs = 64
+hidden_size = 256
+network_activation = "relu"
+layer_norm = true
+learning_rate = 0.0001
+gamma = 0.99
+gae_lambda = 0.95
+clip_epsilon = 0.2
+entropy_coefficient = 0.001
+minimum_log_std = -1.8
+maximum_log_std = -0.4
+value_coefficient = 0.5
+max_grad_norm = 0.5
+epochs = 4
+minibatch_size = 8192
+policy_id = "m24.5-role-complementarity-mappo-shared-v1"
+curriculum_stage = 8
+horizon = 1500
+rollout_steps = 256
+action_repeat = 4
+action_delta_coefficient = 0.002
+wheel_effort_coefficient = 0.0
+ball_direction_coefficient = 0.0
+useful_touch_impulse_coefficient = 0.15
+goal_geometry_coefficient = 0.05
+# Run 0013 established this carry scale: coefficient 1 was inaudible and 5 tripled the
+# occupancy of positions the action set can convert while keeping a goal dominant at 10.
+ball_progress_coefficient = 5.0
+goal_geometry_discount = 0.99
+# ADR 0026 addendum. The per-role additive split made the outer aggregation over support and
+# coverage linear, which the curvature theory (arXiv:2506.09434, Thm 3.3) says is
+# heterogeneity-neutral. The pooled geometric mean is the Schur-concave outer bottleneck that
+# rewards the division of labour; it is re-enabled at 0.10 (the ADR 0024 scale, ~1% of a goal)
+# on top of the per-role terms, which stay at 0.15 for gradient and attribution. M24.4 is the
+# per-role-only comparison arm.
+role_formation_coefficient = 0.10
+support_formation_coefficient = 0.15
+coverage_formation_coefficient = 0.15
+role_switch_penalty = 0.30
+role_emergency_margin = 0.30
+idle_spin_coefficient = 0.002
+idle_spin_grace_seconds = 0.5
+idle_spin_angular_speed = 1.0
+idle_spin_drive_threshold = 0.07
+idle_spin_speed_threshold = 0.08
+idle_spin_ball_distance = 0.12
+attacker_alignment_coefficient = 0.0
+time_penalty_coefficient = 0.05
+movement_speed_threshold = 0.03
+teammate_spacing = 0.14
+teammate_congestion_coefficient = 0.001
+contact_distance = 0.082
+contact_grace_seconds = 0.5
+ally_deadlock_coefficient = 0.002
+opponent_deadlock_coefficient = 0.0005
+defensive_coverage_coefficient = 0.10
+defensive_activation_x = 0.15
+draw_penalty = 0.50
+stagnation_penalty = 1.0
+stagnation_seconds = 5.0
+stagnation_ball_distance = 0.02
+curriculum_heuristic_iterations = 100
+league_self_play_weight = 0.40
+league_historical_weight = 0.35
+league_heuristic_weight = 0.25
+league_history_window = 16

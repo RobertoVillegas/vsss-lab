@@ -72,6 +72,9 @@ prepare-marl config="experiments/configs/m6-mappo.toml" checkpoint="/home/rob/ch
 evaluate-marl config="experiments/configs/m6-mappo.toml" checkpoint="/home/rob/checkpoints/m6-mappo.pt" seeds="20" margin="0.05":
   uv run --group train python -m vsss_train.marl_cli evaluate --config "{{config}}" --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --checkpoint "{{checkpoint}}" --seeds {{seeds}} --margin {{margin}}
 
+heterogeneity-gain config checkpoint seeds="10" ablation="uniform":
+  uv run --group train python tools/heterogeneity_gain.py --config "{{config}}" --match-config tests/golden/m1_match_config.json --match-state tests/golden/m1_match_state.json --checkpoint "{{checkpoint}}" --seeds {{seeds}} --ablation "{{ablation}}"
+
 m6-smoke:
   uv run --group train pytest -q tests/test_marl.py
 
@@ -228,6 +231,9 @@ league-live-m24-ippo steps="5000000" capture_every="25" capture_seconds="60" che
 
 league-live-m24-4 steps="50000000" capture_every="25" capture_seconds="60" checkpoint_every="25" device="auto" num_envs="64" eval_every="25" eval_seeds="5" port="8765":
   run_dir=$(uv run python tools/next_run_dir.py vsss-m24-4-run); echo "Allocated M24.4 role-specialization run: $run_dir"; just league-live-semantic-at "$run_dir" "{{steps}}" "{{capture_every}}" "{{capture_seconds}}" "{{checkpoint_every}}" "{{device}}" "{{num_envs}}" "{{eval_every}}" "{{eval_seeds}}" "{{port}}" "experiments/configs/m24-4-mappo-role-formation.toml"
+
+league-live-m24-5 steps="50000000" capture_every="25" capture_seconds="60" checkpoint_every="25" device="auto" num_envs="64" eval_every="25" eval_seeds="5" port="8765":
+  run_dir=$(uv run python tools/next_run_dir.py vsss-m24-5-run); echo "Allocated M24.5 role-complementarity run: $run_dir"; just league-live-semantic-at "$run_dir" "{{steps}}" "{{capture_every}}" "{{capture_seconds}}" "{{checkpoint_every}}" "{{device}}" "{{num_envs}}" "{{eval_every}}" "{{eval_seeds}}" "{{port}}" "experiments/configs/m24-5-mappo-role-formation.toml"
 
 league-live-resume run_dir="/home/rob/runs/vsss-lab-live" iterations="1000" capture_every="100" capture_seconds="60" checkpoint_every="100" device="auto" num_envs="64" port="8765":
   just web-build
