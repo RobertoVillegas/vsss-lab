@@ -26,12 +26,14 @@ from vsss_train.marl_env import (
     MarlMatchEnv,
     _attacker_alignment_reward,
     _ball_direction_reward,
+    _coverage_formation_potential,
     _defensive_threat,
     _goal_geometry_metrics,
     _goal_geometry_potential,
     _idle_spin_flags,
     _role_formation_potential,
     _seeded_snapshot,
+    _support_formation_potential,
     _team_touches_ball,
     _teammate_congestion,
     _useful_touch_impulse,
@@ -347,6 +349,72 @@ def test_role_formation_uses_both_active_responsibilities_as_a_bottleneck() -> N
 
     assert potential == pytest.approx(math.sqrt(math.prod(contributions)))
     assert potential < sum(contributions) / len(contributions)
+
+
+def test_per_role_formation_potentials_are_independent() -> None:
+    state = initial_state()
+    assignment = assign_roles(state, 0)
+    attack_sign = 1.0
+    ball_x, ball_y = float(state[5]), float(state[6])
+    targets = {
+        "support": (ball_x - attack_sign * 0.22, ball_y * 0.55),
+        "coverage": (-0.70, ball_y * 0.65),
+    }
+    for role in ("support", "coverage"):
+        slot = assignment.roles.index(role)
+        base = ROBOT_BASE + slot * 11
+        state[base + 2], state[base + 3] = targets[role]
+
+    support_potential = _support_formation_potential(state, 0, assignment)
+    coverage_potential = _coverage_formation_potential(state, 0, assignment)
+
+    assert support_potential > 0.9
+    assert coverage_potential > 0.9
+    assert _role_formation_potential(state, 0, assignment) == pytest.approx(
+        math.sqrt(support_potential * coverage_potential), abs=1e-6
+    )
+
+    coverage_slot = assignment.roles.index("coverage")
+    state[ROBOT_BASE + coverage_slot * 11 + 2] -= 0.8
+
+    assert _support_formation_potential(state, 0, assignment) == pytest.approx(support_potential)
+    assert _coverage_formation_potential(state, 0, assignment) < 0.05
+
+
+def test_per_role_formation_terms_are_terminal_zeroed() -> None:
+    environment = MarlMatchEnv(
+        CONFIG,
+        STATE,
+        stage=7,
+        horizon=1,
+        action_repeat=1,
+        support_formation_coefficient=0.2,
+        coverage_formation_coefficient=0.3,
+        goal_geometry_discount=0.99,
+    )
+    environment.reset(7)
+    assignment = assign_roles(environment.state, 0)
+    support_entry = _support_formation_potential(environment.state, 0, assignment)
+    coverage_entry = _coverage_formation_potential(environment.state, 0, assignment)
+
+    _, reward, done, _ = environment.step(np.zeros((3, 2), dtype=np.float32))
+
+    assert done
+    assert support_entry > 0.0
+    assert coverage_entry > 0.0
+    assert reward.support_formation == pytest.approx(-0.2 * support_entry, abs=2e-3)
+    assert reward.coverage_formation == pytest.approx(-0.3 * coverage_entry, abs=2e-3)
+
+
+def test_role_hysteresis_knobs_reject_negative() -> None:
+    with pytest.raises(ValueError, match="non-negative"):
+        MarlMatchEnv(CONFIG, STATE, stage=7, role_switch_penalty=-0.1)
+    with pytest.raises(ValueError, match="non-negative"):
+        MarlMatchEnv(CONFIG, STATE, stage=7, role_emergency_margin=-0.1)
+    with pytest.raises(ValueError, match="non-negative"):
+        MarlMatchEnv(CONFIG, STATE, stage=7, support_formation_coefficient=-0.1)
+    with pytest.raises(ValueError, match="non-negative"):
+        MarlMatchEnv(CONFIG, STATE, stage=7, coverage_formation_coefficient=-0.1)
 
 
 def test_idle_spin_detection_exempts_orientation_and_ball_control() -> None:
@@ -707,6 +775,12 @@ def test_versioned_marl_configs() -> None:
     assert run_0013.role_formation_coefficient == 0.0
     assert role_formation.role_formation_coefficient == 0.10
     assert role_formation.policy_id != run_0013.policy_id
+    per_role = load_marl_config(ROOT / "experiments/configs/m24-4-mappo-role-formation.toml")
+    assert per_role.role_formation_coefficient == 0.0
+    assert per_role.support_formation_coefficient == 0.15
+    assert per_role.coverage_formation_coefficient == 0.15
+    assert per_role.role_switch_penalty == 0.30
+    assert per_role.role_emergency_margin == 0.30
 
 
 def test_c7_and_c8_have_explicit_opponent_modes_and_team_rewards() -> None:

@@ -159,6 +159,17 @@ class MarlConfig:
     # the part that pays for carrying. See ADR 0021.
     ball_progress_coefficient: float = 0.0
     role_formation_coefficient: float = 0.0
+    # ADR 0026: support and coverage each carry their own geometric-bottleneck formation
+    # potential instead of one pooled mean, so the team cannot trade one responsibility
+    # away while the other improves. Independent coefficients keep the terms accountable.
+    support_formation_coefficient: float = 0.0
+    coverage_formation_coefficient: float = 0.0
+    # ADR 0026: the role hysteresis is a training knob. Raising it cuts the 500-800
+    # switches per iteration seen in the M24.3 run and gives the role-conditioned actor a
+    # stable specialization signal; the emergency override still rotates when staying put
+    # is clearly wrong. The Python reference and the native assigner share these values.
+    role_switch_penalty: float = 0.18
+    role_emergency_margin: float = 0.20
     idle_spin_coefficient: float = 0.0
     idle_spin_grace_seconds: float = 0.5
     # Retained so checkpoints written before behavior detection moved to measured
@@ -299,6 +310,10 @@ class MarlConfig:
             self.useful_touch_impulse_coefficient,
             self.goal_geometry_coefficient,
             self.role_formation_coefficient,
+            self.support_formation_coefficient,
+            self.coverage_formation_coefficient,
+            self.role_switch_penalty,
+            self.role_emergency_margin,
             self.idle_spin_coefficient,
             self.attacker_alignment_coefficient,
             self.time_penalty_coefficient,

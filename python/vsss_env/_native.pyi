@@ -6,7 +6,14 @@ from numpy.typing import NDArray
 class BatchSimulator:
     """Native independent-world simulator."""
 
-    def __init__(self, config_json: str, state_json: str, num_worlds: int) -> None: ...
+    def __init__(
+        self,
+        config_json: str,
+        state_json: str,
+        num_worlds: int,
+        role_switch_penalty: float = 0.18,
+        role_emergency_margin: float = 0.20,
+    ) -> None: ...
     @property
     def num_worlds(self) -> int: ...
     @staticmethod

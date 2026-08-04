@@ -114,7 +114,20 @@ fn role_names(assignment: &Assignment) -> Vec<&'static str> {
 #[pymethods]
 impl BatchSimulator {
     #[new]
-    fn new(config_json: &str, state_json: &str, num_worlds: usize) -> PyResult<Self> {
+    #[pyo3(signature = (
+        config_json,
+        state_json,
+        num_worlds,
+        role_switch_penalty = vsss_features::roles::SWITCH_PENALTY,
+        role_emergency_margin = vsss_features::roles::EMERGENCY_MARGIN
+    ))]
+    fn new(
+        config_json: &str,
+        state_json: &str,
+        num_worlds: usize,
+        role_switch_penalty: f64,
+        role_emergency_margin: f64,
+    ) -> PyResult<Self> {
         if num_worlds == 0 {
             return Err(PyValueError::new_err("num_worlds must be positive"));
         }
@@ -128,7 +141,13 @@ impl BatchSimulator {
             .map_err(|error| PyValueError::new_err(error.to_string()))?;
         Ok(Self {
             batch: PhysicsBatch::new(worlds),
-            assigners: vec![HystereticAssigner::new(); num_worlds],
+            assigners: vec![
+                HystereticAssigner::with_hysteresis(
+                    role_switch_penalty,
+                    role_emergency_margin
+                );
+                num_worlds
+            ],
         })
     }
 

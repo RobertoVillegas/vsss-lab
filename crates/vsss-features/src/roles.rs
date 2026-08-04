@@ -78,17 +78,41 @@ pub struct Assignment {
     pub uncovered: bool,
 }
 
-/// Carries the previous assignment so successive decisions do not thrash between roles.
-#[derive(Clone, Copy, Debug, Default)]
+/// Carries the previous assignment and the hysteresis strength so successive decisions do not
+/// thrash between roles.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HystereticAssigner {
+    switch_penalty: f64,
+    emergency_margin: f64,
     previous: Option<[Role; 3]>,
 }
 
+impl Default for HystereticAssigner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HystereticAssigner {
-    /// Start with no history, as at the beginning of an episode.
+    /// Start with no history and the reference hysteresis strength, as at the beginning of an
+    /// episode.
     #[must_use]
     pub const fn new() -> Self {
-        Self { previous: None }
+        Self {
+            switch_penalty: SWITCH_PENALTY,
+            emergency_margin: EMERGENCY_MARGIN,
+            previous: None,
+        }
+    }
+
+    /// Start with no history and an explicit hysteresis strength.
+    #[must_use]
+    pub const fn with_hysteresis(switch_penalty: f64, emergency_margin: f64) -> Self {
+        Self {
+            switch_penalty,
+            emergency_margin,
+            previous: None,
+        }
     }
 
     /// Forget the previous assignment; the next one is decided on cost alone.
@@ -103,7 +127,13 @@ impl HystereticAssigner {
     /// Returns an error when the team index is not 0 or 1, or the state does not hold exactly
     /// three robots for that team.
     pub fn assign(&mut self, state: &[f32], team: u8) -> Result<Assignment, FeatureError> {
-        let result = assign_roles(state, team, self.previous)?;
+        let result = assign_roles_parameterized(
+            state,
+            team,
+            self.previous,
+            self.switch_penalty,
+            self.emergency_margin,
+        )?;
         self.previous = Some(result.roles);
         Ok(result)
     }
@@ -220,6 +250,7 @@ fn best_permutation(
     robots: &[RobotCosts; 3],
     active_count: usize,
     previous: Option<[Role; 3]>,
+    switch_penalty: f64,
 ) -> ([Role; 3], f64) {
     let mut best_roles = [Role::Attacker; 3];
     let mut best_cost = f64::INFINITY;
@@ -233,7 +264,7 @@ fn best_permutation(
                 .count()
         });
         #[allow(clippy::cast_precision_loss)] // switches is at most three
-        let cost = SWITCH_PENALTY.mul_add(switches as f64, raw_cost(robots, roles, active_count));
+        let cost = switch_penalty.mul_add(switches as f64, raw_cost(robots, roles, active_count));
         if best_cost.is_infinite() || precedes(cost, roles, best_cost, best_roles) {
             best_cost = cost;
             best_roles = roles;
@@ -251,11 +282,11 @@ fn defended(robots: &[RobotCosts; 3], ball: &BallFrame, attack_sign: f64) -> boo
     })
 }
 
-/// Minimize joint tactical cost over all six role permutations.
+/// Minimize joint tactical cost over all six role permutations, with the reference hysteresis.
 ///
-/// Passing `previous` applies hysteresis: a permutation that changes roles pays
-/// [`SWITCH_PENALTY`] per change, unless staying put costs [`EMERGENCY_MARGIN`] more than the
-/// unpenalized best, in which case the unpenalized choice wins.
+/// This delegates to [`assign_roles_parameterized`] with the [`SWITCH_PENALTY`] and
+/// [`EMERGENCY_MARGIN`] constants, so existing callers and the native/Python equivalence tests
+/// are unchanged.
 ///
 /// # Errors
 ///
@@ -265,6 +296,26 @@ pub fn assign_roles(
     state: &[f32],
     team: u8,
     previous: Option<[Role; 3]>,
+) -> Result<Assignment, FeatureError> {
+    assign_roles_parameterized(state, team, previous, SWITCH_PENALTY, EMERGENCY_MARGIN)
+}
+
+/// Minimize joint tactical cost over all six role permutations, with explicit hysteresis.
+///
+/// Passing `previous` applies hysteresis: a permutation that changes roles pays `switch_penalty`
+/// per change, unless staying put costs `emergency_margin` more than the unpenalized best, in
+/// which case the unpenalized choice wins.
+///
+/// # Errors
+///
+/// Returns an error when the team index is not 0 or 1, the state is too short, or the state does
+/// not hold exactly three robots for that team.
+pub fn assign_roles_parameterized(
+    state: &[f32],
+    team: u8,
+    previous: Option<[Role; 3]>,
+    switch_penalty: f64,
+    emergency_margin: f64,
 ) -> Result<Assignment, FeatureError> {
     if team > 1 {
         return Err(FeatureError::UnknownTeam);
@@ -289,10 +340,11 @@ pub fn assign_roles(
         .map_err(|_: Vec<RobotCosts>| FeatureError::RosterNotCanonical)?;
     let active_count = robots.iter().filter(|robot| robot.active).count();
 
-    let (mut selected, mut selected_cost) = best_permutation(&robots, active_count, previous);
+    let (mut selected, mut selected_cost) =
+        best_permutation(&robots, active_count, previous, switch_penalty);
     if let Some(before) = previous {
-        let (raw_roles, raw_best) = best_permutation(&robots, active_count, None);
-        if raw_cost(&robots, before, active_count) - raw_best >= EMERGENCY_MARGIN {
+        let (raw_roles, raw_best) = best_permutation(&robots, active_count, None, switch_penalty);
+        if raw_cost(&robots, before, active_count) - raw_best >= emergency_margin {
             selected = raw_roles;
             selected_cost = raw_best;
         }

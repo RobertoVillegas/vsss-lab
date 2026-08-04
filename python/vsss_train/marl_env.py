@@ -97,6 +97,8 @@ class TeamReward:
     teammate_congestion: float = 0.0
     defensive_coverage: float = 0.0
     role_formation: float = 0.0
+    support_formation: float = 0.0
+    coverage_formation: float = 0.0
 
     @property
     def total(self) -> float:
@@ -112,6 +114,8 @@ class TeamReward:
             + self.teammate_congestion
             + self.defensive_coverage
             + self.role_formation
+            + self.support_formation
+            + self.coverage_formation
         )
 
 
@@ -157,6 +161,10 @@ class MarlMatchEnv:
         goal_geometry_discount: float = 0.99,
         ball_progress_coefficient: float = 0.0,
         role_formation_coefficient: float = 0.0,
+        support_formation_coefficient: float = 0.0,
+        coverage_formation_coefficient: float = 0.0,
+        role_switch_penalty: float = 0.18,
+        role_emergency_margin: float = 0.20,
         attacker_alignment_coefficient: float = 0.0,
         time_penalty_coefficient: float = 0.0,
         movement_speed_threshold: float = 0.03,
@@ -175,10 +183,20 @@ class MarlMatchEnv:
             raise ValueError("stage must be C7 or C8")
         if not 0.0 <= full_match_kickoff_radius <= 0.20:
             raise ValueError("full_match_kickoff_radius must be in [0, 0.20]")
+        if role_switch_penalty < 0.0 or role_emergency_margin < 0.0:
+            raise ValueError("role hysteresis values must be non-negative")
+        if (
+            role_formation_coefficient < 0.0
+            or support_formation_coefficient < 0.0
+            or coverage_formation_coefficient < 0.0
+        ):
+            raise ValueError("role formation coefficients must be non-negative")
         self._config = json.loads(config_json)
         self._max_wheel_speed = float(self._config["max_wheel_speed"])
         self._template = json.loads(state_json)
-        self._native = BatchSimulator(config_json, state_json, 1)
+        self._native = BatchSimulator(
+            config_json, state_json, 1, role_switch_penalty, role_emergency_margin
+        )
         self._yellow = DynamicTeamController(3, -1)
         self.stage = stage
         self.horizon = horizon
@@ -192,6 +210,8 @@ class MarlMatchEnv:
         self.goal_geometry_discount = goal_geometry_discount
         self.ball_progress_coefficient = ball_progress_coefficient
         self.role_formation_coefficient = role_formation_coefficient
+        self.support_formation_coefficient = support_formation_coefficient
+        self.coverage_formation_coefficient = coverage_formation_coefficient
         self.attacker_alignment_coefficient = attacker_alignment_coefficient
         self.time_penalty_coefficient = time_penalty_coefficient
         self.movement_speed_threshold = movement_speed_threshold
@@ -219,10 +239,14 @@ class MarlMatchEnv:
         self._defensive_distance = 0.0
         self._stagnation_anchor = np.zeros(2, dtype=np.float32)
         self._stagnation_steps = 0
-        self._role_assigner = DynamicRoleAssigner()
+        self._role_assigner = DynamicRoleAssigner(
+            switch_penalty=role_switch_penalty, emergency_margin=role_emergency_margin
+        )
         self._role_assignment: RoleAssignment | None = None
         self._goal_geometry_potential = 0.0
         self._role_formation_potential = 0.0
+        self._support_formation_potential = 0.0
+        self._coverage_formation_potential = 0.0
 
     def reset(self, seed: int) -> TeamBatch:
         snapshot = _seeded_snapshot(
@@ -248,6 +272,16 @@ class MarlMatchEnv:
         self._role_formation_potential = (
             _role_formation_potential(self.state, 0, self._role_assignment)
             if self.role_formation_coefficient > 0.0
+            else 0.0
+        )
+        self._support_formation_potential = (
+            _support_formation_potential(self.state, 0, self._role_assignment)
+            if self.support_formation_coefficient > 0.0
+            else 0.0
+        )
+        self._coverage_formation_potential = (
+            _coverage_formation_potential(self.state, 0, self._role_assignment)
+            if self.coverage_formation_coefficient > 0.0
             else 0.0
         )
         return build_team_observation(self.state, team=0, role_assignment=self._role_assignment)
@@ -355,6 +389,16 @@ class MarlMatchEnv:
             if self.role_formation_coefficient == 0.0 or goal_complete or stagnated or draw
             else _role_formation_potential(self.state, 0, next_role_assignment)
         )
+        support_formation_potential = (
+            0.0
+            if self.support_formation_coefficient == 0.0 or goal_complete or stagnated or draw
+            else _support_formation_potential(self.state, 0, next_role_assignment)
+        )
+        coverage_formation_potential = (
+            0.0
+            if self.coverage_formation_coefficient == 0.0 or goal_complete or stagnated or draw
+            else _coverage_formation_potential(self.state, 0, next_role_assignment)
+        )
         reward = TeamReward(
             ball_progress=self.progress_coefficient
             * (2.0 * (self._closest - closest) + (ball_x - self._ball_x)),
@@ -388,6 +432,16 @@ class MarlMatchEnv:
                 self.goal_geometry_discount * role_formation_potential
                 - self._role_formation_potential
             ),
+            support_formation=self.support_formation_coefficient
+            * (
+                self.goal_geometry_discount * support_formation_potential
+                - self._support_formation_potential
+            ),
+            coverage_formation=self.coverage_formation_coefficient
+            * (
+                self.goal_geometry_discount * coverage_formation_potential
+                - self._coverage_formation_potential
+            ),
         )
         self._previous_blue_actions = normalized_blue.copy()
         self._ball_x = ball_x
@@ -395,6 +449,8 @@ class MarlMatchEnv:
         self._defensive_distance = defensive_distance
         self._goal_geometry_potential = goal_geometry_potential
         self._role_formation_potential = role_formation_potential
+        self._support_formation_potential = support_formation_potential
+        self._coverage_formation_potential = coverage_formation_potential
         done = draw or goal_complete or stagnated
         terminal_reason = (
             "goal" if goal_complete else "stagnation" if stagnated else "draw" if draw else None
@@ -497,15 +553,33 @@ class VectorMarlMatchEnv:
         free_ball_seconds: float = 10.0,
         free_ball_clearance: float = 0.20,
         role_formation_coefficient: float = 0.0,
+        support_formation_coefficient: float = 0.0,
+        coverage_formation_coefficient: float = 0.0,
+        role_switch_penalty: float = 0.18,
+        role_emergency_margin: float = 0.20,
         full_match_kickoff_radius: float = 0.20,
     ) -> None:
         if stage not in (7, 8):
             raise ValueError("stage must be C7 or C8")
         if not 0.0 <= full_match_kickoff_radius <= 0.20:
             raise ValueError("full_match_kickoff_radius must be in [0, 0.20]")
+        if role_switch_penalty < 0.0 or role_emergency_margin < 0.0:
+            raise ValueError("role hysteresis values must be non-negative")
+        if (
+            role_formation_coefficient < 0.0
+            or support_formation_coefficient < 0.0
+            or coverage_formation_coefficient < 0.0
+        ):
+            raise ValueError("role formation coefficients must be non-negative")
         self._config = json.loads(config_json)
         self._template = json.loads(state_json)
-        self._native = BatchSimulator(config_json, state_json, num_envs)
+        self._native = BatchSimulator(
+            config_json,
+            state_json,
+            num_envs,
+            role_switch_penalty,
+            role_emergency_margin,
+        )
         self._blue = DynamicTeamController(0, 1)
         self._yellow = DynamicTeamController(3, -1)
         self._max_wheel_speed = float(self._config["max_wheel_speed"])
@@ -523,6 +597,8 @@ class VectorMarlMatchEnv:
         self.goal_geometry_discount = goal_geometry_discount
         self.ball_progress_coefficient = ball_progress_coefficient
         self.role_formation_coefficient = role_formation_coefficient
+        self.support_formation_coefficient = support_formation_coefficient
+        self.coverage_formation_coefficient = coverage_formation_coefficient
         self._decision_period = float(self._config["timestep"]) * action_repeat
         self.idle_spin_coefficient = idle_spin_coefficient
         self.idle_spin_grace_steps = max(1, round(idle_spin_grace_seconds / self._decision_period))
@@ -574,6 +650,8 @@ class VectorMarlMatchEnv:
         self._goal_geometry_potential = np.zeros(num_envs, dtype=np.float32)
         self._mouth_potential = np.zeros(num_envs, dtype=np.float32)
         self._role_formation_potential = np.zeros(num_envs, dtype=np.float32)
+        self._support_formation_potential = np.zeros(num_envs, dtype=np.float32)
+        self._coverage_formation_potential = np.zeros(num_envs, dtype=np.float32)
         self._idle_spin_streaks = np.zeros((num_envs, 3), dtype=np.int64)
         self._ally_contact_streaks = np.zeros((num_envs, 3), dtype=np.int64)
         self._opponent_contact_streaks = np.zeros((num_envs, 9), dtype=np.int64)
@@ -663,6 +741,16 @@ class VectorMarlMatchEnv:
         self._role_formation_potential[world] = (
             _role_formation_potential(self.states[world], team, assignment)
             if self.role_formation_coefficient > 0.0
+            else 0.0
+        )
+        self._support_formation_potential[world] = (
+            _support_formation_potential(self.states[world], team, assignment)
+            if self.support_formation_coefficient > 0.0
+            else 0.0
+        )
+        self._coverage_formation_potential[world] = (
+            _coverage_formation_potential(self.states[world], team, assignment)
+            if self.coverage_formation_coefficient > 0.0
             else 0.0
         )
         return build_team_observation(self.states[world], team=team, role_assignment=assignment)
@@ -909,6 +997,46 @@ class VectorMarlMatchEnv:
             if self.role_formation_coefficient > 0.0
             else np.zeros(self.num_envs, dtype=np.float32)
         )
+        support_formation_potential = (
+            np.where(
+                goal_complete | stagnated | draw,
+                0.0,
+                np.asarray(
+                    [
+                        _support_formation_potential(state, int(team), assignment)
+                        for state, team, assignment in zip(
+                            self.states,
+                            self.controlled_teams,
+                            native_assignments,
+                            strict=True,
+                        )
+                    ],
+                    dtype=np.float32,
+                ),
+            ).astype(np.float32)
+            if self.support_formation_coefficient > 0.0
+            else np.zeros(self.num_envs, dtype=np.float32)
+        )
+        coverage_formation_potential = (
+            np.where(
+                goal_complete | stagnated | draw,
+                0.0,
+                np.asarray(
+                    [
+                        _coverage_formation_potential(state, int(team), assignment)
+                        for state, team, assignment in zip(
+                            self.states,
+                            self.controlled_teams,
+                            native_assignments,
+                            strict=True,
+                        )
+                    ],
+                    dtype=np.float32,
+                ),
+            ).astype(np.float32)
+            if self.coverage_formation_coefficient > 0.0
+            else np.zeros(self.num_envs, dtype=np.float32)
+        )
         attack_sign = np.where(self.controlled_teams == 0, 1.0, -1.0)
         current_ball_contact = scalars[:, 0].astype(np.bool_)
         useful_touch_impulse = np.asarray(
@@ -1008,6 +1136,20 @@ class VectorMarlMatchEnv:
                     - self._role_formation_potential
                 )
             ).astype(np.float32),
+            "support_formation": (
+                self.support_formation_coefficient
+                * (
+                    self.goal_geometry_discount * support_formation_potential
+                    - self._support_formation_potential
+                )
+            ).astype(np.float32),
+            "coverage_formation": (
+                self.coverage_formation_coefficient
+                * (
+                    self.goal_geometry_discount * coverage_formation_potential
+                    - self._coverage_formation_potential
+                )
+            ).astype(np.float32),
             "idle_spin": (-self.idle_spin_coefficient * idle_spin_penalty).astype(np.float32),
             "attacker_alignment": (
                 self.attacker_alignment_coefficient
@@ -1058,6 +1200,8 @@ class VectorMarlMatchEnv:
         np.copyto(self._goal_geometry_potential, goal_geometry_potential)
         np.copyto(self._mouth_potential, mouth_potential)
         np.copyto(self._role_formation_potential, role_formation_potential)
+        np.copyto(self._support_formation_potential, support_formation_potential)
+        np.copyto(self._coverage_formation_potential, coverage_formation_potential)
         self._closest = closest
         self._defensive_distance = defensive_distance
         done = draw | goal_complete | stagnated
@@ -1551,16 +1695,14 @@ def _goal_geometry_potential(
     return _goal_geometry_metrics(state, config, team)["potential"]
 
 
-def _role_formation_potential(
-    state: FloatArray,
-    team: int,
-    assignment: RoleAssignment,
-) -> float:
-    """Bounded quality of the active support/coverage formation.
+def _formation_targets(
+    state: FloatArray, team: int
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """Identity-free geometry targets shared by the assigner, shaping, and the evaluator.
 
-    Targets are the same identity-free geometry used by the role assigner. The attacker is
-    deliberately absent: carry, contact, and goal geometry already give that responsibility a
-    dense signal, while run 0013 showed that support and coverage were the missing distinction.
+    ADR 0026: the support robot anchors a passing lane behind the ball and the coverage
+    robot interpolates between its own goal and the ball, both expressed in team-relative
+    frame so the same formulas serve either side.
     """
     attack_sign = 1.0 if team == 0 else -1.0
     ball_x, ball_y = float(state[5]), float(state[6])
@@ -1577,6 +1719,48 @@ def _role_formation_potential(
         max(-0.70, min(0.70, coverage_x)),
         max(-0.34, min(0.34, ball_y * (0.65 + 0.35 * defensive_threat))),
     )
+    return support_target, coverage_target
+
+
+def _role_potential(state: FloatArray, team: int, assignment: RoleAssignment, role: str) -> float:
+    """Geometric mean of exp(-distance / 0.25) over the team's active robots of `role`.
+
+    ADR 0026: a geometric mean is the Schur-convex aggregator that makes the shaping reward
+    the team for a *minimal* adherence, so no single responsibility can coast while another
+    drifts. It stays bounded in [0, 1], agrees with the sole active responsibility in 2v1,
+    and vanishes with every empty role without any per-team normalization artifact.
+    """
+    support_target, coverage_target = _formation_targets(state, team)
+    target = support_target if role == "support" else coverage_target
+    controlled = [
+        slot for slot in range(6) if int(state[ROBOT_BASE + slot * ROBOT_WIDTH + 1]) == team
+    ]
+    contributions: list[float] = []
+    for slot, assigned in zip(controlled, assignment.roles, strict=True):
+        base = ROBOT_BASE + slot * ROBOT_WIDTH
+        if not bool(float(state[base + 10])) or assigned != role:
+            continue
+        distance = math.dist((float(state[base + 2]), float(state[base + 3])), target)
+        contributions.append(math.exp(-distance / 0.25))
+    if not contributions:
+        return 0.0
+    return float(math.prod(contributions) ** (1.0 / len(contributions)))
+
+
+def _role_formation_potential(
+    state: FloatArray,
+    team: int,
+    assignment: RoleAssignment,
+) -> float:
+    """Bounded quality of the active support/coverage formation (legacy combined term).
+
+    Targets are the same identity-free geometry used by the role assigner. The attacker is
+    deliberately absent: carry, contact, and goal geometry already give that responsibility a
+    dense signal, while run 0013 showed that support and coverage were the missing distinction.
+    Kept as a pooled geometric mean over both responsibilities so existing configs keep their
+    exact semantics; ADR 0026 adds the independent per-role potentials alongside it.
+    """
+    support_target, coverage_target = _formation_targets(state, team)
     controlled = [
         slot for slot in range(6) if int(state[ROBOT_BASE + slot * ROBOT_WIDTH + 1]) == team
     ]
@@ -1594,6 +1778,24 @@ def _role_formation_potential(
     # vice versa).  The geometric mean remains smooth and bounded, agrees with the sole active
     # responsibility in 2v1, and makes either missing responsibility a team-level bottleneck.
     return float(math.prod(contributions) ** (1.0 / len(contributions)))
+
+
+def _support_formation_potential(
+    state: FloatArray,
+    team: int,
+    assignment: RoleAssignment,
+) -> float:
+    """Bounded quality of the support responsibility alone (ADR 0026)."""
+    return _role_potential(state, team, assignment, "support")
+
+
+def _coverage_formation_potential(
+    state: FloatArray,
+    team: int,
+    assignment: RoleAssignment,
+) -> float:
+    """Bounded quality of the coverage responsibility alone (ADR 0026)."""
+    return _role_potential(state, team, assignment, "coverage")
 
 
 def _idle_spin_flags(
