@@ -42,6 +42,11 @@ a rate is invariant to the window and a scoreline is made of rates.
 
 The physics are faithful; the refereeing is not. In rule order:
 
+- **Kickoff, rule 7.** The ball starts inside the center circle (radius 20 cm) and the
+  defending team outside it. The full-match reset samples the ball uniformly inside the
+  20 cm circle (`full_match_kickoff_radius`, default 0.20) and keeps every defender
+  outside the circle. The referee's restart after a goal and the false-start whistle are
+  not modelled.
 - **Free ball, rule 15.** An impasse of **10 seconds outside both goal areas** is resolved by
   repositioning the ball at the quadrant's free-ball mark and **continuing**. The simulation
   ends the episode after **5 seconds** of the ball moving less than 2 cm and charges a

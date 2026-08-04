@@ -31,6 +31,7 @@ from vsss_train.marl_env import (
     _goal_geometry_potential,
     _idle_spin_flags,
     _role_formation_potential,
+    _seeded_snapshot,
     _team_touches_ball,
     _teammate_congestion,
     _useful_touch_impulse,
@@ -936,3 +937,42 @@ def test_impasse_restarts_at_the_free_ball_mark_instead_of_ending_the_game() -> 
     assert environment.last_terminal_reasons[0] != "stagnation"
     # The ball is on a free-ball mark rather than where it stalled.
     assert abs(float(environment.states[0, 5])) == pytest.approx(0.375, abs=1e-3)
+
+
+def test_full_match_kickoff_samples_inside_the_center_circle() -> None:
+    """Rule 7: every full-match kickoff places the ball inside the 20 cm circle."""
+    template = json.loads(STATE)
+    for seed in range(48):
+        snapshot = _seeded_snapshot(template, seed, full_match_kickoff_radius=0.20)
+        assert math.hypot(snapshot["ball"]["x"], snapshot["ball"]["y"]) <= 0.20 + 1e-6
+
+
+def test_full_match_kickoff_radius_zero_rests_at_center() -> None:
+    template = json.loads(STATE)
+    snapshot = _seeded_snapshot(template, 9, full_match_kickoff_radius=0.0)
+    assert snapshot["ball"]["x"] == pytest.approx(0.0, abs=1e-9)
+    assert snapshot["ball"]["y"] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_full_match_kickoff_rejects_an_illegal_radius() -> None:
+    with pytest.raises(ValueError, match="full_match_kickoff_radius"):
+        MarlMatchEnv(CONFIG, STATE, stage=7, horizon=1, full_match_kickoff_radius=0.21)
+    with pytest.raises(ValueError, match="full_match_kickoff_radius"):
+        MarlConfig(full_match_kickoff_radius=-0.01)
+
+
+def test_full_match_kickoff_defenders_start_outside_the_circle() -> None:
+    template = json.loads(STATE)
+    for seed in range(48):
+        snapshot = _seeded_snapshot(template, seed, full_match_kickoff_radius=0.20)
+        for robot in snapshot["robots"][3:]:
+            assert math.hypot(robot["pose"]["x"], robot["pose"]["y"]) > 0.20
+
+
+def test_full_match_kickoff_resets_are_seeded() -> None:
+    template = json.loads(STATE)
+    first = _seeded_snapshot(template, 13, full_match_kickoff_radius=0.20)
+    second = _seeded_snapshot(template, 13, full_match_kickoff_radius=0.20)
+    assert first["ball"] == second["ball"]
+    for left, right in zip(first["robots"], second["robots"], strict=True):
+        assert left == right

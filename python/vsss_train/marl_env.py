@@ -169,9 +169,12 @@ class MarlMatchEnv:
         stagnation_seconds: float = 5.0,
         stagnation_ball_distance: float = 0.02,
         action_parser: str = "continuous",
+        full_match_kickoff_radius: float = 0.20,
     ) -> None:
         if stage not in (7, 8):
             raise ValueError("stage must be C7 or C8")
+        if not 0.0 <= full_match_kickoff_radius <= 0.20:
+            raise ValueError("full_match_kickoff_radius must be in [0, 0.20]")
         self._config = json.loads(config_json)
         self._max_wheel_speed = float(self._config["max_wheel_speed"])
         self._template = json.loads(state_json)
@@ -204,6 +207,7 @@ class MarlMatchEnv:
         self._decision_period = float(self._config["timestep"]) * action_repeat
         self.stagnation_limit = max(1, round(stagnation_seconds / self._decision_period))
         self.stagnation_ball_distance = stagnation_ball_distance
+        self._full_match_kickoff_radius = full_match_kickoff_radius
         self.steps = 0
         self.state = np.zeros(BatchSimulator.state_width(), dtype=np.float32)
         self._ball_x = 0.0
@@ -221,7 +225,9 @@ class MarlMatchEnv:
         self._role_formation_potential = 0.0
 
     def reset(self, seed: int) -> TeamBatch:
-        snapshot = _seeded_snapshot(self._template, seed)
+        snapshot = _seeded_snapshot(
+            self._template, seed, full_match_kickoff_radius=self._full_match_kickoff_radius
+        )
         return self.reset_state(snapshot)
 
     def reset_state(self, snapshot: dict[str, Any]) -> TeamBatch:
@@ -491,9 +497,12 @@ class VectorMarlMatchEnv:
         free_ball_seconds: float = 10.0,
         free_ball_clearance: float = 0.20,
         role_formation_coefficient: float = 0.0,
+        full_match_kickoff_radius: float = 0.20,
     ) -> None:
         if stage not in (7, 8):
             raise ValueError("stage must be C7 or C8")
+        if not 0.0 <= full_match_kickoff_radius <= 0.20:
+            raise ValueError("full_match_kickoff_radius must be in [0, 0.20]")
         self._config = json.loads(config_json)
         self._template = json.loads(state_json)
         self._native = BatchSimulator(config_json, state_json, num_envs)
@@ -541,6 +550,7 @@ class VectorMarlMatchEnv:
         self.stagnation_ball_distance = stagnation_ball_distance
         self.free_ball_limit = max(1, round(free_ball_seconds / self._decision_period))
         self.free_ball_clearance = free_ball_clearance
+        self._full_match_kickoff_radius = full_match_kickoff_radius
         self.free_balls = np.zeros(num_envs, dtype=np.int64)
         self.states = np.zeros((num_envs, BatchSimulator.state_width()), dtype=np.float32)
         self.steps = np.zeros(num_envs, dtype=np.int64)
@@ -599,7 +609,9 @@ class VectorMarlMatchEnv:
         self.controlled_teams[world] = team
 
     def reset(self, world: int, seed: int) -> TeamBatch:
-        snapshot = _seeded_snapshot(self._template, seed)
+        snapshot = _seeded_snapshot(
+            self._template, seed, full_match_kickoff_radius=self._full_match_kickoff_radius
+        )
         return self.reset_state(world, snapshot)
 
     def reset_state(self, world: int, snapshot: dict[str, Any]) -> TeamBatch:
@@ -1113,13 +1125,19 @@ class VectorMarlMatchEnv:
         return self._decision_period
 
 
-def _seeded_snapshot(template: dict[str, Any], seed: int) -> dict[str, Any]:
+def _seeded_snapshot(
+    template: dict[str, Any],
+    seed: int,
+    full_match_kickoff_radius: float,
+) -> dict[str, Any]:
     rng = np.random.default_rng(seed)
     snapshot = copy.deepcopy(template)
     snapshot.update(tick=0, simulation_time=0.0, score_blue=0, score_yellow=0, events=0)
+    radius = full_match_kickoff_radius * math.sqrt(rng.uniform(0.0, 1.0))
+    theta = rng.uniform(0.0, 2.0 * math.pi)
     snapshot["ball"].update(
-        x=float(rng.uniform(-0.15, 0.25)),
-        y=float(rng.uniform(-0.35, 0.35)),
+        x=float(radius * math.cos(theta)),
+        y=float(radius * math.sin(theta)),
         vx=0.0,
         vy=0.0,
         omega=0.0,

@@ -193,6 +193,10 @@ class MarlConfig:
     # quadrant's free-ball mark. A robot within the clearance is moved to its own half.
     free_ball_seconds: float = 10.0
     free_ball_clearance: float = 0.20
+    # Rule 7: every kickoff places the ball inside the center circle. The full-match reset
+    # samples it uniformly inside this radius. Capped at the 20 cm legal circle so the knob
+    # can only narrow the distribution, never reintroduce illegal kickoff positions.
+    full_match_kickoff_radius: float = 0.20
     stagnation_ball_distance: float = 0.02
     curriculum_heuristic_iterations: int = 0
     league_self_play_weight: float = 1.0
@@ -272,6 +276,8 @@ class MarlConfig:
             raise ValueError("semantic_min_match_win_rate must be in [0, 1]")
         if not 0.0 <= self.semantic_max_match_draw_rate <= 1.0:
             raise ValueError("semantic_max_match_draw_rate must be in [0, 1]")
+        if not 0.0 <= self.full_match_kickoff_radius <= 0.20:
+            raise ValueError("full_match_kickoff_radius must be in [0, 0.20]")
         if not 0.0 <= self.observation_dropout < 1.0:
             raise ValueError("observation_dropout must be in [0, 1)")
         if self.observation_noise_std < 0.0:

@@ -96,6 +96,7 @@ LEGACY_NEUTRAL_CONFIG = {
     "intensity_entropy_scale": 1.0,
     "free_ball_seconds": 10.0,
     "free_ball_clearance": 0.20,
+    "full_match_kickoff_radius": 0.20,
     "idle_spin_drive_threshold": 0.07,
     "idle_spin_speed_threshold": 0.08,
     "idle_spin_ball_distance": 0.12,
