@@ -42,8 +42,9 @@ This is the M24.6 evidence-driven correction, implementing the `parametric-contr
   radius, turns onto the exit direction, re-aims at the acquisition, and only then drives
   through as today. The waypoint run-in runs at reduced authority on both wheels so the tracked
   arc stays outside the contact radius; the re-aimed turn keeps full turning authority.
-- The `shot` drill's `ball_angle` axis is re-audited with `tools/audit_skill_difficulty.py`,
-  since a primitive that finishes from an angle changes what the ladder measures.
+- The `shot` drill's `ball_angle` axis was re-audited with `tools/audit_skill_difficulty.py`:
+  the drill's angle span is restored to 3-63° and the axis is declared again (see the success
+  criteria for the measurement).
 - The fresh run gets a new policy fingerprint; it is not return-comparable with earlier runs.
 
 ## Success criteria
@@ -52,6 +53,9 @@ This is the M24.6 evidence-driven correction, implementing the `parametric-contr
   (1.00 → 1.00); angled conversion (≥60°) rises materially above zero (0.00 → 0.67 at 60°,
   0.04 at 90°); navigate and dribble are unchanged;
 - the difficulty audit over `shot` shows `ball_angle` as a usable axis where it was withdrawn;
+  it is re-declared: the action-set race at the match scale reads 0.70 0.70 0.55 0.50 0.40
+  (strike) where cycle 5 measured 0.55 0.05 0.00 0.00 0.00, the drill compiles at every level,
+  and the other shot ladders survive the widened placement;
 - a fresh run's full-match gate shows goals per minute above the floor and draw rate below the
   ceiling where M24.5 could not;
 - lint, build, and the full test suite remain green; rollback is a single branch in

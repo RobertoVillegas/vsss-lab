@@ -25,7 +25,7 @@ SkillFamily = Literal[
 ControlledTeam = Literal["blue", "yellow"]
 Roster = Literal["1v0", "1v1", "2v1", "2v2", "3v2", "3v3"]
 
-GENERATOR_REVISION = "m24.3-ladders-3"
+GENERATOR_REVISION = "m24.6-clearing-angle"
 DIFFICULTY_AXES = (
     "ball_speed",
     "ball_angle",
@@ -36,13 +36,17 @@ DIFFICULTY_AXES = (
 # Which axes a family actually responds to. Measured with tools/audit_skill_difficulty:
 # an axis absent here was inert for that family under both a scripted and a trained probe,
 # so advancing it only made the curriculum believe it was exploring a dimension that does
-# not exist. Declaring the map keeps the difficulty space honest.
+# not exist. Declaring the map keeps the difficulty space honest. `shot`'s `ball_angle` was
+# withdrawn in cycle 4 (no primitive could finish from an angle) and re-declared under
+# ADR 0027: the clearing strike converts angled chances (tools/primitive_race.py angle at
+# the match scale reads 0.70 0.70 0.55 0.50 0.40, a real ladder where cycle 5 measured
+# 0.55 0.05 0.00 0.00 0.00), and the widened drill compiles at every level.
 FAMILY_AXES: dict[str, tuple[str, ...]] = {
     "approach": ("spawn_distance",),
     "interception": ("ball_speed",),
     "save_deflection": ("ball_speed",),
     "clearance": ("spawn_distance", "ball_speed"),
-    "shot": ("spawn_distance", "ball_speed"),
+    "shot": ("spawn_distance", "ball_speed", "ball_angle"),
     "pass_receive": ("ball_angle", "target_width"),
     "rotation_recovery": ("spawn_distance",),
 }
@@ -662,17 +666,19 @@ def compile_skill_scenario(
             speed=_lerp(0.0, 0.28, difficulty.ball_speed),
             heading=lane_sign * math.pi / 2,
         )
-        # The striker starts on the shooting line. Matches present a chance from 45 degrees or
-        # worse three times in four, so this is narrower than play — but widening it was tried
-        # and reverted: no primitive in the set can finish from 62 degrees or more, so the wide
-        # drill taught a demand the action space cannot express and broke two working ladders.
-        # See docs/evidence/m24-3-timeout-penalty-side-effect.md, cycles 4 and 5.
+        # The striker starts behind the ball. ADR 0027's clearing approach re-aims the turn
+        # from a misaligned start and converts angles the straight-line primitive could not,
+        # so the angle axis now spans the approach the match presents (cycle 4 widened this
+        # and withdrew it: no primitive could finish from 62 degrees or more, and the wide
+        # drill broke two working ladders — see docs/evidence/m24-3-timeout-penalty-side-
+        # effect.md). The placement rotates the heading only, never the position, so the
+        # approach distance is preserved and the scenario validator still compiles.
         _place_behind(
             primary,
             attack_sign,
             ball,
             spawn_distance * 0.75,
-            heading_error=0.18,
+            heading_error=_lerp(0.05, 1.10, difficulty.ball_angle),
             generator=generator,
         )
         _park_robot(support, attack_sign, -0.20, -lane_sign * 0.38, 0.0)

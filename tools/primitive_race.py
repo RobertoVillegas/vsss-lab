@@ -16,6 +16,7 @@ from vsss_env._native import BatchSimulator
 from vsss_train.primitives import circular_primitive_wheel_actions
 from vsss_train.roles import DynamicRoleAssigner
 from vsss_train.semantic_scenarios import (
+    DIFFICULTY_AXES,
     GENERATOR_REVISION,
     SkillDifficulty,
     SkillScenarioParameters,
@@ -28,6 +29,11 @@ stj = Path("tests/golden/m1_match_state.json").read_text()
 base, cfg = json.loads(stj), json.loads(cfgj)
 rb, ba, gw = cfg["robot"], cfg["ball"], cfg["field"]["goal_width"]
 GOAL_X = cfg["field"]["length"] / 2.0
+# The match scale, like the finishing probe: the legacy 12.0 constant predates the golden
+# config and understates what a match-speed robot can do. argv[3] disables the ADR 0027
+# clearing so the straight-line baseline is measured at the same scale.
+SCALE = float(sys.argv[2]) if len(sys.argv) > 2 else float(cfg["max_wheel_speed"])
+USE_CLEARING = (sys.argv[3] if len(sys.argv) > 3 else "1") == "1"
 
 
 def token(skill: str, heading: float, intensity: float = 1.0) -> list[float]:
@@ -56,7 +62,10 @@ def race(
             family=family,
             seed=seed,
             controlled_team="blue",
-            difficulty=SkillDifficulty(ball_speed=0.1, **{axis: difficulty}),
+            difficulty=SkillDifficulty(
+                **{name: 0.1 for name in DIFFICULTY_AXES if name != axis},
+                **{axis: difficulty},
+            ),
             roster="3v3",
             horizon=240,
             holdout=False,
@@ -92,8 +101,10 @@ def race(
             tokens = np.zeros((3, 3), dtype=np.float32)
             tokens[:, 0] = -1.0
             tokens[slot] = scripted(skill, state, slot, 1.0)
-            blue = circular_primitive_wheel_actions(state, team=0, tokens=tokens)
-            command = np.concatenate([blue, yellow.actions(state)])[None].astype(np.float32) * 12
+            blue = circular_primitive_wheel_actions(
+                state, team=0, tokens=tokens, strike_clearing_enabled=USE_CLEARING
+            )
+            command = np.concatenate([blue, yellow.actions(state)])[None].astype(np.float32) * SCALE
             state = np.asarray(simulator.step_repeated(command, 4))[0]
     mean_steps = steps_to / resolved if resolved else 240
     return resolved / trials, successes / trials, mean_steps

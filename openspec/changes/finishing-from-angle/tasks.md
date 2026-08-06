@@ -14,8 +14,15 @@
       checkpoints load with the flag off, non-default flag rejects a legacy fingerprint.
 - [x] Re-measure the finishing-angle probe at the config scale: 0° stays 1.00, ≥60° rises
       materially above zero (0.00 → 0.67 at 60°, 0.04 at 90°), dribbling unchanged.
-- [ ] Re-run `tools/audit_skill_difficulty.py` over `shot` and decide whether `ball_angle`
-      becomes a declared axis.
+- [x] Re-run `tools/audit_skill_difficulty.py` over `shot` and decide whether `ball_angle`
+      becomes a declared axis. Decision: declared. The drill's angle span was restored to the
+      cycle-4 range (heading_error 3-63°, heading-only rotation, so the cycle-4 overlap bug
+      does not recur) and `FAMILY_AXES["shot"]` regains `ball_angle`. The action-set race
+      (`tools/primitive_race.py angle` at the match scale) reads 0.70 0.70 0.55 0.50 0.40 for
+      strike where cycle 5 measured 0.55 0.05 0.00 0.00 0.00; the audit reports no invalid or
+      inverted axes and the other shot ladders survive (spawn_distance 0.70→0.05, ball_speed
+      0.70→0.00 by the same race). The scripted probe cannot shoot, so the policy-side ladder
+      is measured after the M24.6 run.
 - [ ] Give the fresh M24.6 run a new policy fingerprint and configuration; record the
       full-match gate signals against the M24.5 stall.
 - [ ] Run lint, build, test, and a from-scratch smoke run before starting the new run.
@@ -34,3 +41,8 @@
 - The probe's scale now reads from the match config (`max_wheel_speed = 30.0`); the legacy 12.0
   constant remains available as an argument and is documented as a pre-config stress value
   outside the acceptance scale.
+- The `shot` drill's angle demand is the striker's heading misalignment at placement (the
+  fixed 0.18 rad was inert: every primitive converted it at match speed, and the race showed
+  no gradient). Re-widening to the cycle-4 span (3-63°) restores a real ladder; the generator
+  revision is bumped to `m24.6-clearing-angle` so the old drill distribution cannot mix into
+  the fresh curriculum state.
