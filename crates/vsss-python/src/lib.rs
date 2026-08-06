@@ -347,12 +347,15 @@ impl BatchSimulator {
     /// only thing that has to cross the boundary.
     // PyO3 requires argument types by value in an exported signature.
     #[allow(clippy::needless_pass_by_value)]
+    #[pyo3(signature = (teams, tokens, ball_deceleration, strike_clearing_enabled = true, strike_clearing_distance = 0.16))]
     fn circular_wheel_actions<'py>(
         &self,
         py: Python<'py>,
         teams: PyReadonlyArray1<'py, i64>,
         tokens: PyReadonlyArray3<'py, f32>,
         ball_deceleration: f64,
+        strike_clearing_enabled: bool,
+        strike_clearing_distance: f64,
     ) -> PyResult<Bound<'py, PyArray3<f32>>> {
         let worlds = self.batch.len();
         let teams = teams.as_slice()?;
@@ -393,6 +396,8 @@ impl BatchSimulator {
                                 team,
                                 request,
                                 ball_deceleration,
+                                strike_clearing_enabled,
+                                strike_clearing_distance,
                             )
                             .map_err(|error| format!("{error:?}"))
                         })

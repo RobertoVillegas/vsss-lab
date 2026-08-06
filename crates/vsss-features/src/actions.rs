@@ -27,6 +27,13 @@ const EXIT_HALF_ANGLE: f64 = 0.60;
 const NAVIGATE_REACH: f64 = 0.4;
 /// Speed scale a strike falls back to when its target is not yet past the ball.
 const ACQUIRE_SCALE: f64 = 0.72;
+/// Authority factor for the ADR 0027 clearing-waypoint approach. The `go_to_target` arc has a
+/// yaw-limited curvature proportional to speed, and at full authority the robot cuts inside
+/// the arc and brushes the ball's contact radius while turning (measured: 0.079 m at max
+/// speed, inside 0.082). Scaling both wheel requests keeps the commanded path identical but
+/// lets the yaw build against the acceleration limit, and the tracked arc pulls clear of the
+/// ball.
+const CLEARING_APPROACH_AUTHORITY: f64 = 0.35;
 
 /// What one decoded token asks a robot to do.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -143,6 +150,8 @@ pub fn strike_target(
     direction: (f64, f64),
     ball_deceleration: f64,
     authority: f64,
+    strike_clearing_enabled: bool,
+    strike_clearing_distance: f64,
 ) -> ((f64, f64), bool) {
     let ball_x = f64::from(state[5]);
     let ball_y = f64::from(state[6]);
@@ -205,10 +214,16 @@ pub fn strike_target(
     let aligned = ball_distance > 1e-8
         && ball_vector_x.mul_add(exit_x, ball_vector_y * exit_y) / ball_distance
             >= EXIT_HALF_ANGLE.cos();
+    // ADR 0027: "arrive aligned, not merely near". A robot behind the ball is near; it must
+    // also face the exit direction. The drive-through starts by pushing through the ball, and
+    // a push launched from a sideways heading deflects the ball along that heading, up the
+    // wing. Measured: the positional gate alone fires while the robot is still ~90° off the
+    // exit, and the strike then grinds the ball off the line instead of converting.
+    let heading_aligned = heading_x.mul_add(exit_x, heading_y * exit_y) >= EXIT_HALF_ANGLE.cos();
     // Differential drive cannot settle on a point with millimetric precision without
     // oscillation. Enter the drive-through phase once the robot is inside a body-scale
-    // acquisition envelope and faces the exit half-plane.
-    if acquisition_error <= ACQUISITION_ENVELOPE && aligned {
+    // acquisition envelope, behind the ball, and faces the exit half-plane.
+    if acquisition_error <= ACQUISITION_ENVELOPE && aligned && heading_aligned {
         return (
             (
                 exit_x.mul_add(DRIVE_THROUGH, selected.ball_x),
@@ -216,6 +231,30 @@ pub fn strike_target(
             ),
             true,
         );
+    }
+    if strike_clearing_enabled && !(aligned && heading_aligned) {
+        // ADR 0027: the defect is the approach, not the gate. From an angled start the robot
+        // reaches the acquisition point still facing well off the exit direction; with the
+        // acquisition phase unable to settle, it overshoots the point and crosses the ball's
+        // contact radius, deflecting the ball along its heading. Route through a point on the
+        // exit line behind the ball: the robot settles there, turns onto the exit direction
+        // safely clear of the ball, and only then is sent to the acquisition point.
+        // Returning `settle=true` is deliberate — the waypoint is a standing point, and a
+        // full-speed passage through it drifts into an orbit around the ball while turning
+        // (measured).
+        let clearing_x = ball_x - (CONTACT_OFFSET + strike_clearing_distance) * exit_x;
+        let clearing_y = ball_y - (CONTACT_OFFSET + strike_clearing_distance) * exit_y;
+        if acquisition_error <= 0.20 && aligned {
+            // The robot is inside the clearing region and behind the ball. Re-aim at the
+            // acquisition point: the go_to_target holds the heading on the clearing approach
+            // bearing, which faces away from the ball, and the release gate would never fire.
+            // From here the acquisition is ahead, so the turn carries the heading onto the
+            // exit direction while still clear of contact. Settling is deliberate: a full
+            // authority turn carries the closing momentum through the acquisition point and
+            // into the ball before the drive-through gate fires.
+            return ((selected.x, selected.y), true);
+        }
+        return ((clearing_x, clearing_y), true);
     }
     ((selected.x, selected.y), false)
 }
@@ -231,6 +270,8 @@ pub fn circular_primitive_wheel_actions(
     team: u8,
     tokens: &[[f32; 3]; crate::TEAM_SIZE],
     ball_deceleration: f64,
+    strike_clearing_enabled: bool,
+    strike_clearing_distance: f64,
 ) -> Result<[[f32; 2]; crate::TEAM_SIZE], FeatureError> {
     if team > 1 {
         return Err(FeatureError::UnknownTeam);
@@ -260,6 +301,17 @@ pub fn circular_primitive_wheel_actions(
             sign * command.direction.sin(),
         );
         let pose = robot_pose(state, slot);
+        // ADR 0027 identities: the clearing waypoint and the static acquisition point are
+        // recognized by exact equality with the values strike_target returns, so the caller
+        // can give the clearing phases their own authority without threading more returns.
+        let static_acquisition = (
+            direction.0.mul_add(-CONTACT_OFFSET, f64::from(state[5])),
+            direction.1.mul_add(-CONTACT_OFFSET, f64::from(state[6])),
+        );
+        let clearing_waypoint = (
+            f64::from(state[5]) - (CONTACT_OFFSET + strike_clearing_distance) * direction.0,
+            f64::from(state[6]) - (CONTACT_OFFSET + strike_clearing_distance) * direction.1,
+        );
         let (target, arrival_scale, settle) = if command.skill == Skill::Navigate {
             (
                 (
@@ -270,18 +322,49 @@ pub fn circular_primitive_wheel_actions(
                 true,
             )
         } else {
-            let (target, driving_through) =
-                strike_target(state, pose, direction, ball_deceleration, command.intensity);
-            let to_target_x = target.0 - f64::from(state[5]);
-            let to_target_y = target.1 - f64::from(state[6]);
-            let forward = to_target_x.mul_add(direction.0, to_target_y * direction.1) > 0.0;
-            (
-                target,
-                if forward { 1.0 } else { ACQUIRE_SCALE },
-                driving_through,
-            )
+            let (target, driving_through) = strike_target(
+                state,
+                pose,
+                direction,
+                ball_deceleration,
+                command.intensity,
+                strike_clearing_enabled,
+                strike_clearing_distance,
+            );
+            // The clearing phases run at full turning authority: the waypoint approach and
+            // the re-aimed turn are already slowed by the approach authority and the settle
+            // taper, and the acquisition scale (0.72) is for the direct behind-ball
+            // approach the clearing replaces.
+            let arrival_scale = if target == static_acquisition || target == clearing_waypoint {
+                1.0
+            } else {
+                let to_target_x = target.0 - f64::from(state[5]);
+                let to_target_y = target.1 - f64::from(state[6]);
+                if to_target_x.mul_add(direction.0, to_target_y * direction.1) > 0.0 {
+                    1.0
+                } else {
+                    ACQUIRE_SCALE
+                }
+            };
+            (target, arrival_scale, driving_through)
         };
         let wheels = go_to_target(pose, target, settle);
+        // ADR 0027: the clearing waypoint is approached at reduced authority. Scaling both
+        // wheel requests keeps the commanded path identical but lets the yaw build against
+        // the acceleration limit, and the tracked arc pulls clear of the ball (measured: a
+        // forward-only cut on the arc passes 0.061 from the ball, inside 0.082). The
+        // re-aimed turn at the acquisition is exempt: it is a turn in place (the settle
+        // taper already zeroes the forward), and scaling the yaw turns the release into a
+        // crawl.
+        let wheels = if target == clearing_waypoint {
+            #[allow(clippy::cast_possible_truncation)]
+            [
+                wheels[0] * CLEARING_APPROACH_AUTHORITY as f32,
+                wheels[1] * CLEARING_APPROACH_AUTHORITY as f32,
+            ]
+        } else {
+            wheels
+        };
         // The reference narrows the authority to f32 before scaling, so the product is an f32
         // multiplication rather than an f64 one rounded afterwards.
         #[allow(clippy::cast_possible_truncation)]
@@ -318,7 +401,8 @@ mod tests {
             state[crate::ROBOT_BASE + slot * crate::ROBOT_WIDTH + 10] = 1.0;
         }
         let tokens = [[-1.0, 0.0, 1.0]; crate::TEAM_SIZE];
-        let wheels = circular_primitive_wheel_actions(&state, 0, &tokens, 0.8).expect("actions");
+        let wheels =
+            circular_primitive_wheel_actions(&state, 0, &tokens, 0.8, true, 0.16).expect("actions");
         assert!(wheels.iter().flatten().all(|value| value.abs() == 0.0));
     }
 
@@ -330,7 +414,8 @@ mod tests {
         state[crate::ROBOT_BASE + crate::ROBOT_WIDTH + 10] = 1.0;
         state[crate::ROBOT_BASE + 2 * crate::ROBOT_WIDTH + 10] = 1.0;
         let tokens = [[1.0, 0.0, 1.0]; crate::TEAM_SIZE];
-        let wheels = circular_primitive_wheel_actions(&state, 0, &tokens, 0.8).expect("actions");
+        let wheels =
+            circular_primitive_wheel_actions(&state, 0, &tokens, 0.8, true, 0.16).expect("actions");
         assert!(wheels[0].iter().all(|value| value.abs() == 0.0));
         assert!(wheels[1].iter().any(|value| value.abs() > 0.0));
     }
