@@ -716,6 +716,47 @@ def test_legacy_checkpoint_accepts_only_neutral_new_fields(tmp_path: Path) -> No
         ).load(checkpoint)
 
 
+def test_legacy_checkpoint_rejects_non_neutral_clearing_knob(tmp_path: Path) -> None:
+    """ADR 0027: a pre-clearing checkpoint loads only at the neutral flag; the flag on is a
+    fingerprint mismatch, so no silently different behavior rides on a legacy load."""
+    legacy = MarlLearner(
+        MarlConfig(
+            device="cpu",
+            num_envs=1,
+            hidden_size=8,
+            epochs=1,
+            strike_clearing_enabled=False,
+        )
+    )
+    checkpoint = tmp_path / "legacy.pt"
+    legacy.save(checkpoint)
+    payload = torch.load(checkpoint, map_location="cpu", weights_only=True)
+    payload["config"].pop("strike_clearing_enabled")
+    payload["config"].pop("strike_clearing_distance")
+    payload["config_fingerprint"] = "legacy-fingerprint"
+    torch.save(payload, checkpoint)
+
+    MarlLearner(
+        MarlConfig(
+            device="cpu",
+            num_envs=1,
+            hidden_size=8,
+            epochs=1,
+            strike_clearing_enabled=False,
+        )
+    ).load(checkpoint)
+    with pytest.raises(ValueError, match="fingerprint"):
+        MarlLearner(
+            MarlConfig(
+                device="cpu",
+                num_envs=1,
+                hidden_size=8,
+                epochs=1,
+                strike_clearing_enabled=True,
+            )
+        ).load(checkpoint)
+
+
 def test_policy_warm_start_allows_reward_change_and_resets_version(tmp_path: Path) -> None:
     source = MarlLearner(MarlConfig(device="cpu", num_envs=1, hidden_size=8, epochs=1))
     source.policy_version = 700
