@@ -168,6 +168,8 @@ def create_rollout_session(config: MarlConfig, config_json: str, state_json: str
             free_ball_clearance=config.free_ball_clearance,
             action_parser=config.action_parser,
             full_match_kickoff_radius=config.full_match_kickoff_radius,
+            strike_clearing_enabled=config.strike_clearing_enabled,
+            strike_clearing_distance=config.strike_clearing_distance,
         ),
         episode_counts=[0] * config.num_envs,
         episode_returns=[0.0] * config.num_envs,

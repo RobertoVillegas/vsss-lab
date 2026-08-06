@@ -33,6 +33,7 @@ from vsss_train.marl import (
 )
 from vsss_train.ppo import seed_everything
 from vsss_train.primitives import (
+    STRIKE_CONTACT_RADIUS,
     CircularPrimitiveSet,
     SoccerPrimitiveSet,
     circular_primitive_wheel_actions,
@@ -178,11 +179,15 @@ class MarlMatchEnv:
         stagnation_ball_distance: float = 0.02,
         action_parser: str = "continuous",
         full_match_kickoff_radius: float = 0.20,
+        strike_clearing_enabled: bool = True,
+        strike_clearing_distance: float = 0.16,
     ) -> None:
         if stage not in (7, 8):
             raise ValueError("stage must be C7 or C8")
         if not 0.0 <= full_match_kickoff_radius <= 0.20:
             raise ValueError("full_match_kickoff_radius must be in [0, 0.20]")
+        if strike_clearing_distance <= STRIKE_CONTACT_RADIUS:
+            raise ValueError("strike_clearing_distance must exceed the contact radius")
         if role_switch_penalty < 0.0 or role_emergency_margin < 0.0:
             raise ValueError("role hysteresis values must be non-negative")
         if (
@@ -228,6 +233,8 @@ class MarlMatchEnv:
         self.stagnation_limit = max(1, round(stagnation_seconds / self._decision_period))
         self.stagnation_ball_distance = stagnation_ball_distance
         self._full_match_kickoff_radius = full_match_kickoff_radius
+        self._strike_clearing_enabled = strike_clearing_enabled
+        self._strike_clearing_distance = strike_clearing_distance
         self.steps = 0
         self.state = np.zeros(BatchSimulator.state_width(), dtype=np.float32)
         self._ball_x = 0.0
@@ -313,6 +320,8 @@ class MarlMatchEnv:
                 self.state,
                 team=0,
                 tokens=normalized_blue,
+                strike_clearing_enabled=self._strike_clearing_enabled,
+                strike_clearing_distance=self._strike_clearing_distance,
             )
         action_delta = normalized_blue - self._previous_blue_actions
         actions = np.zeros((1, 6, 2), dtype=np.float32)
@@ -342,6 +351,8 @@ class MarlMatchEnv:
                     self.state,
                     team=1,
                     tokens=normalized_opponent,
+                    strike_clearing_enabled=self._strike_clearing_enabled,
+                    strike_clearing_distance=self._strike_clearing_distance,
                 )
             actions[0, 3:] = normalized_opponent * self._max_wheel_speed
         events = 0
@@ -558,11 +569,15 @@ class VectorMarlMatchEnv:
         role_switch_penalty: float = 0.18,
         role_emergency_margin: float = 0.20,
         full_match_kickoff_radius: float = 0.20,
+        strike_clearing_enabled: bool = True,
+        strike_clearing_distance: float = 0.16,
     ) -> None:
         if stage not in (7, 8):
             raise ValueError("stage must be C7 or C8")
         if not 0.0 <= full_match_kickoff_radius <= 0.20:
             raise ValueError("full_match_kickoff_radius must be in [0, 0.20]")
+        if strike_clearing_distance <= STRIKE_CONTACT_RADIUS:
+            raise ValueError("strike_clearing_distance must exceed the contact radius")
         if role_switch_penalty < 0.0 or role_emergency_margin < 0.0:
             raise ValueError("role hysteresis values must be non-negative")
         if (
@@ -627,6 +642,8 @@ class VectorMarlMatchEnv:
         self.free_ball_limit = max(1, round(free_ball_seconds / self._decision_period))
         self.free_ball_clearance = free_ball_clearance
         self._full_match_kickoff_radius = full_match_kickoff_radius
+        self._strike_clearing_enabled = strike_clearing_enabled
+        self._strike_clearing_distance = strike_clearing_distance
         self.free_balls = np.zeros(num_envs, dtype=np.int64)
         self.states = np.zeros((num_envs, BatchSimulator.state_width()), dtype=np.float32)
         self.steps = np.zeros(num_envs, dtype=np.int64)
@@ -817,6 +834,8 @@ class VectorMarlMatchEnv:
                     self.controlled_teams,
                     np.clip(blue_actions, -1.0, 1.0),
                     CIRCULAR_BALL_DECELERATION,
+                    self._strike_clearing_enabled,
+                    self._strike_clearing_distance,
                 ),
             )
         elif self.action_parser == "parametric_primitive":
@@ -882,6 +901,8 @@ class VectorMarlMatchEnv:
                         self.states[world],
                         team=opponent_team,
                         tokens=normalized_opponents[world],
+                        strike_clearing_enabled=self._strike_clearing_enabled,
+                        strike_clearing_distance=self._strike_clearing_distance,
                     )
                     if self.action_parser == "circular_primitive"
                     else normalized_opponents[world]

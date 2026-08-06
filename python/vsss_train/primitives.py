@@ -15,6 +15,19 @@ FloatArray = NDArray[np.float32]
 ROBOT_BASE = 10
 ROBOT_WIDTH = 11
 
+#: Radius within which the ball and a robot body count as touching, metres. The simulation
+#: exposes the same quantity as `contact_distance`; the env constructors validate the
+#: clearing lead against it (ADR 0027).
+STRIKE_CONTACT_RADIUS = 0.082
+
+#: Authority factor for the ADR 0027 clearing-waypoint approach. The go_to_target arc has a
+#: yaw-limited curvature proportional to speed, and at full authority the robot cuts inside
+#: the arc and brushes the ball's contact radius while turning (measured: 0.079 m at max
+#: speed, inside 0.082). Scaling both wheel requests keeps the commanded path identical but
+#: lets the yaw build against the acceleration limit, and the tracked arc pulls clear of the
+#: ball.
+CLEARING_APPROACH_AUTHORITY = 0.35
+
 
 @dataclass(frozen=True)
 class PrimitiveCommand:
@@ -166,6 +179,8 @@ def circular_primitive_wheel_actions(
     team: int,
     tokens: FloatArray,
     ball_deceleration: float = 0.8,
+    strike_clearing_enabled: bool = True,
+    strike_clearing_distance: float = 0.16,
 ) -> FloatArray:
     """Execute a circular heading at the requested authority."""
     if tokens.shape != (3, 3):
@@ -184,6 +199,18 @@ def circular_primitive_wheel_actions(
         sign = 1.0 if team == 0 else -1.0
         direction = (sign * math.cos(command.direction), sign * math.sin(command.direction))
         pose = robot_pose(state, slot)
+        # ADR 0027 identities: the clearing waypoint and the static acquisition point are
+        # recognized by exact equality with the values _strike_target returns, so the caller
+        # can give the clearing phases their own authority without threading more returns.
+        ball = np.asarray(state[5:7], dtype=np.float64)
+        static_acquisition = (
+            ball[0] - 0.10 * direction[0],
+            ball[1] - 0.10 * direction[1],
+        )
+        clearing_waypoint = (
+            ball[0] - (0.10 + strike_clearing_distance) * direction[0],
+            ball[1] - (0.10 + strike_clearing_distance) * direction[1],
+        )
         settle = True
         if command.skill == "navigate":
             target = (pose[0] + 0.4 * direction[0], pose[1] + 0.4 * direction[1])
@@ -195,12 +222,28 @@ def circular_primitive_wheel_actions(
                 direction,
                 ball_deceleration=ball_deceleration,
                 authority=command.intensity,
+                strike_clearing_enabled=strike_clearing_enabled,
+                strike_clearing_distance=strike_clearing_distance,
             )
-            ball = np.asarray(state[5:7], dtype=np.float64)
-            target_vector = np.asarray(target, dtype=np.float64) - ball
-            arrival_scale = 1.0 if float(np.dot(target_vector, direction)) > 0.0 else 0.72
+            if target in (static_acquisition, clearing_waypoint):
+                # ADR 0027 clearing phases run at full turning authority: the waypoint
+                # approach and the re-aimed turn are already slowed by the approach
+                # authority and the settle taper, and the acquisition scale (0.72) is
+                # for the direct behind-ball approach the clearing replaces.
+                arrival_scale = 1.0
+            else:
+                target_vector = np.asarray(target, dtype=np.float64) - ball
+                arrival_scale = 1.0 if float(np.dot(target_vector, direction)) > 0.0 else 0.72
             settle = driving_through
         wheels = go_to_target(pose, target, settle=settle)
+        # ADR 0027: the clearing waypoint is approached at reduced authority. Scaling both
+        # wheel requests keeps the commanded path identical but lets the yaw build against the
+        # acceleration limit, and the tracked arc pulls clear of the ball (measured: a
+        # forward-only cut on the arc passes 0.061 from the ball, inside 0.082). The re-aimed
+        # turn at the acquisition is exempt: it is a turn in place (the settle taper already
+        # zeroes the forward), and scaling the yaw turns the release into a crawl.
+        if target == clearing_waypoint:
+            wheels *= np.float32(CLEARING_APPROACH_AUTHORITY)
         result[local_slot] = wheels * np.float32(command.intensity * arrival_scale)
     return result
 
@@ -210,6 +253,8 @@ def describe_circular_primitive_actions(
     *,
     team: int,
     tokens: FloatArray,
+    strike_clearing_enabled: bool = True,
+    strike_clearing_distance: float = 0.16,
 ) -> list[dict[str, object]]:
     """Describe circular intent for replay inspection, at the executed authority."""
     if tokens.shape != (3, 3):
@@ -239,6 +284,8 @@ def describe_circular_primitive_actions(
                 direction,
                 ball_deceleration=0.8,
                 authority=command.intensity,
+                strike_clearing_enabled=strike_clearing_enabled,
+                strike_clearing_distance=strike_clearing_distance,
             )
             ball = np.asarray(state[5:7], dtype=np.float64)
             forward = float(np.dot(np.asarray(target, dtype=np.float64) - ball, direction)) > 0.0
@@ -315,11 +362,14 @@ def primitive_wheel_actions(
         if command.skill == "navigate":
             target = (pose[0] + 0.4 * direction[0], pose[1] + 0.4 * direction[1])
         else:
+            # ADR 0027: the clearing phase belongs to the circular action set. These legacy
+            # parsers are frozen; a token must mean exactly what it meant before.
             target, _ = _strike_target(
                 state,
                 pose,
                 direction,
                 ball_deceleration=ball_deceleration,
+                strike_clearing_enabled=False,
             )
         result[local_slot] = go_to_target(pose, target)
     return result
@@ -353,11 +403,14 @@ def parametric_primitive_wheel_actions(
             target = (pose[0] + 0.4 * direction[0], pose[1] + 0.4 * direction[1])
             arrival_scale = 1.0
         else:
+            # ADR 0027: the clearing phase belongs to the circular action set. These legacy
+            # parsers are frozen; a token must mean exactly what it meant before.
             target, _ = _strike_target(
                 state,
                 pose,
                 direction,
                 ball_deceleration=ball_deceleration,
+                strike_clearing_enabled=False,
             )
             ball = np.asarray(state[5:7], dtype=np.float64)
             target_vector = np.asarray(target, dtype=np.float64) - ball
@@ -396,7 +449,15 @@ def describe_parametric_primitive_actions(
             target = (pose[0] + 0.4 * direction[0], pose[1] + 0.4 * direction[1])
             phase = "navigate"
         else:
-            target, _ = _strike_target(state, pose, direction, ball_deceleration=0.8)
+            # ADR 0027: the clearing phase belongs to the circular action set. These legacy
+            # parsers are frozen; a token must mean exactly what it meant before.
+            target, _ = _strike_target(
+                state,
+                pose,
+                direction,
+                ball_deceleration=0.8,
+                strike_clearing_enabled=False,
+            )
             exit_dot = (target[0] - ball[0]) * direction[0] + (target[1] - ball[1]) * direction[1]
             phase = "strike" if exit_dot > 0.0 else "acquire"
         descriptions.append(
@@ -443,7 +504,15 @@ def describe_primitive_actions(
             target = (pose[0] + 0.4 * direction[0], pose[1] + 0.4 * direction[1])
             phase = "navigate"
         else:
-            target, _ = _strike_target(state, pose, direction, ball_deceleration=0.8)
+            # ADR 0027: the clearing phase belongs to the circular action set. These legacy
+            # parsers are frozen; a token must mean exactly what it meant before.
+            target, _ = _strike_target(
+                state,
+                pose,
+                direction,
+                ball_deceleration=0.8,
+                strike_clearing_enabled=False,
+            )
             exit_dot = (target[0] - ball[0]) * direction[0] + (target[1] - ball[1]) * direction[1]
             phase = "strike" if exit_dot > 0.0 else "acquire"
         descriptions.append(
@@ -471,6 +540,8 @@ def _strike_target(
     *,
     ball_deceleration: float,
     authority: float = 1.0,
+    strike_clearing_enabled: bool = True,
+    strike_clearing_distance: float = 0.16,
 ) -> tuple[tuple[float, float], bool]:
     """Select a reachable behind-ball point, then drive through contact.
 
@@ -532,9 +603,39 @@ def _strike_target(
     aligned = ball_distance > 1e-8 and (
         (ball_vector_x * exit_x + ball_vector_y * exit_y) / ball_distance
     ) >= math.cos(0.60)
+    # ADR 0027: "arrive aligned, not merely near". A robot behind the ball is near; it must
+    # also face the exit direction. The drive-through starts by pushing through the ball, and
+    # a push launched from a sideways heading deflects the ball along that heading, up the
+    # wing. Measured: the positional gate alone fires while the robot is still ~90° off the
+    # exit, and the strike then grinds the ball off the line instead of converting.
+    heading_aligned = (heading_x * exit_x + heading_y * exit_y) >= math.cos(0.60)
     # Differential drive cannot settle on a point with millimetric precision
     # without oscillation. Enter the drive-through phase once the robot is
-    # inside a body-scale acquisition envelope and faces the exit half-plane.
-    if acquisition_error <= 0.11 and aligned:
+    # inside a body-scale acquisition envelope, behind the ball, and faces
+    # the exit half-plane.
+    if acquisition_error <= 0.11 and aligned and heading_aligned:
         return (selected_ball_x + 0.28 * exit_x, selected_ball_y + 0.28 * exit_y), True
+
+    if strike_clearing_enabled and not (aligned and heading_aligned):
+        # ADR 0027: the defect is the approach, not the gate. From an angled start the robot
+        # reaches the acquisition point still facing well off the exit direction; with the
+        # acquisition phase unable to settle, it overshoots the point and crosses the ball's
+        # contact radius, deflecting the ball along its heading. Route through a point on the
+        # exit line behind the ball: the robot settles there, turns onto the exit direction
+        # safely clear of the ball, and only then is sent to the acquisition point.
+        # Returning `settle=True` is deliberate — the waypoint is a standing point, and a
+        # full-speed passage through it drifts into an orbit around the ball while turning
+        # (measured).
+        clearing_x = ball_x - (contact_offset + strike_clearing_distance) * exit_x
+        clearing_y = ball_y - (contact_offset + strike_clearing_distance) * exit_y
+        if acquisition_error <= 0.20 and aligned:
+            # The robot is inside the clearing region and behind the ball. Re-aim at the
+            # acquisition point: the go_to_target holds the heading on the clearing approach
+            # bearing, which faces away from the ball, and the release gate would never fire.
+            # From here the acquisition is ahead, so the turn carries the heading onto the
+            # exit direction while still clear of contact. Settling is deliberate: a full
+            # authority turn carries the closing momentum through the acquisition point and
+            # into the ball before the drive-through gate fires.
+            return (selected_x, selected_y), True
+        return (clearing_x, clearing_y), True
     return (selected_x, selected_y), False

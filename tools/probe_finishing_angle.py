@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import math
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -51,10 +52,16 @@ def token(skill: str, heading: float) -> list[float]:
     return [index, wrapped / math.pi, 1.0]
 
 
-def attempt(skill: str, angle: float, ball: tuple[float, float], reach: float) -> bool:
+def attempt(
+    skill: str,
+    angle: float,
+    ball: tuple[float, float],
+    reach: float,
+    use_clearing: bool,
+) -> bool:
     simulator = BatchSimulator(CONFIG, scenario(angle, ball, reach), 1)
     state = np.asarray(simulator.reset())[0]
-    for _ in range(240):
+    for _ in range(480):
         if int(state[-1]) & 1:
             return True
         pose = robot_pose(state, 0)
@@ -67,11 +74,17 @@ def attempt(skill: str, angle: float, ball: tuple[float, float], reach: float) -
         tokens = np.zeros((3, 3), dtype=np.float32)
         tokens[:, 0] = -1.0
         tokens[0] = token(intent, heading)
-        wheels = circular_primitive_wheel_actions(state, team=0, tokens=tokens)
+        wheels = circular_primitive_wheel_actions(
+            state, team=0, tokens=tokens, strike_clearing_enabled=use_clearing
+        )
         command = np.zeros((1, 6, 2), dtype=np.float32)
-        command[0, :3] = wheels * 12.0
+        command[0, :3] = wheels * SCALE
         state = np.asarray(simulator.step_repeated(command, 4))[0]
     return bool(int(state[-1]) & 1)
+
+
+SCALE = float(sys.argv[1]) if len(sys.argv) > 1 else float(cfg["max_wheel_speed"])
+USE_CLEARING = (sys.argv[2] if len(sys.argv) > 2 else "1") == "1"
 
 
 BALLS = ((0.30, 0.00), (0.45, 0.10), (0.20, -0.15), (0.50, -0.05))
@@ -85,7 +98,7 @@ for skill in ("navigate_ball", "navigate_goal", "strike"):
     for degrees in DEGREES:
         angle = math.radians(degrees)
         scored = sum(
-            attempt(skill, side * angle, ball, reach)
+            attempt(skill, side * angle, ball, reach, USE_CLEARING)
             for ball in BALLS
             for reach in REACHES
             for side in (1.0, -1.0)

@@ -190,6 +190,14 @@ class MarlConfig:
     teammate_congestion_coefficient: float = 0.002
     contact_distance: float = 0.082
     contact_grace_seconds: float = 0.5
+    # ADR 0027: the strike first routes wide of the ball, then drives through aligned, so an
+    # angled chance is convertible. Off restores the straight-line approach exactly; it sits
+    # in LEGACY_NEUTRAL_CONFIG at false so checkpoints written before this change load
+    # unchanged, and a non-default value rejects a legacy fingerprint.
+    strike_clearing_enabled: bool = True
+    # Metres of extra distance behind the ball the clearing waypoint adds to the acquisition
+    # offset, validated to exceed the contact radius so the run-in stays outside it.
+    strike_clearing_distance: float = 0.16
     ally_deadlock_coefficient: float = 0.0
     opponent_deadlock_coefficient: float = 0.0
     defensive_coverage_coefficient: float = 1.0

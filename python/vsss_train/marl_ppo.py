@@ -91,6 +91,8 @@ LEGACY_NEUTRAL_CONFIG = {
     "semantic_max_match_draw_rate": 1.0,
     "contact_distance": 0.082,
     "contact_grace_seconds": 0.5,
+    "strike_clearing_enabled": False,
+    "strike_clearing_distance": 0.16,
     "ally_deadlock_coefficient": 0.0,
     "opponent_deadlock_coefficient": 0.0,
     "idle_spin_coefficient": 0.0,
