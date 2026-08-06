@@ -1,7 +1,8 @@
 # ADR 0027: The strike must arrive aligned, not merely near
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-08-04
+- Owners: Roberto Villegas
 
 ## Context
 
@@ -43,13 +44,13 @@ because from an angled start the ball sits beside the approach path, inside the 
 ## Decision
 
 Give the strike a **ball-clearing approach phase**. Until the robot can reach the behind-ball
-acquisition point without entering the ball's contact radius, the strike targets a clearing point
-offset to the side of the ball that keeps the robot outside the contact radius while it turns onto
-the exit direction. Once the robot is within the existing alignment gate (0.11 m, 0.60 rad), the
-drive-through engages exactly as today.
+acquisition point aligned, the strike targets a clearing waypoint on the exit line beyond the
+acquisition point (`ball − 0.26 · exit`), settles there clear of the ball's contact radius,
+turns onto the exit direction, re-aims at the acquisition point, and only then — once within
+the existing alignment gate (0.11 m, 0.60 rad) — drives through exactly as today.
 
 The alignment gate, the exit direction, and the drive-through geometry are unchanged. Only the
-approach path changes: the robot goes around the ball instead of through it.
+approach path changes: the robot arrives aligned instead of reaching the ball sideways.
 
 ## Consequences
 
@@ -62,8 +63,15 @@ approach path changes: the robot goes around the ball instead of through it.
 - The `shot` drill's `ball_angle` axis, withdrawn in cycle 4 as unreachable, becomes measurable
   again. Re-running `tools/audit_skill_difficulty.py` over `shot` is part of the work, and the
   ladder may gain a real axis.
-- Measured by the finishing-angle probe before and after: the on-line conversion must stay at
-  1.00, and the angled conversion must rise materially above zero. Dribbling and navigate are
-  untouched by construction and re-measured to confirm.
+- Measured by the finishing-angle probe before and after at the match scale (`max_wheel_speed =
+  30.0`): on-line conversion stays at 1.00, and 60° conversion rises from 0.00 to 0.67 (0.04 at
+  90°). A 60° trace converts in 288 decisions with the run-in never inside the contact radius
+  (minimum separation ~0.113 m). Dribbling and navigate are untouched by construction and
+  re-measured to confirm.
+- Two authority findings settled by measurement: the waypoint run-in is slowed on both wheels
+  (0.35) so the tracked arc pulls clear of the ball — a forward-only cut passes 0.061 m, inside
+  the 0.082 contact radius; and the re-aimed turn at the acquisition is exempt from both the
+  approach authority and the acquisition scale (0.72), which would otherwise turn the release
+  into a crawl.
 - Rollback is a single branch in `_strike_target`: the previous straight-line approach is the
   `else` case, disabled by configuration.

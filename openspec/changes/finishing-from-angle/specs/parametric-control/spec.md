@@ -3,10 +3,10 @@
 ### Requirement: the strike arrives aligned
 
 When the straight path from the robot to the behind-ball acquisition point would enter the
-ball's contact radius, the strike primitive SHALL first target a clearing point offset to the
-side of the ball, so that the robot stays outside the contact radius while it turns onto the
-exit direction. The alignment gate (0.11 m, 0.60 rad) and the drive-through geometry SHALL NOT
-change.
+ball's contact radius, the strike primitive SHALL first target a clearing waypoint on the exit
+line beyond the acquisition point (`ball − (0.10 + clearing_distance) · exit`), so that the
+robot stays outside the contact radius while it turns onto the exit direction. The alignment
+gate (0.11 m, 0.60 rad) and the drive-through geometry SHALL NOT change.
 
 #### Scenario: angled approach clears the ball
 
