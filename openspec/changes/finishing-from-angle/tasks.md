@@ -23,9 +23,16 @@
       inverted axes and the other shot ladders survive (spawn_distance 0.70→0.05, ball_speed
       0.70→0.00 by the same race). The scripted probe cannot shoot, so the policy-side ladder
       is measured after the M24.6 run.
-- [ ] Give the fresh M24.6 run a new policy fingerprint and configuration; record the
-      full-match gate signals against the M24.5 stall.
-- [ ] Run lint, build, test, and a from-scratch smoke run before starting the new run.
+- [x] Give the fresh M24.6 run a new policy fingerprint and configuration; record the
+      full-match gate signals against the M24.5 stall. Done in evidence.md: fingerprint
+      `ebc5fb8b33c7499b`, run `vsss-m24-6-run-0002` (2,900 it / 47.5M steps, early-stopped
+      on 12 consecutive holdout regressions while mid-`integration` phase). Semantic peak
+      0.768 vs M24.5's 0.671; phase progression defense → integration (M24.5 stuck in
+      defense); full-match draw 0.834 vs gate 0.70 — gate not crossed, trend still
+      improving at stop. Rotations attempted (6/3 completed vs M24.5's 0).
+- [x] Run lint, build, test, and a from-scratch smoke run before starting the new run.
+      Rust 61 passed, pytest 330 passed, ruff and clippy clean; smoke
+      `vsss-m24-6-run-0001` passed (25 it, curriculum `allocation_valid`).
 
 ## Narrowed during measurement
 
