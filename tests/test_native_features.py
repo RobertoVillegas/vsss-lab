@@ -219,7 +219,7 @@ def test_native_wheel_actions_match_the_python_reference() -> None:
             # The skill index comes from rounding, so the halfway points decide a branch.
             tokens[:, :, 0] = np.float32(-0.5)
             tokens[:, 0, 0] = np.float32(0.5)
-        actual = np.asarray(simulator.circular_wheel_actions(teams, tokens, 0.8))
+        actual = np.asarray(simulator.circular_wheel_actions(teams, tokens, 0.8, True, 0.16))
 
         for world, (state, team) in enumerate(zip(states, teams, strict=True)):
             want = circular_primitive_wheel_actions(state, team=int(team), tokens=tokens[world])
@@ -231,9 +231,11 @@ def test_native_wheel_actions_reject_a_malformed_request() -> None:
     tokens = np.zeros((4, 3, 3), dtype=np.float32)
 
     with pytest.raises(ValueError, match="one team index per world"):
-        simulator.circular_wheel_actions(np.zeros(2, dtype=np.int64), tokens, 0.8)
+        simulator.circular_wheel_actions(np.zeros(2, dtype=np.int64), tokens, 0.8, True, 0.16)
     with pytest.raises(ValueError, match=r"tokens must have shape"):
-        simulator.circular_wheel_actions(np.zeros(4, dtype=np.int64), tokens[:, :, :2], 0.8)
+        simulator.circular_wheel_actions(
+            np.zeros(4, dtype=np.int64), tokens[:, :, :2], 0.8, True, 0.16
+        )
 
 
 def test_native_goal_geometry_matches_the_python_reference_term_by_term() -> None:

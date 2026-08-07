@@ -43,6 +43,8 @@ class BatchSimulator:
         teams: NDArray[np.int64],
         tokens: NDArray[np.float32],
         ball_deceleration: float,
+        strike_clearing_enabled: bool,
+        strike_clearing_distance: float,
     ) -> NDArray[np.float32]: ...
     def restart_free_ball(
         self,
