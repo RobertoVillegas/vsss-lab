@@ -107,6 +107,10 @@ class MarlConfig:
     semantic_phase_rehearsal_fraction: float = 0.20
     semantic_phase_full_match_floor: float = 0.0
     semantic_promotion_floors: dict[str, float] = field(default_factory=dict)
+    # Max difficulty level per skill family/axis. An axis cap keeps a family from being
+    # demoanded to 1.0 when that full-extent difficulty stalls full matches (e.g. approach
+    # spawn_distance). Default empty = no cap (behaviour unchanged).
+    semantic_axis_caps: dict[str, dict[str, float]] = field(default_factory=dict)
     semantic_max_idle_spin_ratio: float = 1.0
     # A gate that only forbids a pathology can be passed by doing nothing. These two require
     # play to be present: a policy that stops cannot score, and cannot keep its stop fraction
@@ -295,6 +299,12 @@ class MarlConfig:
             raise ValueError("semantic_min_match_win_rate must be in [0, 1]")
         if not 0.0 <= self.semantic_max_match_draw_rate <= 1.0:
             raise ValueError("semantic_max_match_draw_rate must be in [0, 1]")
+        if set(self.semantic_axis_caps) - known_families:
+            raise ValueError("semantic_axis_caps has an unknown skill family")
+        for family, axes in self.semantic_axis_caps.items():
+            for axis, cap in axes.items():
+                if not 0.05 <= cap <= 1.0:
+                    raise ValueError(f"semantic_axis_caps {family}.{axis} must be in [0.05, 1]")
         if not 0.0 <= self.full_match_kickoff_radius <= 0.20:
             raise ValueError("full_match_kickoff_radius must be in [0, 0.20]")
         if not 0.0 <= self.observation_dropout < 1.0:

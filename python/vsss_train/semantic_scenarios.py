@@ -196,6 +196,7 @@ class SemanticSkillCurriculum:
         phase_patience: int = 2,
         phase_rehearsal_fraction: float = 0.20,
         phase_full_match_floor: float = 0.0,
+        axis_caps: dict[str, dict[str, float]] | None = None,
     ) -> None:
         if not 0.0 <= full_match_fraction <= 1.0:
             raise ValueError("full_match_fraction must be in [0, 1]")
@@ -216,6 +217,7 @@ class SemanticSkillCurriculum:
         self.phase_patience = phase_patience
         self.phase_rehearsal_fraction = phase_rehearsal_fraction
         self.phase_full_match_floor = phase_full_match_floor
+        self.axis_caps = axis_caps or {}
         self.phase_index = 0
         self.phase_gate_streak = 0
         self.levels = {
@@ -352,8 +354,9 @@ class SemanticSkillCurriculum:
         # instead of drifting into a dimension that changes nothing.
         active = FAMILY_AXES.get(family, DIFFICULTY_AXES)
         axis = active[self.updates[family] % len(active)]
+        cap = self.axis_caps.get(family, {}).get(axis, 1.0)
         if current >= 0.70 and learning_progress >= -0.05:
-            self.levels[family][axis] = min(1.0, self.levels[family][axis] + 0.05)
+            self.levels[family][axis] = min(cap, self.levels[family][axis] + 0.05)
         elif current < 0.35 and learning_progress <= 0.0:
             self.levels[family][axis] = max(0.05, self.levels[family][axis] - 0.025)
         self.updates[family] += 1
